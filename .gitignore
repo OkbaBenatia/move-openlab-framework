@@ -1,0 +1,27 @@
+# environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+# runtime data: campaigns, instances, credential stores (never committed)
+.openlab-data/
+*.sqlite3
+.env
+.env.*
+!.env.example
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/node_modules/.tmp/
+# archives are never committed (bundles are produced at run time)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+# local tooling
+.claude/

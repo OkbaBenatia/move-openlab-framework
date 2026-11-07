@@ -1,0 +1,137 @@
+# Architecture
+
+MOVE OpenLab separates a **problem-agnostic framework** from **problem packages**. The framework never knows what a
+driver, a route or a cost is; a problem package tells it how to generate, validate, rank and compare.
+
+```mermaid
+flowchart LR
+  subgraph Problem package
+    P[Problem definition<br/>spec · generator · validator<br/>objective levels · metrics<br/>fingerprint components<br/>variants · candidates · scorers]
+    BM[Built-in methods]
+  end
+  subgraph Framework
+    R[Problem registry<br/>entry points]
+    S[Store<br/>installations · workspaces<br/>campaigns · lineage · lock]
+    X[Runner + isolated worker<br/>python -I subprocess<br/>plugins: verified bubblewrap sandbox]
+    B[Bundles<br/>export · verify · import]
+    A[Analysis<br/>compare · reproducibility<br/>semantic · threshold · reports]
+    C[Comparability contract]
+  end
+  PL[Approved plugin directory<br/>off by default] -->|static metadata, pinned hash| S
+  P --> R --> S
+  BM --> X
+  S --> X -->|decisions| V{{Independent validator}} --> S
+  S <--> B
+  S --> A
+  C --> A
+  G[Geo layer<br/>OSM road networks · routing<br/>scenario library · playback] --> S
+  O[Open-data connector<br/>RPC releases] --> G
+  J[Persistent jobs<br/>progress · cancel · trace] --> X
+  API[FastAPI + auth + admin] --> S
+  UI[React web interface<br/>maps · playback · charts] --> API
+```
+
+## Package layout
+
+| Module | Role |
+|---|---|
+| `move_openlab.problem` | `Problem` interface, metric and objective-level definitions, variants |
+| `move_openlab.registry` | Problem discovery (`move_openlab.problems` entry points); no import-path manipulation |
+| `move_openlab.methods` | Method metadata and output contract, registry, read-only views |
+| `move_openlab.plugins` | Approved plugin directory: static metadata, path confinement, code hashes |
+| `move_openlab.worker`, `runner` | Isolated execution, timing, independent validation of every run |
+| `move_openlab.sandbox` | Plugin modes, bubblewrap sandbox, isolation verification (fail closed), server hardening |
+| `move_openlab.store` | Installations, per-user workspaces, campaigns, derivations, lock, bundles |
+| `move_openlab.analysis` | Comparison, reproducibility, semantic comparability, threshold studies, reports |
+| `move_openlab.comparability` | Fingerprints and the claim-dependent comparability contract |
+| `move_openlab.scoring` | Scorer interface, threshold / top-k selection |
+| `move_openlab.jobs` | Persistent background jobs: progress, events, cancellation, restart recovery, history |
+| `move_openlab.geo` | OpenStreetMap road networks (Overpass fetch, graph build, content-addressed store), routing, scenario validation and generation, route playback |
+| `move_openlab.integrations` | Scenario-source interfaces; `rpc`: connector for the RPC carpooling open-data releases |
+| `move_openlab.auth`, `api` | Accounts and sessions; HTTP API (`experiments`, `geo`, `admin`) and single-origin web application |
+| `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment benchmark |
+| `move_openlab.benchmarks.ride_matching` | Ride matching on road networks (exact MILP, greedy, variants, relative-detour scorer) |
+
+## Experimentation pipeline
+
+```mermaid
+sequenceDiagram
+  participant R1 as Researcher 1 (installation A)
+  participant R2 as Researcher 2 (installation B)
+  R1->>R1: create baseline (generate content-addressed scenarios)
+  R1->>R1: execute (isolated runs, independent validation)
+  R1->>R1: lock (checksum)
+  R1->>R2: export bundle (manifest + hashes, no code)
+  R2->>R2: verify + import (read-only)
+  R2->>R2: reproduction campaign: re-execute, lock
+  R2->>R2: reproducibility verification (per cell)
+  R2->>R2: register plugin (static check, pinned hash, self-test)
+  R2->>R2: extension campaign: execute, lock
+  R2->>R2: compare methods · semantic comparability · threshold study · reports
+  R2->>R1: export extended bundle (full lineage)
+```
+
+### Geographic scenarios
+
+```mermaid
+flowchart LR
+  A[Administrator: area name + bbox] --> N[Fetch OSM network job<br/>Overpass · build graph · largest SCC]
+  A --> D[Ingest RPC release job<br/>stream · hash · filter · clean]
+  N --> E[Map editor]
+  N --> Gs[Seeded generator]
+  D --> Ge[Open-data generator<br/>sample OD and departure distribution]
+  N --> Ge
+  E & Gs & Ge --> L[Scenario library<br/>versions · provenance]
+  L -->|build: snap, travel times, compatible pairs| I[Content-addressed instance]
+  I --> C[Campaign] --> P[Route playback]
+```
+
+Building an instance snaps every origin and destination to the network, computes the travel times needed by the
+problem and stores them in the instance. Everything downstream (methods, validation, bundles, reproduction) works from
+the instance alone; the network is only needed again to draw road geometry in the playback.
+
+### Jobs
+
+Executions, network fetches and open-data ingestions run as background jobs. A job records its owner, kind, subject,
+state (`running`, `done`, `error`, `cancelled`, `interrupted`), progress and timestamped events, persisted as JSON so
+the history survives restarts; jobs that were running when the server stopped are marked `interrupted`, and campaigns
+left mid-execution return to draft. Cancelling stops the worker process group; runs completed before the
+cancellation are discarded so a campaign is never partially executed. Every run carries a per-stage trace (prepare,
+execute, validate) used for the stage-duration table and the replay in the web interface.
+
+## Data model
+
+```
+<data>/installation.json
+<data>/instances/<sha256>.json                 immutable, content-addressed
+<data>/workspaces/<user>/campaigns/<id>/campaign.json
+<data>/workspaces/<user>/campaigns/<id>/import_record.json
+<data>/workspaces/<user>/methods.json          registered plugins (id, version, code hash, self-test)
+<data>/workspaces/<user>/scenarios/<id>.json    scenario library entry (scenario, provenance, parent, instance hash)
+<data>/networks/<network_id>/                   road network, provenance, compressed raw Overpass response
+<data>/opendata/rpc/<dataset_key>/              cleaned trips (no identifiers) and ingestion report
+<data>/jobs/<user>/<job_id>.json                job state, progress and events
+<data>/audit.log                                administrative actions (no secrets)
+```
+
+A campaign records: specification (problem, objective, constraints, instance schema, validator and framework
+versions), scenario set (parameters, generator, instance hashes), methods (with code hashes for plugins),
+configuration (repetitions, timeout, time budget, per-method options), runs (decisions, validation, declared values,
+timings, effective configuration), environment, parent link (id, checksum, relation) and checksum.
+
+## Comparison semantics
+
+Rankings follow the problem's lexicographic objective levels. A method that is worse on an earlier level is never
+ranked better because of a later level. Gaps are computed on the last level only where every previous level equals
+the reference. Runtime comparisons across installations or environments are reported as indicative.
+
+Each run also states its optimality scope: *proven optimal (full problem)* for an exact method that proved optimality
+on the original instance; *optimal for the reduced instance only* when the instance was pruned by a threshold; *not
+proven (time limit)*; *feasible, optimality not proven*; *heuristic (no optimality claim)*; *invalid (rejected by the
+validator)*. "Equals reference optimum" in a comparison counts scenarios where a method reached the reference's
+objective values; it is not a proof of optimality.
+
+Semantic comparability decides, per claim, whether two results are directly comparable, conditionally comparable or
+incompatible: a different feasible region, objective or metric definition makes a quality claim incompatible; a
+non-binding change (different file, same problem fingerprint) does not; a different time budget, method option or
+environment qualifies the claim. Positive scaling of a metric is the only built-in verified normalisation.

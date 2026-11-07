@@ -1,0 +1,9 @@
+# Code owners are requested for review on every pull request (the last matching pattern wins).
+# Ownership of this file and of the workflows is explicit so that review rules cannot be weakened unnoticed.
+*                                   @OkbaBenatia
+/.github/                           @OkbaBenatia
+/src/move_openlab/sandbox.py        @OkbaBenatia
+/src/move_openlab/plugins.py        @OkbaBenatia
+/src/move_openlab/auth/             @OkbaBenatia
+/scripts/check_public_safety.py     @OkbaBenatia
+/docs/SECURITY_MODEL.md             @OkbaBenatia

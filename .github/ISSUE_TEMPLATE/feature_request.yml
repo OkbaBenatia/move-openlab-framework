@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new capability, benchmark or integration.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Research need
+      description: Which experimentation or reproducibility problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Behaviour, interfaces affected (Problem, method contract, bundles, API, UI).
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Framework core (campaigns, bundles, analysis)
+        - New benchmark / problem package
+        - Method plugins and sandbox
+        - Web interface
+        - Documentation
+        - Scenario sources (open data)
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and reproducibility
+      description: Effect on existing campaigns, bundles, hashes and fingerprints.
+  - type: checkboxes
+    id: conduct
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct (CODE_OF_CONDUCT.md).
+          required: true
