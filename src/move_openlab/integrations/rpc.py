@@ -24,6 +24,7 @@ import io
 import json
 import re
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,31 @@ MONTH = re.compile(r"^(\d{4})-(\d{2})\.csv$")
 KEPT = ("start_datetime", "date", "start_s", "start_lat", "start_lon", "end_datetime", "end_lat", "end_lon",
         "distance_m", "duration_min", "passenger_seats", "operator_class")
 MAX_SPEED_KMH = 150.0
+# The registry covers journeys in France only. Approximate boxes (south, west, north, east) of metropolitan France
+# with Corsica and of the overseas departments; an area must lie inside one of them.
+FRANCE_REGIONS = {
+    "metropolitan France": (41.3, -5.3, 51.2, 9.7), "Guadeloupe": (15.8, -61.9, 16.6, -61.0),
+    "Martinique": (14.3, -61.3, 14.9, -60.8), "French Guiana": (2.1, -54.7, 5.8, -51.6),
+    "La Réunion": (-21.4, 55.2, -20.8, 55.9), "Mayotte": (-13.1, 45.0, -12.6, 45.3),
+}
+ALLOWED_HOSTS = ("www.data.gouv.fr", "data.gouv.fr", "static.data.gouv.fr", "object.files.data.gouv.fr")
+
+
+def france_region(bbox) -> str | None:
+    """Name of the French region box containing the whole area, or None (RPC has no data outside France)."""
+    s, w, n, e = (float(x) for x in bbox)
+    for name, (rs, rw, rn, re_) in FRANCE_REGIONS.items():
+        if rs <= s and rw <= w and n <= rn and e <= re_:
+            return name
+    return None
+
+
+def check_download_url(url: str) -> str:
+    """Only HTTPS downloads from data.gouv.fr hosts are followed (no arbitrary server-side fetching)."""
+    u = urllib.parse.urlsplit(url or "")
+    if u.scheme != "https" or u.hostname not in ALLOWED_HOSTS:
+        raise ValueError("release URL is not an HTTPS data.gouv.fr address")
+    return url
 
 
 class Cancelled(RuntimeError):
@@ -132,7 +158,7 @@ def ingest(release: dict, bbox, area_name: str, out_root: Path, source=None, pro
     d.mkdir(parents=True, exist_ok=True)
     t_start = time.time()
     if source is None:
-        req = urllib.request.Request(release["url"], headers={"User-Agent": USER_AGENT})
+        req = urllib.request.Request(check_download_url(release["url"]), headers={"User-Agent": USER_AGENT})
         raw = urllib.request.urlopen(req, timeout=120)
     else:
         raw = open(source, "rb")

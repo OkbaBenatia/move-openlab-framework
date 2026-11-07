@@ -15,7 +15,8 @@ window is non-empty. All times are stored in the instance, so it can be validate
 Three ways to create scenarios:
 * the map editor (points placed by the researcher);
 * :func:`generate_synthetic` — seeded random origins/destinations on the network's nodes;
-* :func:`generate_empirical` — seeded resampling (with replacement) of cleaned open carpooling records. Roles are not
+* :func:`generate_empirical` — seeded resampling (with replacement) of validated trip records (RPC open data or a
+  dataset uploaded by the researcher). Roles are not
   observed in those records: drivers and riders are drawn independently from the same pool. Each agent takes one
   record's origin–destination pair as published (coordinates already truncated by the publisher) and a departure
   time re-drawn inside the publisher's 10-minute rounding interval; identifiers, dates, distances and operator
@@ -155,24 +156,45 @@ def generate_synthetic(net: RoadNetwork, name: str, n_drivers: int, n_riders: in
 
 def generate_empirical(trips: list[dict], dataset: dict, network_id: str, name: str, n_drivers: int, n_riders: int,
                        seed: int, start_s: int, end_s: int, params: dict | None = None, date: str | None = None) -> dict:
-    """Seeded sampling from the empirical distribution of cleaned open-data trips (see the module docstring)."""
-    pool = [t for t in trips if start_s <= t["start_s"] < end_s and (date is None or t["date"] == date)]
+    """Seeded resampling of validated trip records (see the module docstring).
+
+    ``dataset`` is the dataset report (RPC ingestion report or workspace dataset report). When records carry a role,
+    drivers are drawn from driver (or unlabelled) records and riders from rider (or unlabelled) records. RPC
+    departures are re-drawn inside the publisher's 10-minute rounding interval; other datasets keep their times.
+    """
+    pool = [t for t in trips if start_s <= t["start_s"] < end_s and (date is None or t.get("date") == date)]
     if len(pool) < 5:
-        raise ValueError(f"only {len(pool)} trip(s) in the selected period; widen the time interval or the date")
+        raise ValueError(f"only {len(pool)} trip(s) in the selected period and area; widen the time interval, the "
+                         "date or the area")
     if not (1 <= n_drivers <= 100 and 1 <= n_riders <= 100):
         raise ValueError("1-100 drivers and 1-100 riders are required")
+    rpc = dataset.get("provider", "rpc") == "rpc" and "release" in dataset
+    pools = {"drivers": [t for t in pool if t.get("role") != "rider"],
+             "riders": [t for t in pool if t.get("role") != "driver"]}
+    for role, p in pools.items():
+        if not p:
+            raise ValueError(f"no trip usable for {role} in the selected period (check the role column)")
     rnd = random.Random(f"empirical:{dataset['dataset_key']}:{seed}")
+    prov = dict(source="open-data" if rpc else "dataset", generator="move_openlab.geo.empirical/1.0.0", seed=seed,
+                dataset_key=dataset["dataset_key"], licence=dataset.get("licence"),
+                attribution=dataset.get("attribution"), window=[start_s, end_s], date=date, pool_size=len(pool),
+                n_drivers=n_drivers, n_riders=n_riders)
+    if rpc:
+        prov.update(release=dataset["release"],
+                    method="drivers and riders drawn independently from the empirical OD/departure "
+                           "distribution; departures re-drawn within the 10-minute rounding interval")
+    else:
+        prov.update(provider=dataset.get("provider"), dataset_name=dataset.get("name"),
+                    source_sha256=(dataset.get("source") or {}).get("sha256"),
+                    method="records resampled with replacement" + (", roles respected" if any(
+                        t.get("role") for t in pool) else "") + "; departure times as recorded")
     sc = dict(name=name, network_id=network_id, params=params or DEFAULT_PARAMS, drivers=[], riders=[],
-              provenance=dict(source="open-data", generator="move_openlab.geo.empirical/1.0.0", seed=seed,
-                              dataset_key=dataset["dataset_key"], release=dataset["release"], licence=dataset["licence"],
-                              attribution=dataset["attribution"], window=[start_s, end_s], date=date, pool_size=len(pool),
-                              n_drivers=n_drivers, n_riders=n_riders,
-                              method="drivers and riders drawn independently from the empirical OD/departure "
-                                     "distribution; departures re-drawn within the 10-minute rounding interval"))
+              provenance=prov)
     for role, count, prefix in (("drivers", n_drivers, "D"), ("riders", n_riders, "R")):
+        p = pools[role]
         for i in range(count):
-            t = pool[rnd.randrange(len(pool))]
-            dep = t["start_s"] + rnd.randrange(-300, 300)
+            t = p[rnd.randrange(len(p))]
+            dep = t["start_s"] + (rnd.randrange(-300, 300) if rpc else 0)
             wd, wr = _windows(rnd, dep)
             e, l = wd if role == "drivers" else wr
             sc[role].append(dict(id=f"{prefix}{i + 1}", origin=[t["start_lat"], t["start_lon"]],

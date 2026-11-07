@@ -1,9 +1,11 @@
 """OpenStreetMap road-network acquisition (Overpass API) and graph construction.
 
 The graph is directed, weighted by free-flow travel time from a documented speed profile (``maxspeed`` when it is a
-plain km/h value, otherwise the default speed of the ``highway`` class), restricted to its largest strongly connected
-component so that every routed pair has a path. The network id is the SHA-256 of the built graph, so identical inputs
-give identical ids.
+plain km/h value, otherwise the default speed of the ``highway`` class, times the profile's speed factor), restricted
+to its largest strongly connected component so that every routed pair has a path. The network id is the SHA-256 of the
+built graph (which includes the profile), so identical inputs give identical ids.
+
+Profiles (:data:`PROFILES`) select the road classes, a speed factor and the largest area one request may cover.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ import hashlib
 import json
 import math
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -19,7 +22,7 @@ from pathlib import Path
 from .. import __version__
 from ..hashing import canonical, sha256
 
-BUILDER = "move_openlab.geo.osm/1.0.0"
+BUILDER = "move_openlab.geo.osm/1.1.0"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 USER_AGENT = f"move-openlab/{__version__} (+https://github.com/OkbaBenatia/move-openlab-framework)"
 LICENCE = dict(id="ODbL-1.0", name="Open Database License 1.0", url="https://opendatacommons.org/licenses/odbl/1-0/",
@@ -29,38 +32,81 @@ SPEED_KMH = {"motorway": 110, "trunk": 90, "primary": 70, "secondary": 60, "tert
              "residential": 30, "living_street": 10, "motorway_link": 60, "trunk_link": 50, "primary_link": 40,
              "secondary_link": 40, "tertiary_link": 30}
 MAX_OVERPASS_BYTES = 256 * 1024 * 1024       # refuse larger responses (memory bound while building the graph)
-MAX_BBOX_DEG2 = 0.25                       # refuse areas larger than ~0.5° x 0.5° (fair use of the public Overpass API)
+MAIN_CLASSES = ("motorway", "trunk", "primary", "secondary", "tertiary", "motorway_link", "trunk_link",
+                "primary_link", "secondary_link", "tertiary_link")
+PROFILES = {
+    "car": dict(label="Car, all public roads", classes=tuple(SPEED_KMH), speed_factor=1.0, max_bbox_deg2=0.25),
+    "car-main-roads": dict(label="Car, main roads only (larger areas)", classes=MAIN_CLASSES, speed_factor=1.0,
+                           max_bbox_deg2=1.0),
+    "car-peak": dict(label="Car, all roads, speeds × 0.7 (peak-hour sensitivity)", classes=tuple(SPEED_KMH),
+                     speed_factor=0.7, max_bbox_deg2=0.25),
+}
+DEFAULT_PROFILE = "car"
 
 
-def validate_bbox(bbox) -> tuple[float, float, float, float]:
-    """(south, west, north, east) in WGS-84 degrees."""
+class SourceUnavailable(RuntimeError):
+    """The external service refused or failed; the message is safe to show to the user."""
+
+
+def profile(name: str | None) -> dict:
+    p = PROFILES.get(name or DEFAULT_PROFILE)
+    if p is None:
+        raise ValueError(f"unknown road-network profile {name!r}; available: {', '.join(PROFILES)}")
+    return p
+
+
+def bbox_km2(bbox) -> float:
+    s, w, n, e = bbox
+    return haversine_m(s, w, n, w) * haversine_m((s + n) / 2, w, (s + n) / 2, e) / 1e6
+
+
+def validate_bbox(bbox, profile_name: str | None = None) -> tuple[float, float, float, float]:
+    """(south, west, north, east) in WGS-84 degrees, within the profile's area limit."""
     try:
         s, w, n, e = (float(x) for x in bbox)
     except (TypeError, ValueError):
         raise ValueError("bbox must be [south, west, north, east]") from None
-    if not (-90 <= s < n <= 90 and -180 <= w < e <= 180):
-        raise ValueError("invalid bbox")
-    if (n - s) * (e - w) > MAX_BBOX_DEG2:
-        raise ValueError(f"area too large for one Overpass query (> {MAX_BBOX_DEG2} square degrees)")
+    if any(x != x for x in (s, w, n, e)) or not (-85 <= s < n <= 85 and -180 <= w < e <= 180):
+        raise ValueError("invalid bounding box: south < north within ±85°, west < east within ±180°")
+    if (n - s) < 0.002 or (e - w) < 0.002:
+        raise ValueError("bounding box too small (at least about 200 m on each side)")
+    lim = profile(profile_name)["max_bbox_deg2"]
+    if (n - s) * (e - w) > lim:
+        raise ValueError(f"area too large for profile {profile_name or DEFAULT_PROFILE}: {bbox_km2((s, w, n, e)):.0f} km² "
+                         f"({(n - s) * (e - w):.3f} deg², limit {lim} deg²); draw a smaller box"
+                         + (" or use the main-roads profile" if lim < PROFILES["car-main-roads"]["max_bbox_deg2"] else ""))
     return s, w, n, e
 
 
-def overpass_query(bbox) -> str:
-    s, w, n, e = validate_bbox(bbox)
-    classes = "|".join(sorted(SPEED_KMH))
+def overpass_query(bbox, profile_name: str | None = None) -> str:
+    s, w, n, e = validate_bbox(bbox, profile_name)
+    classes = "|".join(sorted(profile(profile_name)["classes"]))
     return (f'[out:json][timeout:180];way["highway"~"^({classes})$"]["access"!~"^(no|private)$"]'
             f'["motor_vehicle"!~"^(no|private)$"]({s},{w},{n},{e});(._;>;);out body;')
 
 
-def fetch_overpass(bbox, url: str = OVERPASS_URL, timeout: float = 240.0) -> bytes:
-    """One Overpass request (identifying User-Agent, as the usage policy requires). Raises on HTTP errors; callers
-    should not retry immediately after a 429/504 (the policy asks for a pause)."""
-    data = urllib.parse.urlencode({"data": overpass_query(bbox)}).encode()
+def fetch_overpass(bbox, url: str = OVERPASS_URL, timeout: float = 240.0, profile_name: str | None = None) -> bytes:
+    """One Overpass request (identifying User-Agent, as the usage policy requires). Service errors become
+    :class:`SourceUnavailable` with an actionable message; callers must not retry immediately (fair use)."""
+    data = urllib.parse.urlencode({"data": overpass_query(bbox, profile_name)}).encode()
     req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read(MAX_OVERPASS_BYTES + 1)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(MAX_OVERPASS_BYTES + 1)
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise SourceUnavailable("Overpass API is rate-limiting requests (HTTP 429); try again in a few minutes") from None
+        if e.code in (502, 503, 504):
+            raise SourceUnavailable(f"Overpass API timed out or is overloaded (HTTP {e.code}); try later, a smaller "
+                                    "area or the main-roads profile") from None
+        raise SourceUnavailable(f"Overpass API refused the request (HTTP {e.code})") from None
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise SourceUnavailable(f"Overpass API unreachable ({type(e).__name__}); check the network or the configured URL") from None
     if len(raw) > MAX_OVERPASS_BYTES:
         raise ValueError(f"Overpass response larger than {MAX_OVERPASS_BYTES // 2**20} MB; choose a smaller area")
+    if b'"remark"' in raw[:4096] and b"runtime error" in raw[:4096]:
+        raise SourceUnavailable("Overpass API stopped the query (area too dense for its time limit); draw a smaller box "
+                                "or use the main-roads profile")
     return raw
 
 
@@ -71,11 +117,10 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def _speed(tags: dict) -> float:
+def _speed(tags: dict, factor: float = 1.0) -> float:
     ms = str(tags.get("maxspeed", "")).strip()
-    if ms.isdigit() and 5 <= int(ms) <= 130:
-        return float(ms)
-    return float(SPEED_KMH.get(tags.get("highway", ""), 30))
+    base = float(ms) if ms.isdigit() and 5 <= int(ms) <= 130 else float(SPEED_KMH.get(tags.get("highway", ""), 30))
+    return base * factor
 
 
 def _oneway(tags: dict) -> int:
@@ -129,16 +174,24 @@ def _largest_scc(n: int, adj: list[list[int]]) -> list[int]:
     return sorted(best)
 
 
-def build_network(raw: bytes) -> dict:
+def build_network(raw: bytes, profile_name: str | None = None) -> dict:
     """Build the routable graph from an Overpass JSON response. Returns a JSON-serialisable network."""
-    doc = json.loads(raw)
+    prof_name = profile_name or DEFAULT_PROFILE
+    prof = profile(prof_name)
+    classes = set(prof["classes"])
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        raise SourceUnavailable("the Overpass response is not valid JSON") from None
     nodes = {el["id"]: (el["lat"], el["lon"]) for el in doc.get("elements", []) if el.get("type") == "node"}
     edges: dict[tuple[int, int], tuple[float, float]] = {}
     for el in doc.get("elements", []):
         if el.get("type") != "way" or len(el.get("nodes", [])) < 2:
             continue
         tags = el.get("tags", {})
-        kmh, ow = _speed(tags), _oneway(tags)
+        if tags.get("highway") not in classes:
+            continue
+        kmh, ow = _speed(tags, prof["speed_factor"]), _oneway(tags)
         seq = [x for x in el["nodes"] if x in nodes]
         for a, b in zip(seq, seq[1:]):
             if a == b:
@@ -154,13 +207,14 @@ def build_network(raw: bytes) -> dict:
     for u, v in edges:
         adj[index[u]].append(index[v])
     keep = _largest_scc(len(ids), adj)
-    if not keep:
-        raise ValueError("the OSM response contains no routable road")
+    if not keep or len(keep) < 2:
+        raise ValueError("no routable road in this area for the selected profile")
     keep_ids = [ids[i] for i in keep]
     knew = {x: i for i, x in enumerate(keep_ids)}
     out_edges = sorted((knew[u], knew[v], round(length, 2), round(t, 3)) for (u, v), (length, t) in edges.items()
                        if u in knew and v in knew)
-    net = dict(builder=BUILDER, speed_profile_kmh=SPEED_KMH,
+    net = dict(builder=BUILDER, profile=prof_name, speed_factor=prof["speed_factor"], road_classes=sorted(classes),
+               speed_profile_kmh=SPEED_KMH,
                osm_node_ids=keep_ids, lat=[round(nodes[x][0], 7) for x in keep_ids],
                lon=[round(nodes[x][1], 7) for x in keep_ids], edges=[list(e) for e in out_edges])
     net["network_id"] = sha256(net)[:24]
@@ -173,16 +227,17 @@ class NetworkStore:
     def __init__(self, data_dir: Path):
         self.root = Path(data_dir) / "networks"
 
-    def save(self, raw: bytes, area: dict, source_url: str = OVERPASS_URL) -> dict:
-        net = build_network(raw)
+    def save(self, raw: bytes, area: dict, source_url: str = OVERPASS_URL, profile_name: str | None = None) -> dict:
+        prof_name = profile_name or DEFAULT_PROFILE
+        net = build_network(raw, prof_name)
         doc = json.loads(raw)
         d = self.root / net["network_id"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "network.json").write_bytes(canonical(net))
         with gzip.open(d / "overpass_raw.json.gz", "wb") as fh:
             fh.write(raw)
-        prov = dict(network_id=net["network_id"], area=area, source=dict(service="Overpass API", url=source_url,
-                    query=overpass_query(area["bbox"]), retrieved_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        prov = dict(network_id=net["network_id"], area=area, profile=prof_name, profile_label=PROFILES[prof_name]["label"],
+                    source=dict(service="Overpass API", url=source_url, query=overpass_query(area["bbox"], prof_name), retrieved_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     osm_timestamp=(doc.get("osm3s") or {}).get("timestamp_osm_base"),
                     raw_sha256=hashlib.sha256(raw).hexdigest(), raw_bytes=len(raw)),
                     licence=LICENCE, builder=BUILDER, nodes=len(net["lat"]), edges=len(net["edges"]),
@@ -194,16 +249,27 @@ class NetworkStore:
         out = []
         for f in sorted(self.root.glob("*/provenance.json")):
             try:
-                out.append(json.loads(f.read_text()))
+                p = json.loads(f.read_text())
             except (OSError, ValueError):
                 continue
+            p.setdefault("profile", DEFAULT_PROFILE)                 # networks built before profiles existed
+            out.append(p)
         return out
+
+    def find(self, bbox, profile_name: str | None = None) -> dict | None:
+        """The most recent stored network fetched for exactly this box and profile (cache hit), if any."""
+        key = [round(float(x), 5) for x in bbox]
+        hits = [p for p in self.list() if p.get("profile") == (profile_name or DEFAULT_PROFILE)
+                and [round(float(x), 5) for x in (p.get("area") or {}).get("bbox", [])] == key]
+        return max(hits, key=lambda p: p["source"]["retrieved_at"]) if hits else None
 
     def provenance(self, network_id: str) -> dict:
         f = self._dir(network_id) / "provenance.json"
         if not f.exists():
             raise KeyError(f"network {network_id} not found")
-        return json.loads(f.read_text())
+        prov = json.loads(f.read_text())
+        prov.setdefault("profile", DEFAULT_PROFILE)
+        return prov
 
     def load(self, network_id: str):
         from .network import RoadNetwork

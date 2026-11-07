@@ -14,6 +14,11 @@
 ``MOVE_OPENLAB_TILE_URL``         map tile URL template                 [default OpenStreetMap standard tiles]
 ``MOVE_OPENLAB_TILE_ATTRIBUTION`` attribution shown on maps             [default © OpenStreetMap contributors]
 ``MOVE_OPENLAB_OVERPASS_URL``     Overpass API endpoint for road networks         [default overpass-api.de]
+``MOVE_OPENLAB_GEOCODER_URL``     place-search endpoint (Nominatim API); ``off`` disables search  [default nominatim.openstreetmap.org]
+``MOVE_OPENLAB_EXTERNAL_FETCH``   who may start downloads from public services (road networks, RPC releases):
+                                  ``researcher`` (default; per-user daily quotas) or ``admin``
+``MOVE_OPENLAB_DAILY_NETWORKS``   road-network downloads per user per day                          [default 10]
+``MOVE_OPENLAB_DAILY_RPC``        RPC release ingestions per user per day                         [default 3]
 """
 from __future__ import annotations
 
@@ -42,6 +47,10 @@ class Settings:
     tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
     tile_attribution: str = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     overpass_url: str = "https://overpass-api.de/api/interpreter"
+    geocoder_url: str = "https://nominatim.openstreetmap.org/search"
+    external_fetch: str = "researcher"
+    daily_networks: int = 10
+    daily_rpc: int = 3
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,6 +62,13 @@ class Settings:
             ttl = 8 * 3600
         cs = os.environ.get("COOKIE_SECURE", "").strip().lower()
         auth_db = os.environ.get("MOVE_OPENLAB_AUTH_DB", "").strip()
+        fetch = os.environ.get("MOVE_OPENLAB_EXTERNAL_FETCH", "researcher").strip().lower()
+
+        def _int(name: str, default: int) -> int:
+            try:
+                return max(0, int(os.environ.get(name, str(default))))
+            except ValueError:
+                return default
         return cls(data_dir=data, plugin_dir=_path("MOVE_OPENLAB_PLUGIN_DIR", None),
                    installation_id=os.environ.get("MOVE_OPENLAB_INSTALLATION_ID", "").strip() or None,
                    auth_db=None if auth_db == ":memory:" else Path(auth_db) if auth_db else data / "auth.sqlite3",
@@ -60,6 +76,9 @@ class Settings:
                    session_ttl_s=ttl, cookie_secure=(cs in ("1", "true", "yes")) if cs else production,
                    frontend_dist=_path("MOVE_OPENLAB_FRONTEND_DIST", "frontend/dist"),
                    plugin_mode=os.environ.get("MOVE_OPENLAB_PLUGIN_MODE", "disabled").strip().lower() or "disabled",
+                   external_fetch="admin" if fetch == "admin" else "researcher",
+                   daily_networks=_int("MOVE_OPENLAB_DAILY_NETWORKS", 10), daily_rpc=_int("MOVE_OPENLAB_DAILY_RPC", 3),
                    **{k: v for k, v in dict(tile_url=os.environ.get("MOVE_OPENLAB_TILE_URL", "").strip(),
                                             tile_attribution=os.environ.get("MOVE_OPENLAB_TILE_ATTRIBUTION", "").strip(),
-                                            overpass_url=os.environ.get("MOVE_OPENLAB_OVERPASS_URL", "").strip()).items() if v})
+                                            overpass_url=os.environ.get("MOVE_OPENLAB_OVERPASS_URL", "").strip(),
+                                            geocoder_url=os.environ.get("MOVE_OPENLAB_GEOCODER_URL", "").strip()).items() if v})

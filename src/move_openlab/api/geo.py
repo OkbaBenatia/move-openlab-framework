@@ -1,23 +1,23 @@
-"""Geographic API: road networks, routing preview, open-data ingestion, scenario library, route playback.
+"""Geographic API: stored road networks, routing, scenario library, instances, route playback.
 
-Fetching a road network and ingesting an open-data release contact external services and create shared installation
-resources: administrators only, as background jobs (progress, cancellation, trace). Every signed-in user can use the
-stored networks and datasets and manages scenarios in their own workspace.
+Areas, place search and network downloads are in :mod:`.areas`; trip datasets in :mod:`.datasets`. Road networks are
+shared, content-addressed installation resources; scenarios, areas and uploaded datasets belong to the researcher's
+workspace.
 """
 from __future__ import annotations
 
 import re
 import threading
-import time
 from collections import OrderedDict
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .. import registry
+from ..datasets import DatasetStore
 from ..geo import playback as PB
 from ..geo import scenarios as SC
-from ..geo.osm import NetworkStore, fetch_overpass, validate_bbox
+from ..geo.osm import PROFILES, NetworkStore
 from ..hashing import sha256
 from ..integrations import rpc
 from ..store import BenchError, problem_for
@@ -27,31 +27,29 @@ router = APIRouter(prefix="/api/geo")
 RIDE = "public-ride-matching"
 _nets: "OrderedDict[str, object]" = OrderedDict()
 _nets_lock = threading.Lock()
-_releases: dict = {}
 
 
-def _admin(request: Request):
+def require_fetch_permission(request: Request) -> None:
     ses = request.state.session
-    if ses is None or not ses.is_admin:
-        raise HTTPException(403, "administrator role required")
-    return ses
+    if request.app.state.settings.external_fetch == "admin" and not ses.is_admin:
+        raise HTTPException(403, "downloads from public services are restricted to administrators on this installation")
 
 
-def _store(request: Request) -> NetworkStore:
+def store(request: Request) -> NetworkStore:
     return NetworkStore(request.app.state.settings.data_dir)
 
 
-def _rpc_root(request: Request):
+def rpc_root(request: Request):
     return request.app.state.settings.data_dir / "opendata" / "rpc"
 
 
-def _network(request: Request, network_id: str):
+def network(request: Request, network_id: str):
     with _nets_lock:
         if network_id in _nets:
             _nets.move_to_end(network_id)
             return _nets[network_id]
     try:
-        net = _store(request).load(network_id)
+        net = store(request).load(network_id)
     except KeyError as e:
         raise HTTPException(404, str(e)) from None
     except ValueError as e:
@@ -63,7 +61,7 @@ def _network(request: Request, network_id: str):
     return net
 
 
-def _job(request: Request, kind: str, subject: str, title: str, work):
+def start_job(request: Request, kind: str, subject: str, title: str, work):
     try:
         return request.app.state.jobs.start(request.state.session.username, kind, subject, work, title=title)
     except RuntimeError as e:
@@ -75,37 +73,22 @@ def _job(request: Request, kind: str, subject: str, title: str, work):
 def config(request: Request):
     s = request.app.state.settings
     return dict(tile_url=s.tile_url, tile_attribution=s.tile_attribution, can_manage=request.state.session.is_admin,
-                networks=_store(request).list(), datasets=rpc.list_datasets(_rpc_root(request)),
+                can_fetch=s.external_fetch == "researcher" or request.state.session.is_admin,
+                geocoder=request.app.state.geocoder.enabled,
+                profiles=[dict(id=k, label=v["label"], max_bbox_deg2=v["max_bbox_deg2"]) for k, v in PROFILES.items()],
+                networks=store(request).list(), datasets=rpc.list_datasets(rpc_root(request)),
                 osm_licence="© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)")
 
 
-class NetworkBody(BaseModel):
-    name: str = Field(min_length=2, max_length=80)
-    bbox: list[float] = Field(min_length=4, max_length=4)
-
-
-@router.post("/networks")
-def fetch_network(body: NetworkBody, request: Request):
-    _admin(request)
-    try:
-        bbox = validate_bbox(body.bbox)
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from None
-    store, url = _store(request), request.app.state.settings.overpass_url
-
-    def work(mon):
-        mon.event("download", f"Overpass query for {body.name}")
-        raw = fetch_overpass(bbox, url)
-        mon.event("build", f"{len(raw)} bytes received; building the road graph")
-        prov = store.save(raw, dict(name=" ".join(body.name.split()), bbox=list(bbox)), url)
-        mon.event("stored", f"network {prov['network_id']}: {prov['nodes']} nodes, {prov['edges']} edges")
-    return _job(request, "osm-network", f"network/{sha256(list(bbox))[:12]}", f"Road network {body.name}", work)
-
-
 @router.get("/networks/{network_id}")
-def network(network_id: str, request: Request):
-    net = _network(request, network_id)
-    return dict(provenance=_store(request).provenance(network_id), bounds=net.bounds(), nodes=len(net))
+def network_info(network_id: str, request: Request):
+    net = network(request, network_id)
+    return dict(provenance=store(request).provenance(network_id), bounds=net.bounds(), nodes=len(net))
+
+
+@router.get("/networks/{network_id}/coverage")
+def coverage(network_id: str, request: Request):
+    return dict(network(request, network_id).coverage(), provenance=store(request).provenance(network_id))
 
 
 def _pt(s: str) -> tuple[float, float]:
@@ -117,54 +100,13 @@ def _pt(s: str) -> tuple[float, float]:
 
 @router.get("/networks/{network_id}/route")
 def route(network_id: str, a: str, b: str, request: Request):
-    net = _network(request, network_id)
-    (ua, da), (ub, db) = net.snap(*_pt(a)), net.snap(*_pt(b))
+    net = network(request, network_id)
     try:
+        (ua, da), (ub, db) = net.snap(*_pt(a)), net.snap(*_pt(b))
         r = net.route(ua, ub)
-    except ValueError:
-        raise HTTPException(404, "no path") from None
-    return dict(r, snap_m=[da, db])
-
-
-# ---------------------------------------------------------------- open data (RPC)
-@router.get("/opendata/rpc/releases")
-def rpc_releases(request: Request):
-    if not _releases or time.time() - _releases.get("t", 0) > 3600:
-        try:
-            _releases.update(t=time.time(), items=rpc.list_releases())
-        except Exception as e:                              # network errors are reported, not hidden
-            raise HTTPException(502, f"data.gouv.fr unavailable: {type(e).__name__}") from None
-    return dict(releases=_releases["items"], licence=rpc.LICENCE, producer=rpc.PRODUCER, dataset=rpc.DATASET_PAGE)
-
-
-class IngestBody(BaseModel):
-    release: str = Field(pattern=r"^\d{4}-\d{2}$")
-    area_name: str = Field(min_length=2, max_length=80)
-    bbox: list[float] = Field(min_length=4, max_length=4)
-
-
-@router.post("/opendata/rpc/ingest")
-def rpc_ingest(body: IngestBody, request: Request):
-    _admin(request)
-    try:
-        bbox = validate_bbox(body.bbox)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
-    rel = next((r for r in rpc_releases(request)["releases"] if r["release"] == body.release), None)
-    if rel is None:
-        raise HTTPException(404, "release not found")
-    root = _rpc_root(request)
-
-    def work(mon):
-        mon.event("download", f"streaming {rel['title']} ({rel.get('filesize')} bytes) from data.gouv.fr")
-        rep = rpc.ingest(rel, bbox, " ".join(body.area_name.split()), root, progress=mon, cancel=mon.cancel)
-        mon.event("stored", f"{rep['rows_kept']} trips kept of {rep['rows_read']} read; sha256 {rep['source']['sha256'][:16]}")
-    return _job(request, "rpc-ingest", f"rpc/{rpc.dataset_key(body.release, bbox)}", f"RPC {body.release} · {body.area_name}", work)
-
-
-@router.get("/opendata/rpc/datasets")
-def rpc_datasets(request: Request):
-    return dict(datasets=rpc.list_datasets(_rpc_root(request)))
+        raise HTTPException(404, str(e)) from None
+    return dict(r, snap_m=[da, db])
 
 
 # ---------------------------------------------------------------- scenario library
@@ -174,8 +116,8 @@ def _build_and_save(request: Request, scenario: dict, parent: str | None = None)
         sc = SC.validate_scenario(scenario)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
-    net = _network(request, sc["network_id"])
-    prov = _store(request).provenance(sc["network_id"])
+    net = network(request, sc["network_id"])
+    prov = store(request).provenance(sc["network_id"])
     iid = "geo-" + re.sub(r"[^a-z0-9]+", "-", sc["name"].lower()).strip("-")[:40] + "-" + sha256(sc)[:8]
     try:
         inst = SC.build_instance(sc, net, prov, iid)
@@ -215,32 +157,47 @@ class GenerateBody(BaseModel):
     start_s: int = Field(ge=0, le=172800)
     end_s: int = Field(ge=1, le=172800)
     params: dict | None = None
+    min_trip_m: float = Field(1500.0, ge=200, le=50_000)
 
 
 @router.post("/scenarios/generate")
 def generate(body: GenerateBody, request: Request):
-    net = _network(request, body.network_id)
+    net = network(request, body.network_id)
     try:
-        sc = SC.generate_synthetic(net, body.name, body.n_drivers, body.n_riders, body.seed, body.start_s, body.end_s, body.params)
+        sc = SC.generate_synthetic(net, body.name, body.n_drivers, body.n_riders, body.seed, body.start_s, body.end_s,
+                                   body.params, body.min_trip_m)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     return _build_and_save(request, sc)
 
 
-class EmpiricalBody(GenerateBody):
+class DatasetScenarioBody(GenerateBody):
     dataset_key: str
     date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
-@router.post("/scenarios/from-open-data")
-def from_open_data(body: EmpiricalBody, request: Request):
-    _network(request, body.network_id)
+def load_dataset(request: Request, key: str) -> tuple[list[dict], dict]:
+    """Trips and report of a shared RPC dataset or of a dataset in the caller's own workspace."""
     try:
-        trips, rep = rpc.load_trips(_rpc_root(request), body.dataset_key)
+        if key.startswith("u-"):
+            return DatasetStore(ws(request).root).load(key)
+        return rpc.load_trips(rpc_root(request), key)
     except KeyError:
         raise HTTPException(404, "dataset not found") from None
+
+
+@router.post("/scenarios/from-dataset")
+def from_dataset(body: DatasetScenarioBody, request: Request):
+    net = network(request, body.network_id)
+    trips, rep = load_dataset(request, body.dataset_key)
+    s, w, n, e = net.bounds()
+    inside = [t for t in trips if s <= t["start_lat"] <= n and w <= t["start_lon"] <= e
+              and s <= t["end_lat"] <= n and w <= t["end_lon"] <= e]
+    if not inside:
+        raise HTTPException(400, "no trip of this dataset lies inside the road network's area; choose the matching "
+                                 "area or dataset")
     try:
-        sc = SC.generate_empirical(trips, rep, body.network_id, body.name, body.n_drivers, body.n_riders, body.seed,
+        sc = SC.generate_empirical(inside, rep, body.network_id, body.name, body.n_drivers, body.n_riders, body.seed,
                                    body.start_s, body.end_s, body.params, body.date)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
@@ -281,7 +238,7 @@ def playback(cid: str, run_id: str, request: Request):
     net = None
     if nid:
         try:
-            net = _network(request, nid)
+            net = network(request, nid)
         except HTTPException:
             net = None                                      # network not installed here: straight-line geometry
     try:

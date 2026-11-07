@@ -80,8 +80,11 @@ def test_geo_api(tmp_path):
     cfg = c.get("/api/geo/config").json()
     assert cfg["can_manage"] is False and cfg["networks"][0]["network_id"] == prov["network_id"]
     assert "tile.openstreetmap.org" in c.get("/api/geo/config").headers["content-security-policy"]
-    assert c.post("/api/geo/networks", json=dict(name="grid area", bbox=BBOX)).status_code == 403            # admin only
-    assert c.post("/api/geo/opendata/rpc/ingest", json=dict(release="2026-08", area_name="grid area", bbox=BBOX)).status_code == 403
+    area = c.post("/api/geo/areas", json=dict(name="grid area", bbox=BBOX)).json()
+    assert area["cached_network"] == prov["network_id"] == area["network_id"]          # stored network reused
+    assert c.post(f"/api/geo/areas/{area['area_id']}/network", json={}).json()["cached"] is True
+    assert c.post(f"/api/geo/areas/{area['area_id']}/network", json=dict(refresh=True)).status_code == 403
+    assert c.post("/api/datasets/rpc/ingest", json=dict(release="2026-08", area_id=area["area_id"])).status_code == 400
     r = c.get(f"/api/geo/networks/{prov['network_id']}/route", params=dict(a="10.0,20.0", b="10.016,20.016")).json()
     assert r["time_s"] > 0 and len(r["coords"]) >= 2
     gen = c.post("/api/geo/scenarios/generate", json=dict(network_id=prov["network_id"], name="generated", n_drivers=4,
@@ -126,14 +129,18 @@ def test_rpc_ingest_job_as_admin(tmp_path, monkeypatch):
     c, s, prov = geo_client(tmp_path)
     c.post("/api/auth/login", json=dict(username="root", password="root-password-123"))
     f = tmp_path / "2026-08.csv"
-    rel = rpc_csv(f)
-    from move_openlab.api import geo as G
+    rel = dict(rpc_csv(f), url="https://static.data.gouv.fr/resources/fixture/2026-08.csv")
+    from move_openlab.api import datasets as D
     from move_openlab.integrations import rpc
     monkeypatch.setattr(rpc, "list_releases", lambda: [rel])
-    G._releases.clear()
+    monkeypatch.setitem(rpc.FRANCE_REGIONS, "test grid", (BBOX[0] - 1, BBOX[1] - 1, BBOX[2] + 1, BBOX[3] + 1))
+    D._releases.clear()
     real = rpc.ingest
     monkeypatch.setattr(rpc, "ingest", lambda *a, **k: real(*a, source=f, **k))
-    j = c.post("/api/geo/opendata/rpc/ingest", json=dict(release="2026-08", area_name="grid", bbox=BBOX)).json()
+    area = c.post("/api/geo/areas", json=dict(name="grid", bbox=BBOX)).json()
+    j = c.post("/api/datasets/rpc/ingest", json=dict(release="2026-08", area_id=area["area_id"])).json()
+    assert j["cached"] is False
+    j = j["job"]
     import time
     for _ in range(200):
         j = c.get(f"/api/jobs/{j['job_id']}").json()
@@ -141,9 +148,10 @@ def test_rpc_ingest_job_as_admin(tmp_path, monkeypatch):
             break
         time.sleep(0.05)
     assert j["state"] == "done", j
-    ds = c.get("/api/geo/opendata/rpc/datasets").json()["datasets"]
+    ds = c.get("/api/datasets").json()["shared"]
     assert ds[0]["rows_kept"] == 40
-    gen = c.post("/api/geo/scenarios/from-open-data", json=dict(network_id=prov["network_id"], dataset_key=ds[0]["dataset_key"],
+    assert c.post("/api/datasets/rpc/ingest", json=dict(release="2026-08", area_id=area["area_id"])).json()["cached"]
+    gen = c.post("/api/geo/scenarios/from-dataset", json=dict(network_id=prov["network_id"], dataset_key=ds[0]["dataset_key"],
                                                                 name="from open data", n_drivers=3, n_riders=4, seed=2,
                                                                 start_s=25200, end_s=32400))
     assert gen.status_code == 200, gen.text and gen.json()["source"] == "open-data"

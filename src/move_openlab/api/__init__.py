@@ -4,7 +4,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from ..auth import Auth
+from ..geo.geocode import Geocoder
 from ..jobs import Jobs
+from ..limits import DailyQuota
 from ..settings import Settings
 from ..store import Installation
 from ..version import APP_NAME, app_version
@@ -12,6 +14,8 @@ from ..version import APP_NAME, app_version
 
 def create_app(settings: Settings | None = None, auth: Auth | None = None) -> FastAPI:
     from .admin import router as admin_router
+    from .areas import router as areas_router
+    from .datasets import router as datasets_router
     from .experiments import router as experiments_router
     from .geo import router as geo_router
     from .web import AuthGuard, mount_frontend, router as web_router
@@ -29,10 +33,15 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     app.state.jobs = Jobs(settings.data_dir / "jobs")
     app.state.jobs.recover()                                  # jobs left running by a stopped server -> interrupted
     app.state.installation.recover_interrupted()             # their campaigns -> draft
+    app.state.geocoder = Geocoder(settings.geocoder_url, settings.data_dir / "cache" / "geocode")
+    app.state.quotas = dict(networks=DailyQuota(settings.daily_networks), rpc=DailyQuota(settings.daily_rpc),
+                            geocode=DailyQuota(500))
     app.add_middleware(AuthGuard)
     app.include_router(web_router)
     app.include_router(experiments_router)
     app.include_router(admin_router)
     app.include_router(geo_router)
+    app.include_router(areas_router)
+    app.include_router(datasets_router)
     mount_frontend(app, settings.frontend_dist)
     return app
