@@ -98,7 +98,7 @@ export default function App() {
       {problem && view === 'new' && <NewCampaign key={problem.spec.problem_id + (preset ?? []).join()} problem={problem} preset={preset} onCreated={(id) => { setPreset(null); go(`c:${id}`); }} setErr={setErr} />}
       {problem && view === 'import' && <ImportBundle onImported={(id) => go(`c:${id}`)} setErr={setErr} />}
       {problem && view === 'methods' && <Methods problem={problem} setErr={setErr} />}
-      {problem && view.startsWith('c:') && <CampaignView key={view} id={view.slice(2)} problem={problem} go={go} setErr={setErr} />}
+      {problem && view.startsWith('c:') && <CampaignView key={view + problem.spec.problem_id} id={view.slice(2)} problem={problem} go={go} setErr={setErr} onProblem={setPid} />}
       {problem && view.startsWith('cmp:') && <Compare id={view.slice(4)} problem={problem} setErr={setErr} />}
       {problem && view.startsWith('rep:') && <Reproducibility id={view.slice(4)} problem={problem} setErr={setErr} />}
       {problem && view.startsWith('sem:') && <Semantic ids={view.slice(4)} problem={problem} setErr={setErr} />}

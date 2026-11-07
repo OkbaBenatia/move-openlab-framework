@@ -123,7 +123,8 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     }
   }, [dynamic]);
 
-  return <div ref={el} className={`map${cursor ? ' map-crosshair' : ''}`} style={{ height }} role="region" aria-label="map" />;
+  // the Leaflet element keeps a constant className: React must never rewrite the classes Leaflet adds to it
+  return <div className={cursor ? 'map-crosshair' : undefined}><div ref={el} className="map" style={{ height }} role="region" aria-label="map" /></div>;
 }
 
 export const COLORS = { driver: '#1f5fd1', rider: '#c2410c', match: '#15803d', unserved: '#b91c1c', area: '#7c3aed', route: '#0f766e' };

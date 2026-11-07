@@ -42,9 +42,9 @@ export function GeoWorkbench({ setErr, onUseInCampaign }: { setErr: (s: string |
     {view === 'areas' && <Areas cfg={cfg} areas={areas} current={current} setCurrent={setCurrent} setErr={setErr} onChanged={load} />}
     {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} />}
     {view === 'library' && <Library cfg={cfg} lib={lib} setErr={setErr} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('editor'); }} onUse={onUseInCampaign} />}
-    {view === 'editor' && (netReady || editing) && <Editor key={editing?.parent ?? current?.network_id} cfg={cfg} area={current} initial={editing} setErr={setErr}
+    {view === 'editor' && (netReady || editing) && <Editor key={editing?.parent ?? current?.network_id} cfg={cfg} area={current} areas={areas} initial={editing} setErr={setErr}
       onSaved={() => { setEditing(null); load(); setView('library'); }} onCancel={editing ? () => { setEditing(null); setView('library'); } : undefined} />}
-    {view === 'generate' && netReady && current && <Generate area={current} setErr={setErr} onSaved={() => { load(); setView('library'); }} />}
+    {view === 'generate' && netReady && current && <Generate area={current} areas={areas} setErr={setErr} onSaved={() => { load(); setView('library'); }} />}
     <p className="small muted attribution">Road data {cfg.osm_licence}. Map tiles: {cfg.tile_attribution.replace(/<[^>]+>/g, '').replace(/&copy;/g, '©').replace(/&amp;/g, '&')}.</p>
   </div>;
 }
@@ -106,7 +106,7 @@ function Library({ cfg, lib, setErr, onEdit, onUse }: { cfg: GeoConfig; lib: Jso
   </div>;
 }
 
-function Editor({ cfg, area, initial, setErr, onSaved, onCancel }: { cfg: GeoConfig; area: Area | null; initial: { scenario: Scenario; parent?: string } | null; setErr: (s: string | null) => void; onSaved: () => void; onCancel?: () => void }) {
+function Editor({ cfg, area, areas, initial, setErr, onSaved, onCancel }: { cfg: GeoConfig; area: Area | null; areas: Area[]; initial: { scenario: Scenario; parent?: string } | null; setErr: (s: string | null) => void; onSaved: () => void; onCancel?: () => void }) {
   const [sc, setSc] = useState<Scenario>(initial?.scenario ?? { name: 'New scenario', network_id: area?.network_id ?? '', params: { max_detour_s: 900, max_detour_ratio: 0.5 }, drivers: [], riders: [] });
   const [pick, setPick] = useState<{ role: 'drivers' | 'riders'; id: string; field: 'origin' | 'destination' } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -144,7 +144,7 @@ function Editor({ cfg, area, initial, setErr, onSaved, onCancel }: { cfg: GeoCon
   return <div className="split">
     <div className="form">
       <label>Name <input value={sc.name} onChange={(e) => setSc({ ...sc, name: e.target.value })} aria-label="scenario name" /></label>
-      <p className="small muted">Road network: {area?.network_id === sc.network_id ? area.name : net?.area.name ?? `network ${sc.network_id.slice(0, 12)}`}{net ? ` · ${net.profile ?? "car"} · ${net.nodes} nodes` : ""}</p>
+      <p className="small muted">Road network: {areas.find((a) => a.network_id === sc.network_id)?.name ?? net?.area.name ?? `network ${sc.network_id.slice(0, 12)}`}{net ? ` · ${net.profile ?? "car"} · ${net.nodes} nodes` : ""}</p>
       <div className="row gap"><label>Max detour (min) <input type="number" min={0} max={120} value={Math.round(sc.params.max_detour_s / 60)} onChange={(e) => setSc({ ...sc, params: { ...sc.params, max_detour_s: Number(e.target.value) * 60 } })} aria-label="max detour minutes" /></label>
         <label>Max detour ratio <input type="number" min={0} max={5} step={0.1} value={sc.params.max_detour_ratio} onChange={(e) => setSc({ ...sc, params: { ...sc.params, max_detour_ratio: Number(e.target.value) } })} aria-label="max detour ratio" /></label></div>
       <p className="small muted">{pick ? `Click the map to place the ${pick.field} of ${pick.id}.` : 'Select Origin or Destination, then click the map. Times are HH:MM; drivers: departure window, riders: pickup window.'}</p>
@@ -158,7 +158,7 @@ function Editor({ cfg, area, initial, setErr, onSaved, onCancel }: { cfg: GeoCon
   </div>;
 }
 
-function Generate({ area, setErr, onSaved }: { area: Area; setErr: (s: string | null) => void; onSaved: () => void }) {
+function Generate({ area, areas, setErr, onSaved }: { area: Area; areas: Area[]; setErr: (s: string | null) => void; onSaved: () => void }) {
   const [datasets, setDatasets] = useState<Json[]>([]);
   const [f, setF] = useState({ source: 'synthetic', dataset_key: '', name: `${area.name} · demand`, n_drivers: 10, n_riders: 15, seed: 1, start: '07:00', end: '09:00', date: '', detour: 15, ratio: 0.5, min_trip_km: 1.5 });
   const [busy, setBusy] = useState(false);
@@ -175,7 +175,7 @@ function Generate({ area, setErr, onSaved }: { area: Area; setErr: (s: string | 
       <option value="synthetic">Synthetic demand on the road network (seeded)</option>
       <option value="dataset" disabled={!datasets.length}>Resample a trip dataset{datasets.length ? '' : ' (no dataset)'}</option></select></label>
     {f.source === 'dataset' ? <>
-      <label>Dataset <select value={f.dataset_key} onChange={(e) => set('dataset_key', e.target.value)} aria-label="dataset">{datasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{d.name} · {d.rows_kept} trips</option>)}</select></label>
+      <label>Dataset <select value={f.dataset_key} onChange={(e) => set('dataset_key', e.target.value)} aria-label="dataset">{datasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{d.provider === 'rpc' ? `RPC ${d.release} · ${areas.find((a) => a.bbox.join() === d.area.bbox.map((x: number) => Number(x.toFixed(5))).join())?.name ?? d.name.split(' · ')[1]}` : d.name} · {d.rows_kept} trips</option>)}</select></label>
       <p className="small muted">Each agent takes one record's origin–destination pair (trips outside “{area.name}” are ignored). RPC departure times are re-drawn within their 10-minute rounding; roles are respected when the dataset has them.</p>
       <label>Date (optional, YYYY-MM-DD) <input value={f.date} onChange={(e) => set('date', e.target.value)} aria-label="date" /></label></>
       : <label>Minimum trip length (km) <input type="number" min={0.2} max={50} step={0.1} value={f.min_trip_km} onChange={(e) => set('min_trip_km', Number(e.target.value))} aria-label="minimum trip length" /></label>}

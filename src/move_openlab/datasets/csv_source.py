@@ -18,14 +18,17 @@ MAX_ROWS = 200_000
 MAX_COLUMNS = 200
 MAX_FIELD = 4096                                   # characters per field
 csv.field_size_limit(MAX_FIELD)
+_O = r"(origin|origine|origen|orig|start|from|pickup|o|departure|départ|depart|dep|journey_start)"
+_D = r"(destination|destino|dest|end|to|dropoff|d|arrival|arrivée|arrivee|llegada|arr|journey_end)"
 HINTS = {
-    "origin_lat": r"^(origin|orig|start|from|pickup|o|departure|dep|journey_start)[_ .-]?(lat|latitude|y)$",
-    "origin_lon": r"^(origin|orig|start|from|pickup|o|departure|dep|journey_start)[_ .-]?(lon|lng|long|longitude|x)$",
-    "destination_lat": r"^(destination|dest|end|to|dropoff|d|arrival|arr|journey_end)[_ .-]?(lat|latitude|y)$",
-    "destination_lon": r"^(destination|dest|end|to|dropoff|d|arrival|arr|journey_end)[_ .-]?(lon|lng|long|longitude|x)$",
-    "departure": r"^(departure|depart|start|pickup|journey_start)?[_ .-]?(time|datetime|timestamp)$|^(departure|heure|time)$",
-    "date": r"^(date|day|jour|fecha)$",
-    "role": r"^(role|rôle|type|mode)$",
+    "origin_lat": rf"^{_O}[_ .-]?(lat|latitude|y)$",
+    "origin_lon": rf"^{_O}[_ .-]?(lon|lng|long|longitude|x)$",
+    "destination_lat": rf"^{_D}[_ .-]?(lat|latitude|y)$",
+    "destination_lon": rf"^{_D}[_ .-]?(lon|lng|long|longitude|x)$",
+    "departure": r"^(departure|depart|départ|start|pickup|journey_start|hora|heure)?[_ .-]?(time|datetime|timestamp|salida|départ|depart)$"
+                 r"|^(departure|heure|hora|time)$",
+    "date": r"^(date|day|jour|fecha|día|dia)$",
+    "role": r"^(role|rôle|rol|type|mode)$",
 }
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Crosshair, Download, MousePointerClick, Ruler, Save, Search, Square, Trash2 } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
@@ -50,7 +50,7 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
     let b = r.bbox as BBox;
     if (deg2(b) > prof.max_bbox_deg2) b = around(r.lat, r.lon, 4);   // regions and countries: start from the centre
     setDraft({ id: undefined, name: String(r.name).split(',')[0].slice(0, 80), bbox: b, profile: draft.profile, origin: { search: q, name: r.name, kind: r.kind } });
-    setFocus({ key: `r${r.lat},${r.lon}`, bbox: b }); setResults(null);
+    setFocus({ key: `r${r.lat},${r.lon},${Date.now()}`, bbox: b }); setResults(null);
   };
   const onMap = async (lat: number, lon: number) => {
     if (mode === 'point') { const b = around(lat, lon); setDraft({ ...draft, id: draft.id, bbox: b, name: draft.name || `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}` }); setMode('none'); }
@@ -72,7 +72,7 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
       setDraft({ name: '', bbox: null, profile: draft.profile }); setCurrent(a.area_id); onChanged();
     } catch (e) { setErr(errText(e)); }
   };
-  const edit = (a: Area) => { setDraft({ id: a.area_id, name: a.name, bbox: a.bbox, profile: a.profile }); setFocus({ key: `e${a.area_id}${a.updated_at}`, bbox: a.bbox }); };
+  const edit = (a: Area) => { setDraft({ id: a.area_id, name: a.name, bbox: a.bbox, profile: a.profile }); setFocus({ key: `e${a.area_id},${Date.now()}`, bbox: a.bbox }); };
   const remove = async (a: Area) => { setErr(null); try { await geo.deleteArea(a.area_id); onChanged(); } catch (e) { setErr(errText(e)); } };
   const download = async () => {
     if (!current) return;
@@ -90,7 +90,7 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
   const shownBox = draft.bbox ? { bbox: draft.bbox, color: tooBig ? '#c62828' : COLORS.area, onChange: (b: BBox) => setDraft({ ...draft, bbox: b }) }
     : current ? { bbox: current.bbox, color: COLORS.area } : null;
   const hint = mode === 'point' ? 'Click the map: a 5 × 5 km box is centred on the point.' : mode === 'draw' ? (corner ? 'Click the opposite corner.' : 'Click a first corner.')
-    : mode === 'measure' ? (measure.a ? 'Click the destination.' : 'Click the origin.') : draft.bbox ? 'Drag the corner handles to resize, the centre handle to move.' : '';
+    : mode === 'measure' ? (measure.route ? 'Click another destination from A, or switch the mode off.' : measure.a ? 'Click the destination.' : 'Click the origin.') : draft.bbox ? 'Drag the corner handles to resize, the centre handle to move.' : '';
 
   return <div className="split">
     <div>
@@ -115,8 +115,8 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
         <label>Road profile <select value={draft.profile} onChange={(e) => setDraft({ ...draft, profile: e.target.value })} aria-label="road profile">
           {cfg.profiles.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
         <div className="mapping">
-          {(['South', 'West', 'North', 'East'] as const).map((k, i) => <label key={k} className="row gap" style={{ display: 'contents' }}><span className="small">{k}</span>
-            <input type="number" step={0.001} value={draft.bbox![i]} aria-label={`bbox ${k.toLowerCase()}`} onChange={(e) => { const b = [...draft.bbox!] as BBox; b[i] = Number(e.target.value); setDraft({ ...draft, bbox: b }); }} /></label>)}
+          {(['South', 'West', 'North', 'East'] as const).map((k, i) => <Fragment key={k}><label className="small" htmlFor={`bbox-${k}`}>{k}</label>
+            <input id={`bbox-${k}`} type="number" step={0.001} value={draft.bbox![i]} aria-label={`bbox ${k.toLowerCase()}`} onChange={(e) => { const b = [...draft.bbox!] as BBox; b[i] = Number(e.target.value); setDraft({ ...draft, bbox: b }); }} /></Fragment>)}
         </div>
         <p className={`small ${tooBig ? 'bad' : 'muted'}`}>{num(km2(draft.bbox), 0)} km² · {deg2(draft.bbox).toFixed(3)} / {prof.max_bbox_deg2} deg² {tooBig && '— too large for this profile: shrink the box or use main roads'}</p>
         <div className="row gap"><button className="btn primary" disabled={tooBig || draft.name.trim().length < 2} onClick={save}><Save size={13} /> {draft.id ? 'Save changes' : 'Save area'}</button>

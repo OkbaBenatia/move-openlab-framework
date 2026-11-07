@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Download, FileUp, Trash2 } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
@@ -137,8 +137,8 @@ function Upload({ areas, current, setErr, onSaved, maxBytes }: { areas: Area[]; 
         : `${info.features} features · ${Object.entries(info.geometry_types as Record<string, number>).map(([k, v]) => `${k} ${v}`).join(' · ')}`}</p>
       {pid === 'csv' && <label>Delimiter <select value={opts.delimiter} onChange={(e) => { setOpts({ ...opts, delimiter: e.target.value }); pick(file, e.target.value); }} aria-label="delimiter">
         {[',', ';', '\t', '|'].map((d) => <option key={d} value={d}>{d === '\t' ? 'tab' : d}</option>)}</select></label>}
-      <div className="mapping" aria-label="column mapping">{fields.map(([k, label]) => <label key={k} style={{ display: 'contents' }}><span className="small">{label}</span>
-        <select value={mapping[k] ?? ''} aria-label={`map ${k}`} onChange={(e) => setMapping({ ...mapping, [k]: e.target.value })}><option value="">—</option>{choices.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>)}</div>
+      <div className="mapping" role="group" aria-label="column mapping">{fields.map(([k, label]) => <Fragment key={k}><label className="small" htmlFor={`map-${k}`}>{label}</label>
+        <select id={`map-${k}`} value={mapping[k] ?? ''} onChange={(e) => setMapping({ ...mapping, [k]: e.target.value })}><option value="">—</option>{choices.map((c) => <option key={c} value={c}>{c}</option>)}</select></Fragment>)}</div>
       <div className="row gap"><label>Time format <select value={opts.time_format} onChange={(e) => setOpts({ ...opts, time_format: e.target.value })} aria-label="time format">
         <option value="auto">detect</option><option value="iso">ISO 8601 date-time</option><option value="time">time of day HH:MM</option><option value="epoch">Unix seconds (UTC)</option></select></label>
         {mapping.date && <label>Date format <select value={opts.date_format} onChange={(e) => setOpts({ ...opts, date_format: e.target.value })} aria-label="date format">{['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'].map((d) => <option key={d}>{d}</option>)}</select></label>}

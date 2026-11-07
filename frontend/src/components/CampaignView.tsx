@@ -4,16 +4,16 @@ import { call, download, post, type Json, type Problem } from '../api/client';
 import { JobProgress } from './JobProgress';
 import { KIND, Lineage, errText, secs, sh } from './common';
 
-export function CampaignView({ id, problem, go, setErr }: { id: string; problem: Problem; go: (v: string) => void; setErr: (s: string | null) => void }) {
+export function CampaignView({ id, problem, go, setErr, onProblem }: { id: string; problem: Problem; go: (v: string) => void; setErr: (s: string | null) => void; onProblem: (pid: string) => void }) {
   const [d, setD] = useState<Json | null>(null);
   const [job, setJob] = useState<Json | null>(null);
   const [registered, setRegistered] = useState<Json[]>([]);
   const [variant, setVariant] = useState(problem.variants[0]?.id ?? '');
   const [thr, setThr] = useState({ method: '', scorer: problem.scorers.find((s) => s.id !== 'keep-all')?.id ?? '', thresholds: '0.25, 0.5, 0.75, 1', mode: 'absolute' });
   const load = useCallback(() => {
-    call(`/campaigns/${id}`).then(setD).catch((e) => setErr(errText(e)));
+    call(`/campaigns/${id}`).then((r) => { if (r.campaign.spec.problem_id !== problem.spec.problem_id) onProblem(r.campaign.spec.problem_id); else setD(r); }).catch((e) => setErr(errText(e)));
     call(`/problems/${problem.spec.problem_id}/methods`).then((m) => setRegistered(m.registered)).catch(() => { /* optional */ });
-  }, [id, problem, setErr]);
+  }, [id, problem, setErr, onProblem]);
   useEffect(load, [load]);
   const act = async (fn: () => Promise<unknown>) => { setErr(null); try { await fn(); } catch (e) { setErr(errText(e)); } };
   if (!d) return null;

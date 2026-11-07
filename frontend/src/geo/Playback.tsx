@@ -67,7 +67,7 @@ export function Playback({ campaign, setErr }: { campaign: Json; setErr: (s: str
     </div>
     {plan && <p className="small muted">{plan.served}/{plan.riders} riders served · served riders {plan.metrics.served} · total detour {dur(plan.metrics.detour_s)} · geometry: {plan.geometry === 'road' ? 'road network routes' : 'straight segments (network not installed)'} · timing: {plan.timing}.</p>}
     <div className="split">
-      <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} lines={lines} points={points} dynamic={dynamic} fitKey={runId} height={520} />
+      <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} lines={lines} points={points} dynamic={dynamic} fitKey={plan ? `${plan.run_id}` : undefined} height={520} />
       <div><h3>Events up to {hhmmss(t)}</h3>{recent.length === 0 ? <p className="muted small">No event yet.</p> :
         <table aria-label="events"><tbody>{recent.map((e: Json, i: number) => <tr key={i}><td className="mono">{hhmmss(e.t)}</td><td>{e.driver}</td><td>{e.type}{e.rider ? ` ${e.rider}` : ''}</td></tr>)}</tbody></table>}</div>
     </div>

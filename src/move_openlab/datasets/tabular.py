@@ -19,6 +19,7 @@ from datetime import date as Date
 from datetime import datetime, timezone
 
 TIME_FORMATS = ("auto", "iso", "time", "epoch")
+TIME_LABELS = {"iso": "ISO 8601 date-time", "time": "time of day (HH:MM)", "epoch": "Unix timestamp (seconds)"}
 DATE_FORMATS = ("YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY")
 DRIVER = {"driver", "d", "conducteur", "conductor", "conductora", "fahrer"}
 RIDER = {"rider", "r", "passenger", "p", "passager", "passagère", "pasajero", "pasajera", "mitfahrer"}
@@ -148,7 +149,7 @@ class Collector:
         try:
             day, sec = parse_time(when, time_fmt)
         except ValueError:
-            return self.reject(row, f"departure is not a valid {time_fmt} timestamp", when)
+            return self.reject(row, f"departure is not a valid {TIME_LABELS.get(time_fmt, time_fmt)}", when)
         if date_value is not None and str(date_value).strip():
             try:
                 day = parse_date(date_value, date_fmt or "YYYY-MM-DD")
@@ -159,7 +160,7 @@ class Collector:
             try:
                 r = role_of(role)
             except ValueError:
-                return self.reject(row, "unknown role (expected driver/rider)", role)
+                return self.reject(row, "unknown role (accepted: driver/conducteur/conductor, rider/passenger/passager/pasajero)", role)
         self.trips.append(dict(date=day, start_s=sec, start_lat=round(a, 6), start_lon=round(b, 6),
                                end_lat=round(c, 6), end_lon=round(d, 6), role=r))
 

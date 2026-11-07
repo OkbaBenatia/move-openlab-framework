@@ -91,7 +91,7 @@ input.time { width: 6.5em; font-family: ui-monospace, SFMono-Regular, Menlo, Con
 .wrap-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .box-handle { background: #fff; border: 2px solid #7c3aed; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .box-handle.centre { border-radius: 50%; cursor: move; }
-.map-crosshair, .map-crosshair .leaflet-interactive { cursor: crosshair; }
+.map-crosshair .leaflet-container, .map-crosshair .leaflet-interactive { cursor: crosshair; }
 .subtabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 .areabar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .stat { display: inline-flex; gap: 4px; align-items: baseline; margin-right: 12px; }
