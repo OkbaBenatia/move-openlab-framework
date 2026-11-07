@@ -70,6 +70,7 @@ session version, so a password change or deactivation invalidates every older se
 throttled per username and per client. Production mode (`MOVE_OPENLAB_ENV=production`) refuses to start without a
 `SESSION_SECRET` of at least 32 characters or with trusted-process plugins, and adds HSTS. State-changing requests
 with a foreign `Origin` are refused. Each user works in a private workspace; campaigns of other users are not visible.
+The credential store's schema is versioned (`PRAGMA user_version`); a store written by a newer version is refused.
 
 ## Administration
 
@@ -83,16 +84,34 @@ with `Cache-Control: no-store`. On the host, an operator can recover any account
 
 ## External services and open data
 
+The server contacts external services only for explicit user actions, only at the configured URLs (clients can never
+choose a target), and under fair-use limits. `MOVE_OPENLAB_EXTERNAL_FETCH=admin` restricts downloads to
+administrators.
+
 | Service | When it is contacted | Safeguards |
 |---|---|---|
-| Overpass API (OpenStreetMap) | only when an administrator fetches a road network | administrator-only background job; area ≤ 0.25 deg²; response ≤ 256 MB; identifying User-Agent; raw response hashed and stored with the network |
-| data.gouv.fr (RPC releases) | only when an administrator lists releases or ingests one | administrator-only background job; streamed and hashed; only rows inside the area are kept, without identifiers; the full file is never written to disk |
-| Map tile server | by the browser, for map display | the Content Security Policy allows images from the configured tile origin only; no other external origin |
+| Nominatim (place search) | when a researcher submits a search | installation-wide one request per second (a search that would wait over 5 s is refused); 30-day cache; daily quota per user (cache hits free); query ≤ 120 characters; response ≤ 512 KB; can be switched off |
+| Overpass API (OpenStreetMap) | when an area's network is downloaded and no stored network matches | background job, one at a time; area within the profile limit; response ≤ 256 MB; daily quota; identifying User-Agent; raw response hashed and stored with the network |
+| data.gouv.fr (RPC releases) | when releases are listed or one is ingested for an area in France | HTTPS data.gouv.fr hosts only, checked on every redirect; background job, one at a time; daily quota; streamed and hashed; only rows inside the area kept, without identifiers; partial files removed on failure or cancellation |
+| Map tile server | by the browser, for map display | the Content Security Policy allows images from the configured tile origin only |
 
-The server never contacts these services for researchers' routine work: road networks and open-data subsets are
-stored once and shared read-only by all workspaces. Scenario coordinates are snapped to the stored network
-(at most 1.5 km away) and a scenario holds at most 200 agents. Instances and route playback are served only for
-campaigns and library scenarios of the requesting researcher's workspace. Jobs are visible only to their owner.
+Quotas are charged only when a request is really sent and refunded when a job could not start. Shared resources
+(road networks, RPC subsets) record a box and a profile, never a researcher's private area name.
+
+## Uploaded datasets
+
+- Request bodies above the route's limit (25 MB for dataset uploads, the bundle limit for imports, 2 MB elsewhere)
+  are refused before being read or spooled to disk; the streamed byte count is checked as well as Content-Length.
+- Parsing runs in the server's thread pool, at most two uploads at a time; row, column, field-size and feature limits
+  are enforced while reading; malformed CSV or JSON (including deeply nested JSON) is a 400 error.
+- The raw file is never stored. Validated trips and a report (file name, size, SHA-256, mapping, rejections) are kept
+  in the uploader's workspace only; other researchers receive 404 for them.
+- Nothing is guessed silently: ambiguous time formats, unsupported coordinate systems and invalid geometries are
+  refused; rejected rows are counted and saving them away requires explicit confirmation.
+
+Scenario coordinates are snapped to the stored network (at most 1.5 km away) and a scenario holds at most 200 agents.
+Areas, datasets, scenarios, instances, route playback and jobs are served only within the requesting researcher's
+workspace.
 
 Open-data records are anonymised by their publisher (no identifiers, truncated coordinates, times rounded to 10
 minutes). MOVE OpenLab keeps no identifiers; a generated scenario resamples published origin–destination pairs with

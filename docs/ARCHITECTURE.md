@@ -24,8 +24,8 @@ flowchart LR
   S <--> B
   S --> A
   C --> A
-  G[Geo layer<br/>OSM road networks · routing<br/>scenario library · playback] --> S
-  O[Open-data connector<br/>RPC releases] --> G
+  G[Geo layer<br/>areas · OSM road networks · routing<br/>scenario library · playback] --> S
+  O[Dataset providers<br/>RPC · CSV · GeoJSON · plug-ins] --> G
   J[Persistent jobs<br/>progress · cancel · trace] --> X
   API[FastAPI + auth + admin] --> S
   UI[React web interface<br/>maps · playback · charts] --> API
@@ -46,9 +46,11 @@ flowchart LR
 | `move_openlab.comparability` | Fingerprints and the claim-dependent comparability contract |
 | `move_openlab.scoring` | Scorer interface, threshold / top-k selection |
 | `move_openlab.jobs` | Persistent background jobs: progress, events, cancellation, restart recovery, history |
-| `move_openlab.geo` | OpenStreetMap road networks (Overpass fetch, graph build, content-addressed store), routing, scenario validation and generation, route playback |
-| `move_openlab.integrations` | Scenario-source interfaces; `rpc`: connector for the RPC carpooling open-data releases |
-| `move_openlab.auth`, `api` | Accounts and sessions; HTTP API (`experiments`, `geo`, `admin`) and single-origin web application |
+| `move_openlab.geo` | Road-network profiles, Overpass fetch and graph build, content-addressed store (`osm`), routing and coverage (`network`), workspace areas (`areas`), place-search proxy (`geocode`), scenarios and generators, route playback |
+| `move_openlab.datasets` | Trip normalisation and validation (`tabular`), CSV and GeoJSON readers, provider registry (`move_openlab.dataset_providers` entry points), workspace dataset store |
+| `move_openlab.integrations` | Public data connectors: `rpc` (RPC carpooling open-data releases, France) |
+| `move_openlab.limits` | Daily quotas and one-at-a-time locks for external services; bounded upload parsing |
+| `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`; request-size limits; single-origin web application |
 | `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment benchmark |
 | `move_openlab.benchmarks.ride_matching` | Ride matching on road networks (exact MILP, greedy, variants, relative-detour scorer) |
 
@@ -75,11 +77,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  A[Administrator: area name + bbox] --> N[Fetch OSM network job<br/>Overpass · build graph · largest SCC]
-  A --> D[Ingest RPC release job<br/>stream · hash · filter · clean]
+  A[Researcher: area<br/>search · pick · draw · profile] --> N[Network job<br/>cache hit or Overpass · graph · largest SCC]
+  A --> D[RPC ingestion job<br/>France only · stream · hash · clean]
+  U[CSV / GeoJSON upload<br/>detect · map · validate] --> T[(Workspace dataset)]
   N --> E[Map editor]
   N --> Gs[Seeded generator]
-  D --> Ge[Open-data generator<br/>sample OD and departure distribution]
+  D --> Ge[Dataset resampling<br/>roles respected]
+  T --> Ge
   N --> Ge
   E & Gs & Ge --> L[Scenario library<br/>versions · provenance]
   L -->|build: snap, travel times, compatible pairs| I[Content-addressed instance]
@@ -92,7 +96,8 @@ the instance alone; the network is only needed again to draw road geometry in th
 
 ### Jobs
 
-Executions, network fetches and open-data ingestions run as background jobs. A job records its owner, kind, subject,
+Executions, network downloads and open-data ingestions run as background jobs; downloads wait for their turn so
+that each external service receives one request at a time. A job records its owner, kind, subject,
 state (`running`, `done`, `error`, `cancelled`, `interrupted`), progress and timestamped events, persisted as JSON so
 the history survives restarts; jobs that were running when the server stopped are marked `interrupted`, and campaigns
 left mid-execution return to draft. Cancelling stops the worker process group; runs completed before the
@@ -108,8 +113,11 @@ execute, validate) used for the stage-duration table and the replay in the web i
 <data>/workspaces/<user>/campaigns/<id>/import_record.json
 <data>/workspaces/<user>/methods.json          registered plugins (id, version, code hash, self-test)
 <data>/workspaces/<user>/scenarios/<id>.json    scenario library entry (scenario, provenance, parent, instance hash)
+<data>/workspaces/<user>/areas/<id>.json        named area: box, profile, attached network id
+<data>/workspaces/<user>/datasets/<key>/        uploaded dataset: normalised trips + validation report (no raw file)
 <data>/networks/<network_id>/                   road network, provenance, compressed raw Overpass response
-<data>/opendata/rpc/<dataset_key>/              cleaned trips (no identifiers) and ingestion report
+<data>/opendata/rpc/<dataset_key>/              cleaned RPC trips (no identifiers) and ingestion report
+<data>/cache/geocode/                           cached place-search results
 <data>/jobs/<user>/<job_id>.json                job state, progress and events
 <data>/audit.log                                administrative actions (no secrets)
 ```

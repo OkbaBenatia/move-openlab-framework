@@ -32,6 +32,15 @@ git switch -c release/X.Y.Z
 cd frontend && npm ci && npm run build
 ```
 
+```bash
+ruff check src tests scripts plugins
+```
+
+- Clean-install test: copy the tracked files to an empty directory, create a fresh virtual environment, install,
+  run the tests and build the frontend.
+- Dependency licences: runtime Python and npm dependencies remain permissive (MIT, BSD, ISC, Apache-2.0, PSF).
+- Browser check of the main workflows on desktop and phone widths, with a test account.
+
 Also check: documentation links, no credentials or generated data in the tree, licence and notices present, and that
 every number quoted in the documentation comes from an executed run of this version.
 
@@ -48,9 +57,11 @@ Branch `hotfix/X.Y.Z+1` from `main`, fix with a regression test, then follow ste
 
 ## First public release checklist
 
-- [ ] Licence file and notices (rights verified)
+- [ ] Apache-2.0 `LICENSE` and `NOTICE` added after ownership and third-party rights are verified; README licence section updated
 - [ ] Authentic logo and demonstration video (supplied by the maintainer)
-- [ ] Screenshots generated from a real local run
-- [ ] Verified maintainer profile links and scientific references
-- [ ] Code of Conduct contact address
+- [x] Screenshots generated from a real local run (`docs/assets/screenshots/`)
+- [ ] Verified LinkedIn, Google Scholar and ORCID links; scientific references and citation file
+- [x] Code of Conduct and security contact address
+- [ ] Production tile service and place-search policy decided (`MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_GEOCODER_URL`)
 - [ ] Private vulnerability reporting enabled; `PUBLIC_DENYLIST` secret configured; rulesets applied
+- [ ] Repository visibility changed by the maintainer

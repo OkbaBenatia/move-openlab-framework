@@ -25,9 +25,10 @@
 
 | Element | Reproducible how |
 |---|---|
-| Road network | Content-addressed (`network_id`); provenance records the Overpass query, bounding box, retrieval time, OSM data timestamp and SHA-256 of the raw response. Re-fetching later gives a different network when OpenStreetMap has changed |
+| Road network | Content-addressed (`network_id`, includes the profile: road classes and speed factor); provenance records the Overpass query, bounding box, retrieval time, OSM data timestamp and SHA-256 of the raw response. Re-fetching later gives a different network when OpenStreetMap has changed |
 | Open-data subset | Release, resource id, SHA-256 and size of the full file, bounding box, cleaning rules and rejection counts; the publisher may revise a release, which the hash reveals |
-| Generated scenario | Seed, generator version and inputs (network id, dataset key, time window); same inputs give the same scenario |
+| Uploaded dataset | SHA-256 and size of the uploaded file, column mapping, time and date formats, rejection counts, SHA-256 of the stored normalised trips |
+| Generated scenario | Seed, generator version and inputs (network id, dataset key, time window, minimum trip length); same inputs give the same scenario |
 | Instance | Snapped points, travel times and compatible pairs are stored in the instance; methods, validation, bundles and reproductions need neither the network nor the open data |
 
 ## What a reproduction verifies

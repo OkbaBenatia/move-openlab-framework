@@ -1,0 +1,105 @@
+# Development guide
+
+## Requirements
+
+- Python ≥ 3.11 and Node.js ≥ 20.
+- Linux with bubblewrap (`bwrap`) and unprivileged user namespaces, for sandboxed plugins and their tests.
+- Network access only for the optional OpenStreetMap, place-search and open-data features.
+
+## Installation
+
+```bash
+python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+```
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+```
+
+## Local accounts
+
+Accounts are local; there is no self-registration. Create the first administrator on the host:
+
+```bash
+.venv/bin/move-openlab users add alice --display-name "Alice" --role admin
+```
+
+The command prints a temporary password once; it must be changed at the first sign-in. Administrators then create
+further accounts under *Administration*. Recovery on the host:
+
+```bash
+.venv/bin/move-openlab users reset-password alice
+```
+
+## Running
+
+Single-origin server (API + built interface) on http://127.0.0.1:8765:
+
+```bash
+.venv/bin/move-openlab serve
+```
+
+For interface work, run the Vite development server as well (http://localhost:5180, proxied to the API):
+
+```bash
+npm --prefix frontend run dev
+```
+
+Configuration is read from environment variables; the full list is in `src/move_openlab/settings.py`. The most
+useful in development:
+
+| Variable | Purpose |
+|---|---|
+| `MOVE_OPENLAB_DATA_DIR` | data directory (accounts, workspaces, networks, datasets, jobs); keep it outside Git |
+| `MOVE_OPENLAB_PLUGIN_DIR`, `MOVE_OPENLAB_PLUGIN_MODE` | approved plugin directory and `disabled` / `sandbox` / `trusted-process` |
+| `MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_TILE_ATTRIBUTION` | map tile service |
+| `MOVE_OPENLAB_OVERPASS_URL`, `MOVE_OPENLAB_GEOCODER_URL` | road-network and place-search services (`off` disables search) |
+| `MOVE_OPENLAB_EXTERNAL_FETCH` | `researcher` (default) or `admin`: who may start downloads from public services |
+
+Restarting the server signs everyone out (sessions are held in memory).
+
+## Tests
+
+```bash
+MOVE_OPENLAB_REQUIRE_SANDBOX=1 .venv/bin/python -m pytest
+```
+
+Without `MOVE_OPENLAB_REQUIRE_SANDBOX=1`, sandbox tests are skipped on machines without bubblewrap; CI sets it so a
+broken sandbox fails the build. All tests use synthetic data (artificial grids and files); none contacts an external
+service.
+
+| Suite | Covers |
+|---|---|
+| `test_benchmark_core.py` | synthetic benchmark: generator, validator, exact method against brute force and an oracle |
+| `test_workflow.py` | campaigns, locking, bundles and tampering, reproduction, worker isolation |
+| `test_variants_threshold_semantic.py` | variants, fingerprints, threshold studies, optimality scope |
+| `test_api.py`, `test_admin.py` | authentication, sessions, administration, audit, workspace isolation |
+| `test_jobs.py` | background jobs, cancellation, restart recovery |
+| `test_plugin_security.py` | sandbox isolation and fail-closed behaviour |
+| `test_geo.py`, `test_geo_workflow.py` | road networks, routing, scenarios, ride matching, RPC ingestion |
+| `test_areas_datasets.py` | areas, profiles, place search, CSV/GeoJSON uploads, limits, isolation |
+| `test_public_safety.py` | confidentiality and hygiene gate |
+
+Other checks run in CI:
+
+```bash
+ruff check src tests scripts plugins
+```
+
+```bash
+python scripts/check_public_safety.py
+```
+
+```bash
+npm --prefix frontend run build
+```
+
+`python scripts/smoke_synthetic.py` runs the complete two-installation workflow on the default synthetic scenario
+set (about a minute).
+
+## Conventions
+
+- Strict TypeScript; Python typed public functions; ruff (E, F, W, B).
+- Interface text is short and technical; numbers shown are always computed from stored records.
+- Every fix comes with a regression test; every feature with tests and documentation.
+- Branching, commits and pull requests follow [GITFLOW.md](GITFLOW.md).

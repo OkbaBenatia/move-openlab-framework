@@ -1,6 +1,9 @@
 # Extending MOVE OpenLab
 
-## A method plugin
+Three extension points, none of which requires changing the core: method adapters (plugins), problem packages
+and dataset providers.
+
+## A method plugin (adapter)
 
 A plugin is one file, `<approved plugin dir>/<name>/plugin.py`, with a literal `METADATA` dictionary and a `solve`
 function. See `plugins/regret_greedy/plugin.py` for a complete example.
@@ -50,14 +53,10 @@ my-problem = "my_package.problem:problem"
 The synthetic assignment benchmark (`src/move_openlab/benchmarks/synthetic_assignment`) is the reference
 implementation; the ride-matching benchmark shows the same interface on road networks.
 
-## A scenario source
+## A dataset provider
 
-The bundled sources are the OpenStreetMap road-network layer (`move_openlab.geo.osm`) and the RPC open-data
-connector (`move_openlab.integrations.rpc`), used by the *Scenarios & maps* section. Separately installed sources
-implement `move_openlab.integrations.ScenarioSource` and register with the `move_openlab.scenario_sources`
-entry-point group; `GET /api/integrations` lists them. Their provenance must name the data release, its checksum, its
-licence and every processing step. Sources should document how records become agents; the RPC generator resamples published
-origin–destination pairs with replacement and re-draws departure times, and drops identifiers.
+Trip data sources (file formats or services) are dataset providers: see [DATASETS.md](DATASETS.md#writing-a-dataset-provider).
+They plug in through the `move_openlab.dataset_providers` entry-point group without any change to the core.
 
 ## A geographic problem
 

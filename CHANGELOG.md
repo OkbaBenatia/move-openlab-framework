@@ -6,6 +6,17 @@ interfaces.
 ## Unreleased
 
 ### Added
+- Geographic areas in the researcher's workspace: place search (Nominatim proxy, cached, one request per second),
+  map selection, box drawing and resizing, road-network profiles (`car`, `car-main-roads`, `car-peak`), network
+  download with cache reuse, coverage map, route measurement, area switching.
+- Dataset providers: CSV and GeoJSON uploads with detection, explicit mapping, validation report and confirmation
+  of rejected rows; workspace dataset store; provider entry-point group `move_openlab.dataset_providers`.
+- RPC ingestion by area, restricted to areas in France; scenario generation from any dataset (roles respected).
+- Fair-use limits for external services: daily quotas, one download at a time per service, size limits.
+- Request-body limits applied before reading; bounded concurrent upload parsing.
+- Credential store schema versioning; operator recovery command documented.
+- Documentation: `docs/DATASETS.md`, `docs/DEVELOPMENT.md`; README with screenshots; CI lint job; ruff
+  configuration in `pyproject.toml`.
 - Ride matching on road networks benchmark (`public-ride-matching`): exact two-stage MILP (HiGHS), greedy heuristic,
   controlled variants, relative-detour scorer; travel times stored in the instance.
 - Geographic layer: OpenStreetMap road networks via Overpass (content-addressed, full provenance), routing, scenario
@@ -23,6 +34,11 @@ interfaces.
   campaign views, comparisons, threshold reports and the Markdown/CSV reports.
 
 ### Changed
+- Road networks are fetched per area (`POST /api/geo/areas/{id}/network`), by researchers within quotas (or
+  administrators only with `MOVE_OPENLAB_EXTERNAL_FETCH=admin`); open-data routes moved to `/api/datasets`;
+  `/scenarios/from-open-data` became `/scenarios/from-dataset`.
+- Shared networks and RPC subsets record boxes and profiles, not private area names.
+- Unused scenario-source interfaces replaced by dataset providers; `GET /api/integrations` lists providers.
 - Comparison column "Optimal" renamed "Equals reference optimum"; CSV column `optimal` renamed
   `equals_reference_optimum` and a column `optimality_scope` added.
 - Content Security Policy allows images from the configured map tile origin.

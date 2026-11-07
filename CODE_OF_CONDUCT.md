@@ -24,5 +24,5 @@ This code applies to all project spaces (repository, issues, pull requests, disc
 the project. The maintainer may edit or remove contributions and temporarily or permanently restrict participation
 in response to violations.
 
-Report incidents privately to the maintainer. A dedicated contact address will be published here before the first
-public release; reports are handled confidentially.
+Report incidents privately to the maintainer, Dr. Okba BEN ATIA, at okba.ben_atia@univ-fcomte.fr. Reports are
+handled confidentially.
