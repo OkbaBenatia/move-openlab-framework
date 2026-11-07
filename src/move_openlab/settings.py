@@ -19,6 +19,7 @@
                                   ``researcher`` (default; per-user daily quotas) or ``admin``
 ``MOVE_OPENLAB_DAILY_NETWORKS``   road-network downloads per user per day                          [default 10]
 ``MOVE_OPENLAB_DAILY_RPC``        RPC release ingestions per user per day                         [default 3]
+``MOVE_OPENLAB_DAILY_SEARCHES``   place searches sent to the geocoder per user per day (cache hits are free) [default 200]
 """
 from __future__ import annotations
 
@@ -51,6 +52,7 @@ class Settings:
     external_fetch: str = "researcher"
     daily_networks: int = 10
     daily_rpc: int = 3
+    daily_searches: int = 200
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -78,6 +80,7 @@ class Settings:
                    plugin_mode=os.environ.get("MOVE_OPENLAB_PLUGIN_MODE", "disabled").strip().lower() or "disabled",
                    external_fetch="admin" if fetch == "admin" else "researcher",
                    daily_networks=_int("MOVE_OPENLAB_DAILY_NETWORKS", 10), daily_rpc=_int("MOVE_OPENLAB_DAILY_RPC", 3),
+                   daily_searches=_int("MOVE_OPENLAB_DAILY_SEARCHES", 200),
                    **{k: v for k, v in dict(tile_url=os.environ.get("MOVE_OPENLAB_TILE_URL", "").strip(),
                                             tile_attribution=os.environ.get("MOVE_OPENLAB_TILE_ATTRIBUTION", "").strip(),
                                             overpass_url=os.environ.get("MOVE_OPENLAB_OVERPASS_URL", "").strip(),

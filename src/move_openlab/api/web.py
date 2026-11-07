@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import html
+import json
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
@@ -231,6 +232,51 @@ def change_password_page(request: Request, error: str | None = None):
                               error=f'<p class="err" role="alert">{html.escape(error)}</p>' if error else "",
                               cancel="" if forced else f'<a class="alt" href="/">Back to {html.escape(APP_NAME)}</a>')
     return HTMLResponse(_page("Change password", body))
+
+
+# ------------------------------------------------------------------ request size
+class BodyTooLarge(Exception):
+    pass
+
+
+class BodyLimit:
+    """Pure ASGI middleware: refuses request bodies above a per-route limit before they are read or spooled to disk.
+    The declared Content-Length is checked first, then the streamed byte count (a client can lie or omit it)."""
+
+    def __init__(self, app, limits: list[tuple[str, int]], default: int):
+        self.app, self.limits, self.default = app, limits, default
+
+    def _limit(self, path: str) -> int:
+        return next((n for prefix, n in self.limits if path.startswith(prefix)), self.default)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] in ("GET", "HEAD", "OPTIONS"):
+            return await self.app(scope, receive, send)
+        limit = self._limit(scope["path"])
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > limit):
+            return await self._refuse(send, limit)
+        seen = 0
+
+        async def counted():
+            nonlocal seen
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > limit:
+                    raise BodyTooLarge
+            return msg
+        try:
+            await self.app(scope, counted, send)
+        except BodyTooLarge:
+            await self._refuse(send, limit)
+
+    @staticmethod
+    async def _refuse(send, limit: int):
+        body = json.dumps({"detail": f"request body larger than {limit // 2**20} MB"}).encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
 
 
 # ------------------------------------------------------------------ guard + headers

@@ -136,4 +136,4 @@ def test_workflow_over_http(tmp_path, plugin_dir):
                                                                     scorer="relative-cost", thresholds=[0.5, 1.0])).json()["campaign_id"]
     wait(b, b.post(f"/api/campaigns/{tid}/execute").json())
     assert len(b.get(f"/api/campaigns/{tid}/threshold-report").json()["summary"]) == 2
-    assert b.get("/api/integrations").json() == {"sources": []}
+    assert [s["id"] for s in b.get("/api/integrations").json()["sources"]] == ["rpc", "csv", "geojson"]

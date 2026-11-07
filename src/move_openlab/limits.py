@@ -16,8 +16,8 @@ class QuotaExceeded(RuntimeError):
 
 
 class DailyQuota:
-    def __init__(self, per_day: int):
-        self.per_day = per_day
+    def __init__(self, per_day: int, what: str = "requests"):
+        self.per_day, self.what = per_day, what
         self._hits: dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
 
@@ -28,9 +28,16 @@ class DailyQuota:
             while q and now - q[0] > 86400:
                 q.popleft()
             if len(q) >= self.per_day:
-                raise QuotaExceeded(f"daily limit of {self.per_day} downloads reached for this service; "
-                                    "reuse a stored resource or try tomorrow")
+                raise QuotaExceeded(f"daily limit of {self.per_day} {self.what} reached; reuse a stored resource "
+                                    "or try again tomorrow")
             q.append(now)
+
+    def refund(self, user: str) -> None:
+        """Give back the last unit when the request it paid for did not start (e.g. a job already running)."""
+        with self._lock:
+            if self._hits[user]:
+                self._hits[user].pop()
 
 
 SERIAL = {"overpass": threading.Lock(), "data.gouv.fr": threading.Lock()}
+PARSING = threading.BoundedSemaphore(2)      # concurrent upload parses (memory bound)

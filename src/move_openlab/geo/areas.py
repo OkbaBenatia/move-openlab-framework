@@ -11,6 +11,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .osm import DEFAULT_PROFILE, bbox_km2, validate_bbox
 
 AREA_ID = re.compile(r"^a-[0-9]{8}T[0-9]{6}-[0-9a-f]{6}$")
 MAX_AREAS = 100
+_lock = threading.RLock()                     # request threads and download jobs may update the same area
 
 
 def _now() -> str:
@@ -36,7 +38,7 @@ class AreaStore:
     def _write(self, rec: dict) -> dict:
         self.root.mkdir(parents=True, exist_ok=True)
         f = self._file(rec["area_id"])
-        tmp = f.with_suffix(f".tmp{os.getpid()}")
+        tmp = f.with_suffix(f".tmp{os.getpid()}.{threading.get_ident()}")
         tmp.write_text(json.dumps(rec, indent=1, sort_keys=True))
         os.replace(tmp, f)
         return rec
@@ -67,7 +69,7 @@ class AreaStore:
 
     def create(self, name: str, bbox, profile: str | None = None, origin: dict | None = None,
                network_id: str | None = None) -> dict:
-        if len(list(self.root.glob("a-*.json"))) >= MAX_AREAS:
+        if self.root.exists() and len(list(self.root.glob("a-*.json"))) >= MAX_AREAS:
             raise ValueError(f"at most {MAX_AREAS} areas per workspace")
         name, box, prof = self._clean(name, bbox, profile)
         aid = f"a-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{secrets.token_hex(3)}"
@@ -76,6 +78,10 @@ class AreaStore:
 
     def update(self, area_id: str, name: str | None = None, bbox=None, profile: str | None = None,
                network_id: str | None = None) -> dict:
+        with _lock:
+            return self._update(area_id, name, bbox, profile, network_id)
+
+    def _update(self, area_id, name, bbox, profile, network_id) -> dict:
         rec = self.get(area_id)
         new_name, box, prof = self._clean(name if name is not None else rec["name"],
                                           bbox if bbox is not None else rec["bbox"], profile or rec["profile"])
@@ -87,9 +93,10 @@ class AreaStore:
         return self._write(rec)
 
     def attach(self, area_id: str, network_id: str) -> dict:
-        rec = self.get(area_id)
-        rec.update(network_id=network_id, updated_at=_now())
-        return self._write(rec)
+        with _lock:
+            rec = self.get(area_id)
+            rec.update(network_id=network_id, updated_at=_now())
+            return self._write(rec)
 
     def delete(self, area_id: str) -> None:
         f = self._file(area_id)

@@ -14,8 +14,10 @@ from .tabular import DATE_FORMATS, TIME_FORMATS, Collector, DatasetError, detect
 DELIMITERS = [",", ";", "\t", "|"]
 REQUIRED = ("origin_lat", "origin_lon", "destination_lat", "destination_lon", "departure")
 OPTIONAL = ("date", "role")
-MAX_ROWS = 500_000
+MAX_ROWS = 200_000
 MAX_COLUMNS = 200
+MAX_FIELD = 4096                                   # characters per field
+csv.field_size_limit(MAX_FIELD)
 HINTS = {
     "origin_lat": r"^(origin|orig|start|from|pickup|o|departure|dep|journey_start)[_ .-]?(lat|latitude|y)$",
     "origin_lon": r"^(origin|orig|start|from|pickup|o|departure|dep|journey_start)[_ .-]?(lon|lng|long|longitude|x)$",
@@ -54,6 +56,16 @@ def _reader(text: str, delimiter: str):
     return csv.reader(io.StringIO(text, newline=""), delimiter=delimiter)
 
 
+def _rows(text: str, delimiter: str):
+    """Rows after the header, streamed; malformed CSV becomes a DatasetError."""
+    try:
+        it = _reader(text, delimiter)
+        next(it, None)
+        yield from it
+    except csv.Error as e:
+        raise DatasetError(f"malformed CSV ({e}); check the delimiter and quoting") from None
+
+
 def inspect(raw: bytes, delimiter: str | None = None) -> dict:
     if b"\x00" in raw[:8192]:
         raise DatasetError("this is not a text file (binary content found)")
@@ -61,17 +73,24 @@ def inspect(raw: bytes, delimiter: str | None = None) -> dict:
     delim = delimiter or sniff_delimiter(text)
     if delim not in DELIMITERS:
         raise DatasetError("unsupported delimiter")
+    if text.count("\n") > MAX_ROWS + 1:
+        raise DatasetError(f"too many rows (at most {MAX_ROWS})")
     rows = _reader(text, delim)
     try:
         header = next(rows)
     except StopIteration:
         raise DatasetError("the file is empty") from None
+    except csv.Error as e:
+        raise DatasetError(f"malformed CSV ({e})") from None
     header = [h.strip() for h in header]
     if len(header) < 2 or len(header) > MAX_COLUMNS:
         raise DatasetError(f"expected 2 to {MAX_COLUMNS} columns, found {len(header)}; check the delimiter")
     if len(set(header)) != len(header) or any(not h for h in header):
         raise DatasetError("column names must be non-empty and distinct")
-    preview = [r for _, r in zip(range(8), rows)]
+    try:
+        preview = [r for _, r in zip(range(8), rows)]
+    except csv.Error as e:
+        raise DatasetError(f"malformed CSV ({e})") from None
     suggested = {}
     for field, pat in HINTS.items():
         hit = next((h for h in header if re.match(pat, h.strip().casefold())), None)
@@ -100,13 +119,19 @@ def parse(raw: bytes, mapping: dict, time_format: str = "auto", date_format: str
         raise DatasetError("unknown time or date format")
     idx = {f: cols.index(mapping[f]) for f in REQUIRED + OPTIONAL if mapping.get(f)}
     text, _ = decode(raw)
-    rows = list(_reader(text, info["delimiter"]))[1:]
-    if len(rows) > MAX_ROWS:
-        raise DatasetError(f"too many rows ({len(rows)}; at most {MAX_ROWS})")
+    j = idx["departure"]
     if time_format == "auto":
-        time_format = detect_time_format([r[idx["departure"]] for r in rows if len(r) > idx["departure"]])
+        sample = []
+        for r in _rows(text, info["delimiter"]):
+            if len(r) > j and r[j].strip():
+                sample.append(r[j])
+                if len(sample) >= 200:
+                    break
+        time_format = detect_time_format(sample)
     col = Collector()
-    for i, r in enumerate(rows, start=2):                     # row 1 is the header
+    for i, r in enumerate(_rows(text, info["delimiter"]), start=2):          # row 1 is the header
+        if i - 1 > MAX_ROWS:
+            raise DatasetError(f"too many rows (at most {MAX_ROWS})")
         if not any(c.strip() for c in r):
             continue
         if len(r) != len(cols):

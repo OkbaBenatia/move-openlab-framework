@@ -7,16 +7,21 @@ import { errText } from './common';
 export function JobProgress({ job, onFinished, setErr, unit }: { job: Json; onFinished: (j: Json) => void; setErr: (s: string | null) => void; unit?: 'bytes' | 'runs' }) {
   const [j, setJ] = useState<Json>(job);
   useEffect(() => {
-    let alive = true;
+    let alive = true, failures = 0, t: ReturnType<typeof setTimeout>;
     const tick = async () => {
       try {
         const n = await call(`/jobs/${job.job_id}`);
         if (!alive) return;
-        setJ(n);
-        if (n.state === 'running') setTimeout(tick, 600); else onFinished(n);
-      } catch (e) { if (alive) setErr(errText(e)); }
+        failures = 0; setJ(n);
+        if (n.state === 'running') t = setTimeout(tick, 600); else onFinished(n);
+      } catch (e) {                       // transient errors: keep polling with back-off, report after 5 failures
+        if (!alive) return;
+        failures += 1;
+        if (failures >= 5) setErr(`${errText(e)} (job status unavailable; still retrying)`);
+        t = setTimeout(tick, Math.min(10000, 600 * 2 ** failures));
+      }
     };
-    const t = setTimeout(tick, 400);
+    t = setTimeout(tick, 400);
     return () => { alive = false; clearTimeout(t); };
   }, [job.job_id]);
   const pct = j.total ? Math.min(100, Math.round((100 * j.done) / j.total)) : null;

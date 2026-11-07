@@ -23,15 +23,18 @@ OPTIONAL = ("date", "role")
 
 
 def _load(raw: bytes) -> dict:
+    if raw.count(b'"Feature"') > MAX_FEATURES:
+        raise DatasetError(f"too many features (at most {MAX_FEATURES})")
     try:
         doc = json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, ValueError):
-        raise DatasetError("not valid JSON (UTF-8 expected)") from None
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise DatasetError("not valid JSON (UTF-8 expected) or nested too deeply") from None
     if not isinstance(doc, dict) or doc.get("type") != "FeatureCollection" or not isinstance(doc.get("features"), list):
         raise DatasetError("expected a GeoJSON FeatureCollection")
     crs = doc.get("crs")
     if crs is not None:
-        name = str(((crs or {}).get("properties") or {}).get("name", "")).strip().casefold()
+        props = crs.get("properties") if isinstance(crs, dict) else None
+        name = str(props.get("name", "") if isinstance(props, dict) else "").strip().casefold()
         if name not in WGS84:
             raise DatasetError(f"coordinate reference system {name or '?'} is not supported; reproject to WGS-84 "
                                "longitude/latitude (RFC 7946)")
@@ -39,6 +42,15 @@ def _load(raw: bytes) -> dict:
         raise DatasetError(f"too many features ({len(doc['features'])}; at most {MAX_FEATURES})")
     if not doc["features"]:
         raise DatasetError("the FeatureCollection has no feature")
+    for i, f in enumerate(doc["features"], start=1):           # RFC 7946 structure: refuse, never guess
+        if not isinstance(f, dict) or f.get("type") != "Feature":
+            raise DatasetError(f"feature #{i} is not a GeoJSON Feature object")
+        if f.get("properties") is not None and not isinstance(f["properties"], dict):
+            raise DatasetError(f"feature #{i}: properties must be an object or null")
+        if f.get("geometry") is not None and not isinstance(f["geometry"], dict):
+            raise DatasetError(f"feature #{i}: geometry must be an object or null")
+        if f.get("properties") is None:
+            f["properties"] = {}
     return doc
 
 

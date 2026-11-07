@@ -174,15 +174,22 @@ def _largest_scc(n: int, adj: list[list[int]]) -> list[int]:
     return sorted(best)
 
 
-def build_network(raw: bytes, profile_name: str | None = None) -> dict:
-    """Build the routable graph from an Overpass JSON response. Returns a JSON-serialisable network."""
-    prof_name = profile_name or DEFAULT_PROFILE
-    prof = profile(prof_name)
-    classes = set(prof["classes"])
+def _parse(raw: bytes) -> dict:
     try:
         doc = json.loads(raw)
     except ValueError:
         raise SourceUnavailable("the Overpass response is not valid JSON") from None
+    if not isinstance(doc, dict):
+        raise SourceUnavailable("unexpected Overpass response")
+    return doc
+
+
+def build_network(raw: bytes | dict, profile_name: str | None = None) -> dict:
+    """Build the routable graph from an Overpass JSON response (bytes or parsed). Returns a JSON-serialisable network."""
+    prof_name = profile_name or DEFAULT_PROFILE
+    prof = profile(prof_name)
+    classes = set(prof["classes"])
+    doc = raw if isinstance(raw, dict) else _parse(raw)
     nodes = {el["id"]: (el["lat"], el["lon"]) for el in doc.get("elements", []) if el.get("type") == "node"}
     edges: dict[tuple[int, int], tuple[float, float]] = {}
     for el in doc.get("elements", []):
@@ -229,8 +236,8 @@ class NetworkStore:
 
     def save(self, raw: bytes, area: dict, source_url: str = OVERPASS_URL, profile_name: str | None = None) -> dict:
         prof_name = profile_name or DEFAULT_PROFILE
-        net = build_network(raw, prof_name)
-        doc = json.loads(raw)
+        doc = _parse(raw)                                     # parsed once (responses can be large)
+        net = build_network(doc, prof_name)
         d = self.root / net["network_id"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "network.json").write_bytes(canonical(net))
@@ -256,12 +263,25 @@ class NetworkStore:
             out.append(p)
         return out
 
+    @staticmethod
+    def key(bbox, profile_name: str | None = None) -> tuple:
+        return (profile_name or DEFAULT_PROFILE, *(round(float(x), 5) for x in bbox))
+
+    def index(self) -> dict[tuple, dict]:
+        """(profile, box) -> most recent stored network, built in one pass."""
+        out: dict[tuple, dict] = {}
+        for p in self.list():
+            box = (p.get("area") or {}).get("bbox")
+            if not box or len(box) != 4:
+                continue
+            k = self.key(box, p.get("profile"))
+            if k not in out or out[k]["source"]["retrieved_at"] < p["source"]["retrieved_at"]:
+                out[k] = p
+        return out
+
     def find(self, bbox, profile_name: str | None = None) -> dict | None:
         """The most recent stored network fetched for exactly this box and profile (cache hit), if any."""
-        key = [round(float(x), 5) for x in bbox]
-        hits = [p for p in self.list() if p.get("profile") == (profile_name or DEFAULT_PROFILE)
-                and [round(float(x), 5) for x in (p.get("area") or {}).get("bbox", [])] == key]
-        return max(hits, key=lambda p: p["source"]["retrieved_at"]) if hits else None
+        return self.index().get(self.key(bbox, profile_name))
 
     def provenance(self, network_id: str) -> dict:
         f = self._dir(network_id) / "provenance.json"

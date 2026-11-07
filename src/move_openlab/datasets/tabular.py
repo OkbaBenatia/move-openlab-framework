@@ -35,6 +35,8 @@ class DatasetError(ValueError):
 def number(v) -> float | None:
     if v is None:
         return None
+    if isinstance(v, bool):
+        return None
     if isinstance(v, (int, float)):
         x = float(v)
     else:
@@ -92,7 +94,9 @@ def parse_time(v: str, fmt: str) -> tuple[str | None, int]:
 def parse_date(v: str, fmt: str) -> str:
     t = str(v).strip()
     if fmt == "YYYY-MM-DD":
-        return Date.fromisoformat(t[:10]).isoformat()
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", t):
+            raise ValueError
+        return Date.fromisoformat(t).isoformat()
     m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", t)
     if not m:
         raise ValueError

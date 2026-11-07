@@ -291,3 +291,90 @@ def test_dataset_store_rejects_traversal(tmp_path):
     for k in ("../x", "2026-08_abc", "u-../../etc"):
         with pytest.raises(KeyError):
             st.load(k)
+
+
+# ---------------------------------------------------------------- review regressions
+def test_cross_user_writes_are_refused(tmp_path):
+    c, s, prov = client(tmp_path)
+    alice, bob = signed(c, "alice"), signed(c, "bob")
+    a = alice.post("/api/geo/areas", json=dict(name="alice area", bbox=BBOX)).json()["area_id"]
+    assert bob.put(f"/api/geo/areas/{a}", json=dict(name="hijacked")).status_code == 404
+    assert bob.delete(f"/api/geo/areas/{a}").status_code == 404
+    assert bob.post(f"/api/geo/areas/{a}/network", json={}).status_code == 404
+    assert bob.post("/api/datasets/rpc/ingest", json=dict(release="2026-08", area_id=a)).status_code == 404
+    assert alice.get(f"/api/geo/areas/{a}").json()["name"] == "alice area"
+    assert alice.post("/api/datasets/rpc/ingest", json=dict(release="2026-08", area_id="")).status_code == 422
+
+
+def test_malformed_uploads_are_client_errors(tmp_path):
+    c, s, prov = client(tmp_path)
+    alice = signed(c, "alice")
+    m = dict(mapping=json.dumps({"departure": "departure"}))
+    bad = [b'{"type":"FeatureCollection","crs":"EPSG:3857","features":[1]}',
+           b'{"type":"FeatureCollection","features":[1, "x", {"geometry": "line", "properties": [1]}]}',
+           b"[" * 100000, b"\xff\xfe\x00junk"]
+    for raw in bad:
+        for route in ("inspect", "import"):
+            r = alice.post(f"/api/datasets/geojson/{route}", files={"file": ("x.geojson", raw)}, data=m)
+            assert r.status_code == 400, (raw[:40], route, r.status_code, r.text)
+    long_field = ("a,b,c\n" + "x" * 200_000 + ",1,2\n").encode()
+    assert alice.post("/api/datasets/csv/inspect", files={"file": ("l.csv", long_field)}).status_code == 400
+    with pytest.raises(ValueError):
+        T.parse_date("2026-08-03garbage", "YYYY-MM-DD")
+    assert T.number(True) is None
+
+
+def test_request_bodies_are_capped_before_reading(tmp_path):
+    c, s, prov = client(tmp_path)
+    alice = signed(c, "alice")
+    r = alice.post("/api/geo/areas", content=b"{}", headers={"content-type": "application/json",
+                                                              "content-length": str(50 * 2**20)})
+    assert r.status_code == 413
+    r = alice.post("/api/datasets/csv/inspect", content=b"x", headers={"content-length": str(200 * 2**20),
+                                                                       "content-type": "multipart/form-data; boundary=b"})
+    assert r.status_code == 413
+
+
+def test_redirects_must_stay_on_data_gouv():
+    import urllib.request
+    h = rpc._CheckedRedirect()
+    req = urllib.request.Request("https://static.data.gouv.fr/x.csv")
+    with pytest.raises(ValueError):
+        h.redirect_request(req, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data")
+    assert h.redirect_request(req, None, 302, "Found", {}, "https://object.files.data.gouv.fr/x.csv") is not None
+
+
+def test_download_is_not_attached_to_an_edited_area_and_quota_is_refunded(tmp_path, monkeypatch):
+    c, s, prov = client(tmp_path)
+    from move_openlab.api import areas as A
+    import threading
+    gate = threading.Event()
+
+    def slow(bbox, url, profile_name=None):
+        gate.wait(5)
+        return grid_overpass()
+    monkeypatch.setattr(A, "fetch_overpass", slow)
+    alice = signed(c, "alice")
+    a = alice.post("/api/geo/areas", json=dict(name="moving", bbox=BBOX, profile="car-peak")).json()["area_id"]
+    job = alice.post(f"/api/geo/areas/{a}/network", json={}).json()["job"]
+    assert alice.post(f"/api/geo/areas/{a}/network", json={}).status_code == 409        # same area already running
+    alice.put(f"/api/geo/areas/{a}", json=dict(profile="car-main-roads"))
+    gate.set()
+    done = wait(alice, job)
+    assert done["state"] == "done" and any("not attached" in e["message"] for e in alice.get(f"/api/jobs/{job['job_id']}").json()["events"])
+    assert alice.get(f"/api/geo/areas/{a}").json()["network_id"] is None
+    q = c.app.state.quotas["networks"]
+    assert len(q._hits["alice"]) == 1                                                     # the refused request was refunded
+
+
+def test_geocoder_cache_hits_do_not_use_the_quota(tmp_path):
+    c, s, prov = client(tmp_path, daily_searches=1)
+    fake = FakeService()
+    from move_openlab.geo.geocode import Geocoder as G
+    c.app.state.geocoder = G("https://geocoder.invalid/search", tmp_path / "gc", opener=fake)
+    alice = signed(c, "alice")
+    assert alice.get("/api/geo/geocode", params=dict(q="Gridtown")).status_code == 200
+    assert alice.get("/api/geo/geocode", params=dict(q="gridtown")).json()["cached"] is True
+    assert alice.get("/api/geo/geocode", params=dict(q="x")).status_code == 400
+    assert alice.get("/api/geo/geocode", params=dict(q="Elsewhere")).status_code == 429
+    assert len(fake.calls) == 1

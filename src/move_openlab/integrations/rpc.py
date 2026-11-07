@@ -62,6 +62,23 @@ def france_region(bbox) -> str | None:
     return None
 
 
+def area_label(bbox) -> str:
+    """Neutral label of a shared subset: coordinates, never a researcher's private area name."""
+    s, w, n, e = (float(x) for x in bbox)
+    return f"{s:.3f},{w:.3f} – {n:.3f},{e:.3f}"
+
+
+class _CheckedRedirect(urllib.request.HTTPRedirectHandler):
+    """Every redirect hop must stay on an HTTPS data.gouv.fr host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_download_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_opener = urllib.request.build_opener(_CheckedRedirect)
+
+
 def check_download_url(url: str) -> str:
     """Only HTTPS downloads from data.gouv.fr hosts are followed (no arbitrary server-side fetching)."""
     u = urllib.parse.urlsplit(url or "")
@@ -155,17 +172,23 @@ def ingest(release: dict, bbox, area_name: str, out_root: Path, source=None, pro
     bbox = tuple(float(x) for x in bbox)
     key = dataset_key(release["release"], bbox)
     d = Path(out_root) / key
+    existed = d.exists()
     d.mkdir(parents=True, exist_ok=True)
     t_start = time.time()
-    if source is None:
-        req = urllib.request.Request(check_download_url(release["url"]), headers={"User-Agent": USER_AGENT})
-        raw = urllib.request.urlopen(req, timeout=120)
-    else:
-        raw = open(source, "rb")
+    tmp = d / "trips.csv.part"
+    try:
+        if source is None:
+            req = urllib.request.Request(check_download_url(release["url"]), headers={"User-Agent": USER_AGENT})
+            raw = _opener.open(req, timeout=120)
+        else:
+            raw = open(source, "rb")
+    except BaseException:
+        if not existed:
+            d.rmdir()
+        raise
     reasons: dict[str, int] = {}
     seen: set[str] = set()
     total = kept = 0
-    tmp = d / "trips.csv.part"
     try:
         hr = _HashingReader(raw, (lambda n: progress(n, release.get("filesize"))) if progress else None, cancel)
         text = io.TextIOWrapper(io.BufferedReader(hr, buffer_size=1 << 20), encoding="utf-8", newline="")
@@ -191,6 +214,11 @@ def ingest(release: dict, bbox, area_name: str, out_root: Path, source=None, pro
                 wr.writerow(rec)
                 kept += 1
         size, digest = hr.n, hr.h.hexdigest()
+    except BaseException:                                   # failed or cancelled: leave nothing half-written
+        tmp.unlink(missing_ok=True)
+        if not existed and not any(d.iterdir()):
+            d.rmdir()
+        raise
     finally:
         raw.close()
     tmp.replace(d / "trips.csv")

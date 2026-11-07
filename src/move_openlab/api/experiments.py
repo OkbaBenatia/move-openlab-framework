@@ -15,7 +15,7 @@ from ..analysis.reproducibility import reproducibility
 from ..analysis.semantic import semantic_compare
 from ..analysis.threshold import threshold_report
 from ..hashing import canonical
-from ..integrations import catalogue as integrations_catalogue
+from ..datasets import catalogue as dataset_catalogue
 from ..methods import ContractError
 from ..store import MAX_BUNDLE_BYTES, BenchError, Workspace, builtin_refs, problem_for
 from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, app_version
@@ -100,7 +100,7 @@ def problem(problem_id: str):
 
 @router.get("/integrations")
 def integrations():
-    return dict(sources=integrations_catalogue())
+    return dict(sources=dataset_catalogue())
 
 
 @router.get("/problems/{problem_id}/methods")

@@ -18,7 +18,9 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     from .datasets import router as datasets_router
     from .experiments import router as experiments_router
     from .geo import router as geo_router
-    from .web import AuthGuard, mount_frontend, router as web_router
+    from ..datasets import MAX_UPLOAD_BYTES
+    from ..store import MAX_BUNDLE_BYTES
+    from .web import AuthGuard, BodyLimit, mount_frontend, router as web_router
     settings = settings or Settings.from_env()
     if settings.production and len(settings.session_secret) < 32:
         raise RuntimeError("production requires SESSION_SECRET (at least 32 characters)")
@@ -34,9 +36,13 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     app.state.jobs.recover()                                  # jobs left running by a stopped server -> interrupted
     app.state.installation.recover_interrupted()             # their campaigns -> draft
     app.state.geocoder = Geocoder(settings.geocoder_url, settings.data_dir / "cache" / "geocode")
-    app.state.quotas = dict(networks=DailyQuota(settings.daily_networks), rpc=DailyQuota(settings.daily_rpc),
-                            geocode=DailyQuota(500))
+    app.state.quotas = dict(networks=DailyQuota(settings.daily_networks, "road-network downloads"),
+                            rpc=DailyQuota(settings.daily_rpc, "RPC ingestions"),
+                            geocode=DailyQuota(settings.daily_searches, "place searches"))
     app.add_middleware(AuthGuard)
+    mb = 1024 * 1024
+    app.add_middleware(BodyLimit, limits=[("/api/datasets/", MAX_UPLOAD_BYTES + mb), ("/api/import", MAX_BUNDLE_BYTES + mb)],
+                       default=2 * mb)                  # outermost: runs before authentication and body parsing
     app.include_router(web_router)
     app.include_router(experiments_router)
     app.include_router(admin_router)

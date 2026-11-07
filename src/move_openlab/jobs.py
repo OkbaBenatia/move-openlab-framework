@@ -99,7 +99,7 @@ class Jobs:
                    events=[])
         with self._lock:
             if any(j["state"] == "running" and j["subject"] == subject for j in self._jobs.values()):
-                raise RuntimeError("a job is already running for this campaign")
+                raise RuntimeError("a job is already running for this item; wait for it to finish")
             self._jobs[jid] = job
             mon = self._monitors[jid] = Monitor(self, job)
             if len(self._jobs) > MAX_KEPT_IN_MEMORY:

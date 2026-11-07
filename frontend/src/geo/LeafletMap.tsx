@@ -4,13 +4,20 @@ import 'leaflet/dist/leaflet.css';
 
 export interface MapPoint { lat: number; lon: number; color: string; label?: string; radius?: number; fill?: boolean }
 export interface MapLine { coords: [number, number][]; color: string; weight?: number; dash?: string; label?: string; opacity?: number }
-export interface MapRect { bbox: [number, number, number, number]; color: string }
+export type BBox = [number, number, number, number];
+export interface MapRect { bbox: BBox; color: string }
+export interface EditBox { bbox: BBox; color: string; onChange?: (b: BBox) => void }
+export interface Coverage { cells: [number, number, number][]; step: number }
+
+const r5 = (x: number) => Number(x.toFixed(5));
+const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, iconSize: [14, 14] });
 
 /** Leaflet map without wrappers (BSD-2-Clause). Static layers refit the view when `fitKey` changes; `dynamic` points
  *  (e.g. playback positions) are redrawn without moving the view. Tiles and attribution come from the server config. */
-export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds }: {
+export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor }: {
   tileUrl: string; attribution: string; points?: MapPoint[]; lines?: MapLine[]; rects?: MapRect[]; dynamic?: MapPoint[];
-  fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number; onBounds?: (b: [number, number, number, number]) => void;
+  fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number; onBounds?: (b: BBox) => void;
+  box?: EditBox | null; coverage?: Coverage | null; focus?: { key: string; bbox: BBox } | null; cursor?: 'crosshair';
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -19,6 +26,9 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const click = useRef(onClick);
   const bounds = useRef(onBounds);
   const fitted = useRef<string | undefined>(undefined);
+  const boxLayer = useRef<L.LayerGroup | null>(null);
+  const covLayer = useRef<L.LayerGroup | null>(null);
+  const focused = useRef<string | undefined>(undefined);
   click.current = onClick;
   bounds.current = onBounds;
 
@@ -26,14 +36,58 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     if (!el.current) return;
     const m = L.map(el.current, { center: [46.6, 2.4], zoom: 5, preferCanvas: true });
     L.tileLayer(tileUrl, { maxZoom: 19, attribution }).addTo(m);
+    covLayer.current = L.layerGroup().addTo(m);
     stat.current = L.layerGroup().addTo(m);
+    boxLayer.current = L.layerGroup().addTo(m);
     dyn.current = L.layerGroup().addTo(m);
     m.on('click', (e: L.LeafletMouseEvent) => click.current?.(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6))));
     const report = () => { const b = m.getBounds(); bounds.current?.([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map((x) => Number(x.toFixed(5))) as [number, number, number, number]); };
     m.on('moveend', report);
     map.current = m;
-    return () => { m.remove(); map.current = null; fitted.current = undefined; };
+    return () => { m.remove(); map.current = null; fitted.current = undefined; focused.current = undefined; };
   }, [tileUrl, attribution]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !focus || focused.current === focus.key) return;
+    const [s, w, n, e] = focus.bbox;
+    m.flyToBounds([[s, w], [n, e]], { padding: [24, 24], maxZoom: 15, duration: 0.6 });
+    focused.current = focus.key;
+  }, [focus]);
+
+  // editable bounding box: corner handles resize, the centre handle moves; the change is reported on drag end
+  const boxKey = box ? `${box.bbox.join(',')}|${box.color}|${box.onChange ? 1 : 0}` : '';
+  const boxChange = useRef(box?.onChange);
+  boxChange.current = box?.onChange;
+  useEffect(() => {
+    const g = boxLayer.current;
+    if (!g) return;
+    g.clearLayers();
+    if (!box) return;
+    const [s, w, n, e] = box.bbox;
+    const rect = L.rectangle([[s, w], [n, e]], { color: box.color, weight: 2, fillOpacity: 0.06 }).addTo(g);
+    if (!box.onChange) return;
+    const corners: [number, number][] = [[s, w], [s, e], [n, e], [n, w]];
+    corners.forEach(([la, lo], i) => {
+      const opp = corners[(i + 2) % 4];
+      const mk = L.marker([la, lo], { draggable: true, icon: handle('corner'), keyboard: false, title: 'drag to resize' }).addTo(g);
+      const bounds = () => { const p = mk.getLatLng(); return L.latLngBounds([p.lat, p.lng], opp); };
+      mk.on('drag', () => rect.setBounds(bounds()));
+      mk.on('dragend', () => { const b = bounds(); boxChange.current?.([r5(b.getSouth()), r5(b.getWest()), r5(b.getNorth()), r5(b.getEast())]); });
+    });
+    const c = L.marker([(s + n) / 2, (w + e) / 2], { draggable: true, icon: handle('centre'), keyboard: false, title: 'drag to move' }).addTo(g);
+    c.on('drag', () => { const p = c.getLatLng(), dl = p.lat - (s + n) / 2, dn = p.lng - (w + e) / 2; rect.setBounds([[s + dl, w + dn], [n + dl, e + dn]]); });
+    c.on('dragend', () => { const p = c.getLatLng(), dl = p.lat - (s + n) / 2, dn = p.lng - (w + e) / 2; boxChange.current?.([r5(s + dl), r5(w + dn), r5(n + dl), r5(e + dn)]); });
+  }, [boxKey]);
+
+  useEffect(() => {
+    const g = covLayer.current;
+    if (!g) return;
+    g.clearLayers();
+    if (!coverage) return;
+    for (const [la, lo, v] of coverage.cells)
+      L.rectangle([[la, lo], [la + coverage.step, lo + coverage.step]], { stroke: false, fillColor: COLORS.area, fillOpacity: 0.12 + 0.5 * v, interactive: false }).addTo(g);
+  }, [coverage]);
 
   useEffect(() => {
     const m = map.current, g = stat.current;
@@ -69,7 +123,7 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     }
   }, [dynamic]);
 
-  return <div ref={el} className="map" style={{ height }} role="region" aria-label="map" />;
+  return <div ref={el} className={`map${cursor ? ' map-crosshair' : ''}`} style={{ height }} role="region" aria-label="map" />;
 }
 
 export const COLORS = { driver: '#1f5fd1', rider: '#c2410c', match: '#15803d', unserved: '#b91c1c', area: '#7c3aed', route: '#0f766e' };

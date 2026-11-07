@@ -6,6 +6,7 @@ area needs cleaning; a validation request without ``save`` leaves no trace.
 """
 from __future__ import annotations
 
+import csv
 import json
 import time
 
@@ -15,7 +16,7 @@ from pydantic import BaseModel, Field
 from ..datasets import MAX_UPLOAD_BYTES, DatasetError, DatasetStore, build_report, catalogue, providers
 from ..datasets.tabular import summary
 from ..integrations import rpc
-from ..limits import SERIAL, QuotaExceeded
+from ..limits import PARSING, SERIAL, QuotaExceeded
 from .areas import areas
 from .experiments import ws
 from .geo import load_dataset, require_fetch_permission, rpc_root, start_job
@@ -40,7 +41,7 @@ def _area_bbox(request: Request, area_id: str | None):
 
 @router.get("")
 def list_datasets(request: Request):
-    shared = [dict(dataset_key=d["dataset_key"], provider="rpc", name=f"RPC {d['release']} · {d['area']['name']}",
+    shared = [dict(dataset_key=d["dataset_key"], provider="rpc", name=f"RPC {d['release']} · {rpc.area_label(d['area']['bbox'])}",
                    rows_kept=d["rows_kept"], area=d["area"], licence=d["licence"]["name"], attribution=d["attribution"],
                    release=d["release"]) for d in rpc.list_datasets(rpc_root(request))]
     mine = [dict(dataset_key=d["dataset_key"], provider=d["provider"], name=d["name"], rows_kept=d["rows_kept"],
@@ -63,7 +64,7 @@ def rpc_releases(request: Request):
 
 class IngestBody(BaseModel):
     release: str = Field(pattern=r"^\d{4}-\d{2}$")
-    area_id: str
+    area_id: str = Field(min_length=1, max_length=64)
 
 
 @router.post("/rpc/ingest")
@@ -83,9 +84,11 @@ def rpc_ingest(body: IngestBody, request: Request):
         raise HTTPException(404, "release not found")
     try:
         rpc.check_download_url(rel["url"])
-        request.app.state.quotas["rpc"].take(request.state.session.username)
     except ValueError as e:
         raise HTTPException(502, str(e)) from None
+    quota, user = request.app.state.quotas["rpc"], request.state.session.username
+    try:
+        quota.take(user)
     except QuotaExceeded as e:
         raise HTTPException(429, str(e)) from None
 
@@ -95,16 +98,29 @@ def rpc_ingest(body: IngestBody, request: Request):
             SERIAL["data.gouv.fr"].acquire()
         try:
             mon.event("download", f"streaming {rel['title']} ({rel.get('filesize')} bytes) from data.gouv.fr")
-            rep = rpc.ingest(rel, bbox, area["name"], root, progress=mon, cancel=mon.cancel)
+            if mon.cancel.is_set():
+                return
+            rep = rpc.ingest(rel, bbox, rpc.area_label(bbox), root, progress=mon, cancel=mon.cancel)
         finally:
             SERIAL["data.gouv.fr"].release()
         mon.event("stored", f"{rep['rows_kept']} trips kept of {rep['rows_read']} read ({region}); "
                             f"sha256 {rep['source']['sha256'][:16]}")
-    return dict(cached=False, job=start_job(request, "rpc-ingest", f"rpc/{key}", f"RPC {body.release} · {area['name']}",
-                                            work))
+    try:
+        job = start_job(request, "rpc-ingest", f"rpc/{key}", f"RPC {body.release} · {area['name']}", work)
+    except HTTPException:
+        quota.refund(user)                              # the same subset is already being ingested
+        raise
+    return dict(cached=False, job=job)
 
 
 # ---------------------------------------------------------------- uploads (CSV, GeoJSON)
+# Handlers are synchronous on purpose: FastAPI runs them in its thread pool, so parsing never blocks the event loop;
+# PARSING bounds how many uploads are parsed at once (memory). Request bodies are capped by BodyLimit before
+# anything is spooled to disk.
+PARSE_ERRORS = (DatasetError, csv.Error, RecursionError, UnicodeError, ValueError, TypeError, AttributeError,
+                KeyError, IndexError)
+
+
 def _provider(pid: str):
     p = providers().get(pid)
     if p is None or p.kind != "upload":
@@ -112,8 +128,8 @@ def _provider(pid: str):
     return p
 
 
-async def _read(file: UploadFile) -> bytes:
-    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+def _read(file: UploadFile) -> bytes:
+    raw = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"file larger than {MAX_UPLOAD_BYTES // 2**20} MB")
     if not raw:
@@ -121,25 +137,34 @@ async def _read(file: UploadFile) -> bytes:
     return raw
 
 
-@router.post("/{pid}/inspect")
-async def inspect(pid: str, request: Request, file: UploadFile = File(...), delimiter: str | None = Form(None)):
-    p = _provider(pid)
-    raw = await _read(file)
+def _parsing(fn, *a, **k):
+    if not PARSING.acquire(timeout=30):
+        raise HTTPException(503, "the server is busy parsing other uploads; try again shortly")
     try:
-        return dict(p.inspect(raw, delimiter=delimiter or None), filename=file.filename, bytes=len(raw))
-    except DatasetError as e:
-        raise HTTPException(400, str(e)) from None
+        return fn(*a, **k)
+    except PARSE_ERRORS as e:
+        msg = str(e) if isinstance(e, DatasetError) else f"the file could not be read ({type(e).__name__})"
+        raise HTTPException(400, msg) from None
+    finally:
+        PARSING.release()
+
+
+@router.post("/{pid}/inspect")
+def inspect(pid: str, file: UploadFile = File(...), delimiter: str | None = Form(None)):
+    p = _provider(pid)
+    raw = _read(file)
+    return dict(_parsing(p.inspect, raw, delimiter=delimiter or None), filename=file.filename, bytes=len(raw))
 
 
 @router.post("/{pid}/import")
-async def import_dataset(pid: str, request: Request, file: UploadFile = File(...), mapping: str = Form(...),
-                         name: str = Form(""), time_format: str = Form("auto"), date_format: str = Form("YYYY-MM-DD"),
-                         delimiter: str | None = Form(None), area_id: str | None = Form(None),
-                         save: bool = Form(False), accept_rejections: bool = Form(False)):
+def import_dataset(pid: str, request: Request, file: UploadFile = File(...), mapping: str = Form(...),
+                   name: str = Form(""), time_format: str = Form("auto"), date_format: str = Form("YYYY-MM-DD"),
+                   delimiter: str | None = Form(None), area_id: str | None = Form(None),
+                   save: bool = Form(False), accept_rejections: bool = Form(False)):
     """Validate (``save`` false) or validate and store (``save`` true). Rejected rows are never dropped silently:
     saving a dataset with rejections requires ``accept_rejections``."""
     p = _provider(pid)
-    raw = await _read(file)
+    raw = _read(file)
     try:
         m = json.loads(mapping)
         if not isinstance(m, dict) or not all(isinstance(v, (str, type(None))) for v in m.values()):
@@ -147,10 +172,7 @@ async def import_dataset(pid: str, request: Request, file: UploadFile = File(...
     except ValueError:
         raise HTTPException(400, "mapping must be a JSON object of field -> column") from None
     area, bbox = _area_bbox(request, area_id)
-    try:
-        col, meta = p.parse(raw, m, time_format=time_format, date_format=date_format, delimiter=delimiter or None)
-    except DatasetError as e:
-        raise HTTPException(400, str(e)) from None
+    col, meta = _parsing(p.parse, raw, m, time_format=time_format, date_format=date_format, delimiter=delimiter or None)
     report = build_report(p, file.filename or "", raw, col, meta, bbox)
     if area:
         report["checked_area"] = dict(area_id=area["area_id"], name=area["name"], bbox=area["bbox"])

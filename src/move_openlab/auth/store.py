@@ -8,11 +8,15 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 ROLES = ("admin", "researcher")
+SCHEMA_VERSION = 1
+# target version -> SQL that upgrades from the previous version; applied in order, inside one transaction each
+MIGRATIONS: dict[int, str] = {}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -30,6 +34,10 @@ CREATE TABLE IF NOT EXISTS users (
   created_by TEXT NOT NULL DEFAULT ''
 );
 """
+
+
+def _norm(username: str) -> str:
+    return (username or "").strip().lower()
 
 
 @dataclass(frozen=True)
@@ -62,11 +70,33 @@ class UserStore:
             self._keeper = sqlite3.connect(self._uri, uri=True, check_same_thread=False)
         with self._conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
 
-    def _conn(self) -> sqlite3.Connection:
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """``PRAGMA user_version`` records the schema version; version 0 is the original schema (baseline)."""
+        v = int(c.execute("PRAGMA user_version").fetchone()[0])
+        if v > SCHEMA_VERSION:
+            raise RuntimeError(f"credential store schema {v} is newer than this version of MOVE OpenLab ({SCHEMA_VERSION})")
+        for target in range(max(v, 0) + 1, SCHEMA_VERSION + 1):
+            if target in MIGRATIONS:
+                c.executescript(MIGRATIONS[target])
+            c.execute(f"PRAGMA user_version = {target}")
+        c.commit()
+
+    @contextmanager
+    def _conn(self):
+        """One connection per operation: committed on success, rolled back on error, always closed."""
         c = sqlite3.connect(self._uri, uri=self._is_uri, timeout=10, check_same_thread=False)
         c.row_factory = sqlite3.Row
-        return c
+        try:
+            yield c
+            c.commit()
+        except BaseException:
+            c.rollback()
+            raise
+        finally:
+            c.close()
 
     @staticmethod
     def _row(r) -> Optional[User]:
@@ -79,7 +109,7 @@ class UserStore:
     def get(self, username: str) -> Optional[User]:
         with self._conn() as c:
             return self._row(c.execute("SELECT * FROM users WHERE username = ?",
-                                       ((username or "").strip().lower(),)).fetchone())
+                                       (_norm(username),)).fetchone())
 
     def list(self) -> list[User]:
         with self._conn() as c:
@@ -98,7 +128,7 @@ class UserStore:
             cur = c.execute("INSERT OR IGNORE INTO users (username, display_name, password_hash, role, active, "
                             "must_change_password, session_version, created_at, updated_at, created_by) "
                             "VALUES (?, ?, ?, ?, 1, ?, 1, ?, ?, ?)",
-                            (username.strip().lower(), display_name, password_hash, role, int(must_change), now, now,
+                            (_norm(username), display_name, password_hash, role, int(must_change), now, now,
                              created_by))
             return cur.rowcount == 1
 
@@ -107,13 +137,13 @@ class UserStore:
         with self._lock, self._conn() as c:
             c.execute("UPDATE users SET password_hash = ?, must_change_password = ?, session_version = session_version + 1, "
                       "password_changed_at = ?, updated_at = ? WHERE username = ?",
-                      (password_hash, int(must_change), now, now, username.lower()))
+                      (password_hash, int(must_change), now, now, _norm(username)))
 
     def set_active(self, username: str, active: bool) -> None:
         with self._lock, self._conn() as c:
             c.execute("UPDATE users SET active = ?, session_version = session_version + 1, updated_at = ? WHERE username = ?",
-                      (int(active), time.time(), username.lower()))
+                      (int(active), time.time(), _norm(username)))
 
     def touch_login(self, username: str) -> None:
         with self._lock, self._conn() as c:
-            c.execute("UPDATE users SET last_login_at = ? WHERE username = ?", (time.time(), username.lower()))
+            c.execute("UPDATE users SET last_login_at = ? WHERE username = ?", (time.time(), _norm(username)))
