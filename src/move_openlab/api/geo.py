@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from .. import registry
 from ..datasets import DatasetStore
 from ..geo import playback as PB
+from ..geo.geometry import GeometryStore
 from ..geo import scenarios as SC
 from ..geo.osm import PROFILES, NetworkStore
 from ..hashing import sha256
@@ -240,9 +241,12 @@ def playback(cid: str, run_id: str, request: Request):
         try:
             net = network(request, nid)
         except HTTPException:
-            net = None                                      # network not installed here: straight-line geometry
+            net = None                                      # network not installed here
+    legs = None
+    if net is None:                                         # replay geometry imported with a bundle, else straight lines
+        legs = (GeometryStore(request.app.state.settings.data_dir).get(inst["instance_hash"]) or {}).get("legs")
     try:
-        return dict(PB.plan(inst, run["decisions"], net), run_id=run_id, method_id=run["method_id"],
+        return dict(PB.plan(inst, run["decisions"], net, legs), run_id=run_id, method_id=run["method_id"],
                     accepted=run["accepted"], metrics=run["validation"]["metrics"])
     except BenchError as e:
         raise HTTPException(e.status, str(e)) from None

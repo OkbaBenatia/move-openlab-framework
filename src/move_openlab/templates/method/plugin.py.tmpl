@@ -1,0 +1,38 @@
+"""$name — a MOVE OpenLab method for problem `$problem_id`.
+
+Contract (docs/EXTENDING.md):
+  * METADATA is a plain literal: the platform reads it without running this file.
+  * solve(instance, config) receives a read-only instance and the merged configuration (default_config, then the
+    campaign's options) and returns a dict:
+        decisions    $decisions
+        status       OPTIMAL | FEASIBLE | HEURISTIC | TIME_LIMIT | INFEASIBLE | ERROR
+        declared     optional self-reported metrics ({metric id: value}); they are compared, never trusted
+        metadata     optional information about the run (e.g. solver version)
+        diagnostics  optional counters for the researcher
+  * The experiment owns the scenario, objective, validator and metrics: every decision list is re-validated
+    independently, and only the validator's metrics are reported.
+  * Runs happen in an isolated sandbox: no network, no files outside the instance; standard library only unless the
+    operator installed more.
+
+Instance fields of this problem (see the problem's documentation): $instance_keys.
+This starting point returns no decision (always valid, serves nothing); replace the body of solve with your method.
+"""
+from __future__ import annotations
+
+METADATA = {
+    "method_id": "$method_id",
+    "name": "$name",
+    "version": "0.1.0",
+    "kind": "heuristic",
+    "problem_id": "$problem_id",
+    "objective_spec_id": "$objective_spec_id",
+    "deterministic": True,
+    "author": "$author",
+    "description": "Describe the rule your method follows.",
+    "default_config": {},
+}
+
+
+def solve(instance, config) -> dict:
+    decisions: list = []
+    return dict(decisions=decisions, status="HEURISTIC", declared={}, metadata={}, diagnostics={})

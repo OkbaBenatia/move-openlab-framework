@@ -17,7 +17,8 @@ from .common import by_cell, consistent, med, median_or_none, optimality_scope, 
 from .reproducibility import reproducibility
 
 ORIGIN = {"baseline": "original campaign", "reproduction": "re-executed (reproduction campaign)",
-          "extended": "extended campaign"}
+          "extended": "extended campaign", "variant": "controlled variant"}
+SCOPE_ROOTS = ("baseline", "variant")          # campaigns that define the scenario set of a comparison
 
 
 def _worse_by(sense: str, value: float, ref: float) -> float:
@@ -25,7 +26,14 @@ def _worse_by(sense: str, value: float, ref: float) -> float:
 
 
 def compare(ws, cid: str) -> dict:
-    chain = ws.lineage(cid)
+    """Rows of the campaign and its ancestors back to the campaign that defined its scenario set: the baseline, or a
+    controlled variant (whose derived scenarios start a new comparison; it is compared with its parent separately,
+    by the semantic check)."""
+    chain = []
+    for c in ws.lineage(cid):
+        chain.append(c)
+        if c["kind"] in SCOPE_ROOTS:
+            break
     problem = problem_for(chain[0])
     levels = problem.objective
     warnings, rows_src = [], []

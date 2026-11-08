@@ -124,6 +124,14 @@ class RideMatching(Problem):
         except Exception:
             return dict(highs_version=None)
 
+    def descriptive_metrics(self, instances, totals):
+        riders = sum(len(i["riders"]) for i in instances)
+        served, detour = totals.get("served", 0), totals.get("detour_s", 0)
+        return [dict(id="service_rate", label="Service rate", unit="%", better="higher",
+                     value=round(100.0 * served / riders, 1) if riders else None),
+                dict(id="mean_detour_s", label="Mean detour per served rider", unit="s", better="lower",
+                     value=round(detour / served, 1) if served else None)]
+
     def objective_definitions(self):
         return dict(M.OBJECTIVES)
 

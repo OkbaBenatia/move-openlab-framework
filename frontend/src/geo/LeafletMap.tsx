@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -16,7 +16,7 @@ const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, icon
  *  (e.g. playback positions) are redrawn without moving the view. Tiles and attribution come from the server config. */
 export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor }: {
   tileUrl: string; attribution: string; points?: MapPoint[]; lines?: MapLine[]; rects?: MapRect[]; dynamic?: MapPoint[];
-  fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number; onBounds?: (b: BBox) => void;
+  fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number | string; onBounds?: (b: BBox) => void;
   box?: EditBox | null; coverage?: Coverage | null; focus?: { key: string; bbox: BBox } | null; cursor?: 'crosshair';
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -29,13 +29,24 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const boxLayer = useRef<L.LayerGroup | null>(null);
   const covLayer = useRef<L.LayerGroup | null>(null);
   const focused = useRef<string | undefined>(undefined);
+  const [tilesDown, setTilesDown] = useState(false);
   click.current = onClick;
   bounds.current = onBounds;
 
   useEffect(() => {
     if (!el.current) return;
     const m = L.map(el.current, { center: [46.6, 2.4], zoom: 5, preferCanvas: true });
-    L.tileLayer(tileUrl, { maxZoom: 19, attribution }).addTo(m);
+    setTilesDown(!tileUrl);
+    if (tileUrl) {
+      // Tile servers such as tile.openstreetmap.org require a Referer; the page itself sends none cross-origin
+      // (Referrer-Policy: same-origin), so the tile images send the page origin only.
+      const tiles = L.tileLayer(tileUrl, { maxZoom: 19, attribution, referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(m);
+      let errors = 0, loaded = 0;
+      tiles.on('tileload', () => { loaded += 1; errors = 0; setTilesDown(false); });
+      tiles.on('tileerror', () => { errors += 1; if (errors >= 4 && loaded === 0) setTilesDown(true); });
+    } else if (attribution) {
+      m.attributionControl.addAttribution(attribution);
+    }
     covLayer.current = L.layerGroup().addTo(m);
     stat.current = L.layerGroup().addTo(m);
     boxLayer.current = L.layerGroup().addTo(m);
@@ -124,7 +135,12 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   }, [dynamic]);
 
   // the Leaflet element keeps a constant className: React must never rewrite the classes Leaflet adds to it
-  return <div className={cursor ? 'map-crosshair' : undefined}><div ref={el} className="map" style={{ height }} role="region" aria-label="map" /></div>;
+  return (
+    <div className={`map-wrap${cursor ? ' map-crosshair' : ''}${tilesDown ? ' map-no-tiles' : ''}`} style={{ height }}>
+      <div ref={el} className="map" style={{ height: '100%' }} role="region" aria-label="map" />
+      {tilesDown && <div className="map-banner" role="status">Basemap unavailable — data still shown</div>}
+    </div>
+  );
 }
 
 export const COLORS = { driver: '#1f5fd1', rider: '#c2410c', match: '#15803d', unserved: '#b91c1c', area: '#7c3aed', route: '#0f766e' };

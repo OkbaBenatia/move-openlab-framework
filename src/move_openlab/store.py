@@ -16,19 +16,16 @@ read-only. Derived campaigns record the parent's checksum, so a broken lineage i
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
 import secrets
 import threading
-import zipfile
-import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__, registry
-from .hashing import canonical, instance_hash, json_copy, sha256, sha256_bytes
+from .hashing import instance_hash, json_copy, sha256
 from .methods import ContractError, builtin_registry, check_metadata
 from .plugins import code_sha256, discover, plugin_path, read_plugin_metadata
 from .problem import Problem
@@ -36,13 +33,9 @@ from .runner import environment, run_once
 from .sandbox import MODES, SandboxSpec, SandboxUnavailable, verify as sandbox_verify
 from .scoring import MODES as SELECTION_MODES, normalise_thresholds, select, select_share, validate_selection
 
-BUNDLE_FORMAT = "move-openlab-bundle/1"
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
-MAX_MEMBERS = 5000
-MAX_MEMBER_BYTES = 16 * 1024 * 1024
 LOCK_EXCLUDED = ("checksum", "locked_at", "status")
 KINDS = ("baseline", "reproduction", "extended", "variant", "threshold-study")
-ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: identical content -> identical bundle
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _lock = threading.RLock()
 
@@ -557,7 +550,7 @@ class Workspace:
         self._save(c)
         return c
 
-    def create_variant(self, parent_id: str, variant_id: str) -> dict:
+    def create_variant(self, parent_id: str, variant_id: str, title: str | None = None) -> dict:
         """Controlled variant: derived instances are new content-addressed artifacts; the parent is never modified."""
         parent = self.get(parent_id)
         problem = problem_for(parent)
@@ -594,7 +587,7 @@ class Workspace:
                     cfg["method_configs"].setdefault(mid, {}).update(opts)
             else:
                 cfg[k] = val
-        c = self._derive(parent_id, "variant", "perturbs", f"Controlled variant '{variant_id}' of {parent['title']}",
+        c = self._derive(parent_id, "variant", "perturbs", title or f"Controlled variant '{variant_id}' of {parent['title']}",
                          methods, dict(parent["scenario_set"], instance_hashes=hashes, instance_ids=ids), cfg)
         c["semantic_variant"] = dict(variant=variant_id, description=v.description, modifications=mods,
                                      not_applicable=na)
@@ -663,149 +656,15 @@ class Workspace:
         self._save(c)
         return c
 
-    # ------------------------------------------------------------------ bundles
+    # ------------------------------------------------------------------ bundles (see :mod:`.bundles`)
     def export_bundle(self, cid: str) -> tuple[bytes, dict]:
-        chain = self.lineage(cid)
-        if not all(c.get("checksum") for c in chain):
-            raise BenchError("lock the campaign before exporting it")
-        problem = problem_for(chain[0])
-        hashes = sorted({h for c in chain for h in c["scenario_set"]["instance_hashes"]})
-        files: dict[str, bytes] = {f"campaigns/{c['campaign_id']}.json": canonical(c) for c in chain}
-        for h in hashes:
-            files[f"instances/{h}.json"] = canonical(self.inst.get_instance(h))
-        methods = sorted({(m["method_id"], m["version"], m["source"], m.get("code_sha256") or "")
-                          for c in chain for m in c["methods"]})
-        manifest = dict(format=BUNDLE_FORMAT, created_at=now(), exported_by=self.display,
-                        exporter_installation=self.inst.id, root_campaign_id=cid, spec=problem.spec_record(),
-                        validator_version=problem.validator_version, synthetic=problem.synthetic,
-                        campaigns=[dict(campaign_id=c["campaign_id"], kind=c["kind"], checksum=c["checksum"],
-                                        owner_display=c["owner_display"]) for c in chain],
-                        instances=hashes,
-                        methods=[dict(method_id=a, version=b, source=s, code_sha256=h or None) for a, b, s, h in methods],
-                        environment_requirements=dict(python=">=3.11", framework=__version__, **problem.environment(),
-                                                      note="methods are resolved from trusted local installations by id, "
-                                                           "version and code hash; the bundle contains no executable code"),
-                        files={k: sha256_bytes(v) for k, v in sorted(files.items())})
-        mbytes = canonical(manifest)
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for k, v in sorted(files.items()):
-                z.writestr(zipfile.ZipInfo(k, date_time=ZIP_TIME), v)
-            z.writestr(zipfile.ZipInfo("manifest.json", date_time=ZIP_TIME), mbytes)
-            z.writestr(zipfile.ZipInfo("manifest.sha256", date_time=ZIP_TIME), sha256_bytes(mbytes))
-        data = buf.getvalue()
-        return data, dict(bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes), bytes=len(data),
-                          campaigns=[c["campaign_id"] for c in chain], instances=len(hashes))
+        from . import bundles
+        return bundles.export(self, cid)
 
     def verify_bundle(self, data: bytes) -> tuple[dict, dict, dict, Problem]:
-        """Full verification, no side effect. Any low-level archive or parsing failure is an integrity failure."""
-        try:
-            return self._verify_bundle(data)
-        except BenchError:
-            raise
-        except (zipfile.BadZipFile, zlib.error, KeyError, ValueError, TypeError, AttributeError, UnicodeDecodeError,
-                EOFError, OSError, RuntimeError) as e:
-            raise IntegrityError(f"bundle unreadable or corrupted ({type(e).__name__})") from None
-
-    def _verify_bundle(self, data: bytes) -> tuple[dict, dict, dict, Problem]:
-        if len(data) > MAX_BUNDLE_BYTES:
-            raise IntegrityError("bundle too large")
-        try:
-            z = zipfile.ZipFile(io.BytesIO(data))
-        except zipfile.BadZipFile:
-            raise IntegrityError("not a valid ZIP bundle") from None
-        infos = z.infolist()
-        names = [i.filename for i in infos]
-        if len(names) > MAX_MEMBERS or len(set(names)) != len(names):
-            raise IntegrityError("too many or duplicate bundle members")
-        if any(n.startswith("/") or ".." in n.split("/") or "\\" in n or ":" in n for n in names):
-            raise IntegrityError("unsafe bundle member names")
-        if any(i.file_size > MAX_MEMBER_BYTES for i in infos):
-            raise IntegrityError("bundle member too large")
-        if "manifest.json" not in names or "manifest.sha256" not in names:
-            raise IntegrityError("manifest missing")
-        mbytes = z.read("manifest.json")
-        if sha256_bytes(mbytes) != z.read("manifest.sha256").decode().strip():
-            raise IntegrityError("manifest digest mismatch")
-        man = json.loads(mbytes)
-        if man.get("format") != BUNDLE_FORMAT:
-            raise IntegrityError(f"unsupported bundle format {man.get('format')!r}")
-        try:
-            problem = registry.get(man["spec"]["problem_id"])
-        except registry.UnknownProblem:
-            raise IntegrityError(f"problem {man['spec']['problem_id']!r} is not installed here") from None
-        if man["spec"] != problem.spec_record() or man.get("validator_version") != problem.validator_version:
-            raise IntegrityError("problem / objective / constraint specification or validator differs from this installation")
-        extra = set(names) - set(man["files"]) - {"manifest.json", "manifest.sha256"}
-        if extra:
-            raise IntegrityError(f"unlisted files in bundle: {sorted(extra)[:3]}")
-        for name, digest in man["files"].items():
-            if name not in names:
-                raise IntegrityError(f"listed file missing: {name}")
-            if not (name.startswith("campaigns/") or name.startswith("instances/")) or not name.endswith(".json"):
-                raise IntegrityError(f"unexpected member {name}")
-            if sha256_bytes(z.read(name)) != digest:
-                raise IntegrityError(f"file checksum mismatch: {name}")
-        instances = {}
-        for h in man["instances"]:
-            inst = json.loads(z.read(f"instances/{h}.json"))
-            errs = problem.check_instance(inst)
-            if errs or inst.get("instance_hash") != h:
-                raise IntegrityError(f"instance {h[:12]} failed integrity checks: {errs or 'hash mismatch'}")
-            instances[h] = inst
-        campaigns = {}
-        for ent in man["campaigns"]:
-            if not SAFE_ID.match(str(ent["campaign_id"])):
-                raise IntegrityError("unsafe campaign identifier")
-            c = json.loads(z.read(f"campaigns/{ent['campaign_id']}.json"))
-            if not c.get("checksum") or campaign_checksum(c) != c["checksum"] or c["checksum"] != ent["checksum"]:
-                raise IntegrityError(f"campaign {ent['campaign_id']} fails its checksum")
-            if c.get("campaign_id") != ent["campaign_id"] or c["spec"]["problem_id"] != problem.problem_id:
-                raise IntegrityError(f"campaign {ent['campaign_id']} does not match its manifest entry")
-            if set(c["scenario_set"]["instance_hashes"]) - set(instances):
-                raise IntegrityError(f"campaign {ent['campaign_id']} references instances missing from the bundle")
-            campaigns[c["campaign_id"]] = c
-        if man["root_campaign_id"] not in campaigns:
-            raise IntegrityError("root campaign missing from the bundle")
-        for c in campaigns.values():
-            p = c.get("parent")
-            if p and (p["campaign_id"] not in campaigns or campaigns[p["campaign_id"]]["checksum"] != p["checksum"]):
-                raise IntegrityError(f"lineage of {c['campaign_id']} is incomplete or inconsistent in the bundle")
-        avail = []
-        for m in man["methods"]:
-            try:
-                self.resolve_method(problem, m)
-                ok, why = True, None
-            except ContractError as e:
-                ok, why = False, str(e)
-            avail.append(dict(m, available_locally=ok, reason=why))
-        report = dict(ok=True, bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes),
-                      format=man["format"], problem_id=problem.problem_id, exported_by=man["exported_by"],
-                      exporter_installation=man["exporter_installation"], root_campaign_id=man["root_campaign_id"],
-                      files_checked=len(man["files"]), instances_verified=len(instances),
-                      campaigns_verified=[dict(campaign_id=k, kind=v["kind"], checksum=v["checksum"])
-                                          for k, v in campaigns.items()],
-                      spec_match=True, methods=avail, executable_code_in_bundle=False)
-        return report, campaigns, instances, problem
+        from . import bundles
+        return bundles.verify(self, data)[:4]
 
     def import_bundle(self, data: bytes) -> dict:
-        report, campaigns, instances, problem = self.verify_bundle(data)
-        with _lock:
-            for cid, c in campaigns.items():                            # refuse before writing anything
-                f = self._cdir(cid) / "campaign.json"
-                if f.exists() and json.loads(f.read_text()).get("checksum") != c["checksum"]:
-                    raise IntegrityError(f"a different campaign {cid} already exists in this workspace")
-            for inst in instances.values():
-                self.inst.put_instance(problem, inst)
-            for cid, c in campaigns.items():
-                d = self._cdir(cid)
-                if (d / "campaign.json").exists():
-                    continue
-                _write(d / "campaign.json", c)
-                _write(d / "import_record.json", dict(imported_at=now(), imported_by=self.display,
-                                                      into_installation=self.inst.id, bundle_sha256=report["bundle_sha256"],
-                                                      verified_checksum=c["checksum"],
-                                                      original_owner_display=c["owner_display"],
-                                                      original_installation=c["installation_id"]))
-        report["imported_at"] = now()
-        return report
+        from . import bundles
+        return bundles.import_(self, data)

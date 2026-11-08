@@ -18,6 +18,7 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     from .datasets import router as datasets_router
     from .experiments import router as experiments_router
     from .geo import router as geo_router
+    from .lab import router as lab_router
     from ..datasets import MAX_UPLOAD_BYTES
     from ..store import MAX_BUNDLE_BYTES
     from .web import AuthGuard, BodyLimit, mount_frontend, router as web_router
@@ -49,5 +50,6 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     app.include_router(geo_router)
     app.include_router(areas_router)
     app.include_router(datasets_router)
+    app.include_router(lab_router)
     mount_frontend(app, settings.frontend_dist)
     return app

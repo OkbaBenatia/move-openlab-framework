@@ -1,4 +1,4 @@
-"""Command line: ``move-openlab serve``, ``move-openlab users add`` and ``move-openlab users reset-password``."""
+"""Command line: ``move-openlab serve``, ``users add``, ``users reset-password``, ``method new`` and ``method check``."""
 from __future__ import annotations
 
 import argparse
@@ -42,6 +42,37 @@ def _users_reset(args) -> int:
     return 0
 
 
+def _method_new(args) -> int:
+    from pathlib import Path
+    from .method_tools import new_method
+    try:
+        d = new_method(args.name, args.problem, Path(args.dir), args.author or "")
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    print(f"created {d}/plugin.py and {d}/test_plugin.py")
+    print(f"next: edit solve(), then  move-openlab method check {d} --bundle <experiment bundle>")
+    return 0
+
+
+def _method_check(args) -> int:
+    import json
+    from pathlib import Path
+    from .method_tools import check_method
+    bundle = Path(args.bundle).read_bytes() if args.bundle else None
+    rep = check_method(Path(args.path), bundle)
+    if args.json:
+        print(json.dumps(rep, indent=1))
+    else:
+        for s in rep["steps"]:
+            print(f"[{'ok' if s['ok'] else 'FAILED'}] {s['step']}: {s['detail']}")
+            for bad in s.get("invalid") or []:
+                print(f"    {bad['instance']}: {'; '.join(map(str, bad['errors']))[:300]}")
+            for row in s.get("comparison") or []:
+                print(f"    {row['method_id']:<28} valid={row['valid']} totals={row['totals']} optimal={row['optimal']}")
+    return 0 if rep["ok"] else 1
+
+
 def _serve(args) -> int:
     import uvicorn
     from .api import create_app
@@ -74,6 +105,19 @@ def main(argv: list[str] | None = None) -> int:
     rs = us_sub.add_parser("reset-password", help="operator recovery: new temporary password (forced change at next sign-in)")
     rs.add_argument("username")
     rs.set_defaults(fn=_users_reset)
+    me = sub.add_parser("method", help="create and check a method plugin")
+    me_sub = me.add_subparsers(dest="mcmd", required=True)
+    mn = me_sub.add_parser("new", help="create a method from the template")
+    mn.add_argument("name", help="directory and method name (lowercase letters, digits, '_')")
+    mn.add_argument("--problem", required=True, help="problem id, e.g. public-ride-matching")
+    mn.add_argument("--dir", default=".", help="where to create the method directory")
+    mn.add_argument("--author")
+    mn.set_defaults(fn=_method_new)
+    mc = me_sub.add_parser("check", help="metadata, sandboxed self-test, optional run on an experiment bundle")
+    mc.add_argument("path", help="method directory (or its plugin.py)")
+    mc.add_argument("--bundle", help="experiment bundle (.zip) whose instances the method must solve")
+    mc.add_argument("--json", action="store_true")
+    mc.set_defaults(fn=_method_check)
     args = ap.parse_args(argv)
     return args.fn(args)
 

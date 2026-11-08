@@ -174,6 +174,11 @@ class Problem(ABC):
             out[mid] = validation["metrics"][mid] * spec.get("scale", 1)
         return out
 
+    def descriptive_metrics(self, instances: list[dict], totals: dict) -> list[dict]:
+        """Descriptive figures derived from validated totals (e.g. a rate), for display only: never used for
+        validation, ranking or comparability. ``[{"id", "label", "unit", "value", "better"}]``; default none."""
+        return []
+
     @abstractmethod
     def problem_components(self, instance: dict, objective_spec_id: str) -> dict:
         """``{"region": ..., "coefficients": ..., "objective": ...}``: the data that define the optimization problem
