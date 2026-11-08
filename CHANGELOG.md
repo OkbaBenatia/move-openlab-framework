@@ -5,7 +5,45 @@ interfaces.
 
 ## Unreleased
 
+### Added — mobility-first workflow, vehicles and configurable emissions
+- Five-step **Generate wizard** over the map (Area & Data → Participants & Vehicles → Constraints → Experiment →
+  Review) with *Save Scenario* and *Save & Run*; nothing is stored before the Review step. Participants can be
+  generated (synthetic, trip dataset) or placed on the map (Origin, Destination, *Route* draws the road route or
+  reports why it cannot). The same wizard replaces the former Editor and Generate forms of the Data section.
+- **Vehicle profiles** (`move_openlab.mobility.vehicles`): powertrain (ICE, HEV, PHEV, BEV, custom), passenger
+  capacity, energy and every emission parameter as an editable, documented record (value, unit, CO2/CO2e basis,
+  source, source version, applicability, notes, timestamp). Versioned platform presets with their sources
+  (`mobility/presets/`), per-workspace profiles (create, edit, duplicate), a default vehicle and per-driver
+  assignment; vehicles are frozen inside the instances and travel with bundles.
+- **Configurable emissions** (`move_openlab.mobility.emissions`): scopes *tailpipe*, *operational energy*,
+  *direct intensity*; explicit baselines *everyone drives alone* (default) and *drivers only*; total, baseline,
+  avoided (absolute and %), per vehicle, per served request, per passenger-km, vehicle distance; computed by the
+  platform from validated decisions, never reported when a parameter is missing, never defaulted.
+- Emission configuration and vehicle parameters are part of the instance hash, the experiment fingerprint, the
+  semantic fingerprint (domain component), bundles (`vehicles`, `emissions` sections) and the comparability
+  contract: new **emissions claim** (not comparable when scope, baseline, units or data differ; comparable with
+  conditions when factor values or assignments differ) shown as a third verdict with its reasons under *Why?*.
+- **A/B comparison workspace** (`#/compare/<A>|<B>`): two maps (synchronised zoom and centre), one replay clock,
+  compatible metrics side by side, assignment and served-rider differences per scenario, comparability verdicts.
+- **Trace** in the workspace and in Jobs: an execution timeline (created, queued, preparing, every method run with
+  its prepare / method / validation durations, persistence, completion, cancellation, errors), raw events under
+  *Technical details*, "No trace available" when a job is gone.
+- Library organisation: *Demo · Imported · Generated · Edited · Reproduced* categories, experiments grouped by
+  category, non-destructive *Hide from lists / Show hidden* per account.
+- Problem hooks `domain_metrics`, `domain_descriptor`, `aggregate_domain`, `domain_metric_definitions`; run
+  records carry `domain`; comparison rows carry aggregated domain figures; charts offer emission metrics only under
+  one scope, baseline and basis.
+- Demonstration rebuilt with vehicle profiles (petrol preset; a clearly labelled demonstration electric car) and an
+  explicit emission configuration; a newer demonstration is imported next to a previous one (nothing deleted).
+
 ### Fixed
+- *Route* in the editor drew nothing when origin and destination snapped to the same road node (a one-point
+  polyline) or lay off the network: the API now refuses both cases with a reason and the wizard shows it inline.
+- *Trace* rendered below the job table, off-screen on long histories: it opens in a drawer.
+- Semantic comparability and the A/B diff match scenarios that are the same optimization problem (equal problem
+  fingerprint) even when their files differ, e.g. by vehicle or emission data.
+
+### Fixed (earlier in this cycle)
 - Map tiles refused (HTTP 403) by tile servers requiring a referrer: tile images now send the page origin
   (`strict-origin-when-cross-origin`); the page itself keeps `Referrer-Policy: same-origin`. When tiles cannot be
   loaded the map says so and keeps showing the data.

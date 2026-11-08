@@ -91,6 +91,31 @@ riders from rider or unlabelled trips. Each agent takes one record's origin and 
 re-drawn inside the publisher's 10-minute rounding. The scenario records the dataset key, provider, licence,
 attribution and source hash.
 
+## Vehicle profiles and emission presets
+
+Drivers carry a vehicle profile (`move_openlab.mobility.vehicles`; schema `schemas/vehicle-profile.schema.json`).
+Every energy or emission parameter is an editable record — value, unit, CO₂ or CO₂e basis, source, source version,
+geographic applicability, notes, timestamp — and a missing value is never substituted: the emission figures of a
+scenario are simply not reported until the researcher enters it. The platform ships versioned presets
+(`src/move_openlab/mobility/presets/`, version 2026-11) whose values were read in the sources named below; override
+any of them with your own documented figure.
+
+| Preset | Parameter | Value | Source |
+|---|---|---|---|
+| Petrol car (EU real-world average) — default | fuel consumption | 7.89 L/100 km | European Commission, COM(2024) 122 final, Table 3 (petrol cars registered in 2021, on-board fuel consumption meters); WLTP 6.38 |
+| | fuel emission factor | 2075 g CO₂e/L | UK DESNZ, Greenhouse gas reporting: conversion factors 2026, petrol (average biofuel blend), combustion only; CO₂-only component 2061 g/L |
+| Diesel car (EU real-world average) | fuel consumption | 6.88 L/100 km | COM(2024) 122, Table 3 (diesel cars registered in 2021); WLTP 5.82 |
+| | fuel emission factor | 2583.54 g CO₂e/L | DESNZ conversion factors 2026, diesel (average biofuel blend), combustion only |
+| Battery-electric car (France grid factor) | electricity emission factor | 43 g CO₂e/kWh | EEA indicator ENER038, France, 2024 (early estimate), generation-based |
+| Battery-electric car (EU-27 grid factor) | electricity emission factor | 187 g CO₂e/kWh | EEA indicator ENER038, EU-27, 2024 (early estimate), generation-based |
+
+The two electric presets carry no consumption value: no official EU average electricity consumption of
+battery-electric cars was found in regulatory sources, so the researcher enters the consumption of the vehicle they
+study. The demonstration's electric car uses 16 kWh/100 km, labelled as a demonstration assumption in its source
+field. Fuel factors are combustion-only (tank-to-wheel) values of a UK blend; electricity factors are direct
+generation emissions, not life-cycle values — the applicability field says so and the *Why?* of a comparison reports
+any difference of scope, basis or value between two experiments.
+
 ## Limits and isolation
 
 | Resource | Limit |

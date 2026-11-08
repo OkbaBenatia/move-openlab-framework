@@ -47,12 +47,20 @@ no server data). Format 2 (`move-openlab-bundle/2`) contains:
 | `datasets` | dataset provenance: provider, release or source hash, licence, attribution |
 | `campaigns`, `lineage` | kind, relation to the parent, configuration and result summary of every campaign |
 | `methods`, `environment_requirements`, `environments` | method ids, versions, code hashes; recorded execution environments |
-| `fingerprints` | **experiment fingerprint** (what was run: specification, validator, instances, methods, configuration of the lineage) and **semantic fingerprint** (which problem: the instances' problem fingerprints and the evaluation contract) |
+| `vehicles` | every vehicle profile frozen in the instances: powertrain, capacity, each parameter with value, unit, CO₂/CO₂e basis, source, source version, applicability, notes, timestamp |
+| `emissions` | the emission configuration of every campaign (scope, baseline) and the domain descriptors (what the emission figures of each campaign × instance depend on, with their fingerprints) |
+| `fingerprints` | **experiment fingerprint** (what was run: specification, validator, instances, methods, configuration of the lineage — hence the emission configuration too) and **semantic fingerprint** (which problem: the instances' problem fingerprints and the evaluation contract, plus the domain descriptors when the instances carry vehicle data) |
 | `files`, `manifest.sha256` | SHA-256 of every member and of the manifest |
 
 Importing recomputes and checks everything before writing: member hashes, instance hashes and structure, campaign
 checksums and lineage, the problem specification and validator version, both fingerprints and that every geometry
-member belongs to an instance of the bundle. Format 1 bundles (without the fields above) are still imported.
+member belongs to an instance of the bundle. Instances are content-addressed, so imported vehicle parameters are
+restored exactly as exported. Format 1 bundles and format 2 bundles written before the `vehicles` / `emissions`
+sections existed are still imported (their semantic fingerprint has no domain component and verifies unchanged).
+
+Changing an emission parameter (for example the electricity emission factor) is therefore never silent: the
+instance hash, the experiment fingerprint and the semantic fingerprint all change, the bundle records the new value
+with its provenance, and the comparability check reports the difference (below).
 
 The shipped demonstration (`src/move_openlab/demo/`) is such a bundle: two experiments on Paris built from RPC open
 data and OpenStreetMap routing with fixed seeds. Re-running it on any installation reproduces every result exactly
@@ -89,9 +97,14 @@ Each comparison is decided for a claim:
 |---|---|---|
 | Quality | problem differs; a result is infeasible; metric definitions differ without a verified transformation | verified normalisation applied; time budgets differ; same method with different options |
 | Runtime | problem differs; timing definitions differ | environments, time budgets or repetition counts differ |
+| Emissions | problem differs; no emission data on one side; a result is infeasible; emission scope, baseline, unit or CO₂/CO₂e basis differ | vehicle parameter values, the driver-to-vehicle assignment or the riders' baseline vehicle differ |
 
 The only built-in verified normalisation is the positive scaling of one metric (a change of unit). Different methods
-never make a comparison invalid — comparing methods is the purpose of a benchmark.
+never make a comparison invalid — comparing methods is the purpose of a benchmark. The emissions claim never
+restricts the other two: the same scenario studied with other emission factors keeps its objective results directly
+comparable while its emission figures are only comparable with conditions (the reasons are listed under *Why?*).
+Scenarios of two experiments are matched by instance hash, by derivation (controlled variants) or by equal problem
+fingerprint (same optimization problem, other vehicle or emission data).
 
 ## Limits
 

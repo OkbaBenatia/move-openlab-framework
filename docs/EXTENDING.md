@@ -61,10 +61,15 @@ def solve(instance, config):
 
 The result is documented by [`schemas/method-result.schema.json`](../schemas/method-result.schema.json): `decisions`
 and `status` are required; `declared`, `metadata` and `diagnostics` are optional. The experiment owns the scenario,
-objective, validator, metrics and comparison rules: the platform validates the decisions independently and records a
-run as described by [`schemas/run-record.schema.json`](../schemas/run-record.schema.json) (status, objective values
-from the validator, runtime, diagnostics, declared optimality scope, environment). Declared values are compared with
-the validator's, never trusted; an `OPTIMAL` status is a proof only for an exact method on an unpruned instance.
+objective, validator, metrics, vehicles, emission model, baseline and comparison rules: a method proposes decisions
+only and can redefine none of them. The platform validates the decisions independently, derives the domain figures
+(for ride matching: CO₂ under the experiment's scope and baseline, from the vehicles frozen in the instance) and
+records a run as described by [`schemas/run-record.schema.json`](../schemas/run-record.schema.json) (status,
+objective values from the validator, runtime, diagnostics, declared optimality scope, environment, `domain`).
+Declared values are compared with the validator's, never trusted; an `OPTIMAL` status is a proof only for an exact
+method on an unpruned instance. A ride-matching instance exposes the vehicle of each driver (`driver["vehicle"]`)
+and road distances (`direct_m`, pair `to_pickup_m`, `ride_m`, `to_dest_m`) read-only, so a method may *use* them
+(e.g. prefer low-emission matches) without changing how emissions are accounted.
 
 Plugins are off by default. The operator enables them with an approved directory and a mode
 (`MOVE_OPENLAB_PLUGIN_DIR=plugins MOVE_OPENLAB_PLUGIN_MODE=sandbox`); see the [security model](SECURITY_MODEL.md).
@@ -75,6 +80,13 @@ installation: it receives everything it needs through `instance` and `config`. B
 colleague who wants to re-run your method installs the same plugin (same version and code hash) on their side.
 
 ## A problem package
+
+Optional domain figures (the mobility package uses them for emissions): implement `domain_metrics(instance,
+decisions, experiment_config)` (figures derived from validated decisions, or `{"complete": False, "missing": [...]}`
+when data is missing, or `None` when the instance carries none), `domain_descriptor(instance, experiment_config)`
+(what the figures depend on, with a `fingerprint`; compared under the *emissions*-style claim and carried by
+bundles), `aggregate_domain(parts)` and `domain_metric_definitions()`. The core stores, aggregates, fingerprints and
+compares them without interpreting them.
 
 1. Subclass `move_openlab.problem.Problem` and implement the abstract methods: scenario parameters and generation,
    a reserved self-test instance, structural instance checks, the decision schema, the independent validator, the

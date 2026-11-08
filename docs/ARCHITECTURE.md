@@ -31,15 +31,41 @@ flowchart LR
   UI[React web interface<br/>maps · playback · charts] --> API
 ```
 
+## Experimentation core and mobility domain
+
+The code base keeps two layers apart. The **experimentation core** knows experiments, methods, isolated execution,
+jobs, validators, metrics, comparison, semantic comparability, reproducibility, bundles, provenance, workspaces and
+accounts — and never what a vehicle or a tonne of CO₂ is. The **mobility domain** knows areas, road networks,
+routing, trip datasets, participants, vehicles, mobility constraints, emissions and mobility metrics, and plugs into
+the core through the `Problem` interface (including the optional domain-metric hooks) and the dataset-provider
+entry points.
+
+| Layer | Modules |
+|---|---|
+| Core | `problem`, `registry`, `methods`, `plugins`, `worker`, `runner`, `sandbox`, `store`, `bundles`, `method_tools`, `analysis.*`, `comparability.*`, `scoring`, `jobs`, `limits`, `auth`, `api.experiments`, `api.admin`, `api.lab` (workspace summaries), `api.web`; frontend `lab/` (workspace shell, results, compare, A/B, replay, trace), `components/` |
+| Mobility | `geo.*` (areas, OSM networks, routing, scenarios, playback, replay geometry), `datasets.*`, `integrations.rpc`, `mobility.vehicles`, `mobility.emissions` (+ `mobility/presets`), `benchmarks.ride_matching`, `demo`, `api.geo`, `api.areas`, `api.datasets`; frontend `geo/`, `mobility/` (wizard, vehicle editor) |
+
+New domain concepts go under `move_openlab.mobility`; the historical modules stay where they are (no disruptive
+move). The core exposes domain figures only through generic hooks: `Problem.domain_metrics` (figures derived from
+validated decisions, stored in `run["domain"]`), `domain_descriptor` (what they depend on, compared under their own
+claim and carried by bundles), `aggregate_domain` and `domain_metric_definitions`.
+
 ## Web interface
 
-The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Dataset, Experiment; Generate,
-Run, Compare, Replay, Import, Export, Quick Tour), the experiment and its participants on the left, the map in the
-centre (charts for problems without geography), methods, live progress, results and comparability on the right.
-*Run* creates and executes a new experiment, executes a draft, or derives from a locked experiment: a re-execution
-with the same methods, an extension when methods were added. Secondary sections hold the data tools (areas,
-datasets, scenario library, editor, generators), the full experiment records and reports, jobs and administration.
-Every view has a URL (`#/workspace/<id>`, `#/data/<view>`, `#/experiments/<view>`, `#/jobs`, `#/admin`).
+The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Dataset, Experiment grouped by
+category; Generate, Run, Compare, Replay, Import, Export, Quick Tour), the experiment, its participants and vehicles
+on the left, the map in the centre (charts for problems without geography), methods, live progress, results (objective,
+runtime, CO₂ of the selected method), comparability and Trace on the right. **Generate** opens a five-step wizard
+over the map (`frontend/src/mobility/Wizard.tsx`): Area & Data, Participants & Vehicles (generated or placed on the
+map with a route preview), Constraints, Experiment, Review — nothing is stored before *Save Scenario* or *Save &
+Run* (`POST /api/lab/run`: scenario, experiment and execution in one call). *Run* on an existing experiment
+executes a draft, or derives from a locked experiment: a re-execution with the same methods, an extension when
+methods were added. **Compare** opens the table and charts of one experiment or the **A/B workspace**
+(`#/compare/<A>|<B>`, `GET /api/lab/diff`): two maps with synchronised view, one replay clock, compatible metrics and
+the differences between the two solutions. Secondary sections hold the data tools (areas, datasets, scenario
+library, the same wizard), the full experiment records and reports, jobs with their execution timeline, and
+administration. Every view has a URL (`#/workspace/<id>`, `#/compare/<A>|<B>`, `#/data/<view>`,
+`#/experiments/<view>`, `#/jobs`, `#/admin`).
 
 ## Package layout
 
@@ -62,6 +88,7 @@ Every view has a URL (`#/workspace/<id>`, `#/data/<view>`, `#/experiments/<view>
 | `move_openlab.geo` | Road-network profiles, Overpass fetch and graph build, content-addressed store (`osm`), routing and coverage (`network`), workspace areas (`areas`), place-search proxy (`geocode`), scenarios and generators, route playback, replay geometry carried by bundles (`geometry`) |
 | `move_openlab.datasets` | Trip normalisation and validation (`tabular`), CSV and GeoJSON readers, provider registry (`move_openlab.dataset_providers` entry points), workspace dataset store |
 | `move_openlab.integrations` | Public data connectors: `rpc` (RPC carpooling open-data releases, France) |
+| `move_openlab.mobility` | `vehicles` (profiles, documented parameter records, versioned presets with sources, per-workspace store), `emissions` (scopes, baselines, formulas, descriptor and fingerprint, aggregation) |
 | `move_openlab.limits` | Daily quotas and one-at-a-time locks for external services; bounded upload parsing |
 | `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`, `lab` (workspace preferences, demonstration, experiment summaries); request-size limits; single-origin web application |
 | `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment benchmark |
@@ -103,9 +130,22 @@ flowchart LR
   I --> C[Campaign] --> P[Route playback]
 ```
 
-Building an instance snaps every origin and destination to the network, computes the travel times needed by the
-problem and stores them in the instance. Everything downstream (methods, validation, bundles, reproduction) works from
-the instance alone; the network is only needed again to draw road geometry in the playback.
+Building an instance snaps every origin and destination to the network, computes the travel times and distances
+needed by the problem and the emission model, freezes each driver's vehicle profile (and the default vehicle used
+for riders in the baseline) and stores all of it in the instance. Everything downstream (methods, validation,
+emissions, bundles, reproduction) works from the instance alone; the network is only needed again to draw road
+geometry in the playback. Vehicle and emission data are non-binding for the optimization problem: they change the
+instance hash (another experiment) but not the problem fingerprint (same feasible region and objective).
+
+```mermaid
+flowchart LR
+  W[Wizard<br/>area & data · participants & vehicles<br/>constraints · experiment · review] -->|preview, nothing stored| V[(validated scenario)]
+  V -->|Save Scenario| L[Scenario library]
+  V -->|Save & Run| C[Campaign + execution job]
+  C --> R[Runs: decisions, validation, domain figures]
+  R --> E[Emissions<br/>scope · baseline · parameters]
+  E --> Q[Comparability<br/>quality · runtime · emissions]
+```
 
 ### Jobs
 
@@ -115,7 +155,9 @@ state (`running`, `done`, `error`, `cancelled`, `interrupted`), progress and tim
 the history survives restarts; jobs that were running when the server stopped are marked `interrupted`, and campaigns
 left mid-execution return to draft. Cancelling stops the worker process group; runs completed before the
 cancellation are discarded so a campaign is never partially executed. Every run carries a per-stage trace (prepare,
-execute, validate) used for the stage-duration table and the replay in the web interface.
+execute, validate, domain when domain figures exist); the web interface turns the event log into an execution
+timeline (created, queued, preparing, every method run with its stage durations, persistence, completion,
+cancellation, errors) with the raw events under *Technical details*.
 
 ## Data model
 
@@ -128,7 +170,8 @@ execute, validate) used for the stage-duration table and the replay in the web i
 <data>/workspaces/<user>/scenarios/<id>.json    scenario library entry (scenario, provenance, parent, instance hash)
 <data>/workspaces/<user>/areas/<id>.json        named area: box, profile, attached network id
 <data>/workspaces/<user>/datasets/<key>/        uploaded dataset: normalised trips + validation report (no raw file)
-<data>/workspaces/<user>/preferences.json       workspace preferences (tour, last experiment, area) and demo record
+<data>/workspaces/<user>/preferences.json       workspace preferences (tour, last experiment, area, hidden records) and demo record
+<data>/workspaces/<user>/vehicles.json          the researcher's vehicle profiles (versioned; never deleted by the application)
 <data>/workspaces/<user>/geometry/<hash>.json   replay geometry imported with bundles (per workspace)
 <data>/networks/<network_id>/                   road network, provenance, compressed raw Overpass response
 <data>/opendata/rpc/<dataset_key>/              cleaned RPC trips (no identifiers) and ingestion report
@@ -139,8 +182,10 @@ execute, validate) used for the stage-duration table and the replay in the web i
 
 A campaign records: specification (problem, objective, constraints, instance schema, validator and framework
 versions), scenario set (parameters, generator, instance hashes), methods (with code hashes for plugins),
-configuration (repetitions, timeout, time budget, per-method options), runs (decisions, validation, declared values,
-timings, effective configuration), environment, parent link (id, checksum, relation) and checksum.
+configuration (repetitions, timeout, time budget, per-method options, emission scope and baseline), runs (decisions,
+validation, declared values, timings, effective configuration, domain figures such as emissions), environment,
+parent link (id, checksum, relation) and checksum. A ride-matching instance additionally carries, per driver, the
+frozen vehicle profile and, per agent and pair, the road distances the emission model needs.
 
 ## Comparison semantics
 
@@ -157,4 +202,7 @@ objective values; it is not a proof of optimality.
 Semantic comparability decides, per claim, whether two results are directly comparable, conditionally comparable or
 incompatible: a different feasible region, objective or metric definition makes a quality claim incompatible; a
 non-binding change (different file, same problem fingerprint) does not; a different time budget, method option or
-environment qualifies the claim. Positive scaling of a metric is the only built-in verified normalisation.
+environment qualifies the claim. Positive scaling of a metric is the only built-in verified normalisation. The
+emissions claim has its own rules (scope, baseline, units or missing data → incompatible; other parameter values or
+vehicle assignments → conditional) and never affects the quality or runtime verdicts; scenarios of two experiments
+are matched by instance hash, by derivation, or by equal problem fingerprint.
