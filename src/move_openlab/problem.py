@@ -179,6 +179,26 @@ class Problem(ABC):
         validation, ranking or comparability. ``[{"id", "label", "unit", "value", "better"}]``; default none."""
         return []
 
+    # ---------------------------------------------------------------- domain metrics (optional)
+    # Figures a problem's domain derives from validated decisions (never from a method's report), outside the
+    # objective: computed by the platform after validation, stored with the run, aggregated per method, and compared
+    # only under their own comparability claim. The core never interprets them.
+    def domain_metrics(self, instance: dict, decisions: list, experiment_config: dict | None) -> dict | None:
+        """Domain figures of validated decisions, or None when the instance carries no data for them."""
+        return None
+
+    def domain_descriptor(self, instance: dict, experiment_config: dict | None) -> dict | None:
+        """What the domain figures depend on (with a ``fingerprint``), for comparability and bundles; None if none."""
+        return None
+
+    def aggregate_domain(self, parts: list[dict | None]) -> dict | None:
+        """Totals of domain figures over scenarios; None unless every part is complete and compatible."""
+        return None
+
+    def domain_metric_definitions(self) -> list[dict]:
+        """``[{"id", "label", "unit", "better"}]`` of the aggregated domain figures (for tables and charts)."""
+        return []
+
     @abstractmethod
     def problem_components(self, instance: dict, objective_spec_id: str) -> dict:
         """``{"region": ..., "coefficients": ..., "objective": ...}``: the data that define the optimization problem

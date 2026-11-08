@@ -147,8 +147,8 @@ class Jobs:
             return None
         return self.view(job, events)
 
-    def history(self, owner: str, limit: int = 50) -> list[dict]:
-        """Most recent jobs of a user (persisted and in memory), without their event logs."""
+    def history(self, owner: str, limit: int = 50, subject: str | None = None) -> list[dict]:
+        """Most recent jobs of a user (persisted and in memory), without their event logs; optionally one subject."""
         seen: dict[str, dict] = {j["job_id"]: j for j in self._jobs.values() if j["owner"] == owner}
         if self.root and SAFE.match(owner) and (self.root / owner).is_dir():
             for f in (self.root / owner).glob("*.json"):
@@ -157,7 +157,8 @@ class Jobs:
                         seen[f.stem] = json.loads(f.read_text())
                     except (OSError, ValueError):
                         continue
-        jobs = sorted(seen.values(), key=lambda j: j["started_at"], reverse=True)[: max(1, min(limit, 500))]
+        jobs = [j for j in seen.values() if subject is None or j.get("subject") == subject]
+        jobs = sorted(jobs, key=lambda j: j["started_at"], reverse=True)[: max(1, min(limit, 500))]
         return [self.view(j, events=False) for j in jobs]
 
     @staticmethod

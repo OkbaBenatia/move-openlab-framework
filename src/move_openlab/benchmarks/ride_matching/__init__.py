@@ -132,6 +132,23 @@ class RideMatching(Problem):
                 dict(id="mean_detour_s", label="Mean detour per served rider", unit="s", better="lower",
                      value=round(detour / served, 1) if served else None)]
 
+    # vehicle emissions (mobility domain): derived from validated decisions, never from the method's report
+    def domain_metrics(self, instance, decisions, experiment_config):
+        from ...mobility import emissions as E
+        return E.compute(instance, decisions, experiment_config)
+
+    def domain_descriptor(self, instance, experiment_config):
+        from ...mobility import emissions as E
+        return E.descriptor(instance, experiment_config)
+
+    def aggregate_domain(self, parts):
+        from ...mobility import emissions as E
+        return E.aggregate(parts)
+
+    def domain_metric_definitions(self):
+        from ...mobility import emissions as E
+        return list(E.METRICS)
+
     def objective_definitions(self):
         return dict(M.OBJECTIVES)
 

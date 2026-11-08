@@ -1,0 +1,33 @@
+{
+  "id": "electric-car-eu-grid",
+  "name": "Battery-electric car (EU-27 grid factor)",
+  "category": "car",
+  "passenger_capacity": 4,
+  "powertrain": "BEV",
+  "energy": "electricity",
+  "parameters": {
+    "electricity_consumption_kwh_100km": {
+      "value": null,
+      "unit": "kWh/100 km",
+      "notes": "No official EU average electricity consumption of battery-electric cars was found in regulatory sources (the OBFCM reports do not cover them): enter the consumption of the vehicle you study, with its source.",
+      "recorded_at": "2026-11-08"
+    },
+    "electricity_emission_factor_g_per_kwh": {
+      "value": 187.0,
+      "unit": "g/kWh",
+      "basis": "CO2e",
+      "source": "European Environment Agency, indicator ENER038 'Greenhouse gas emission intensity of electricity generation', data file FIG2-291456-ENER038, row EU-27, year 2024 (EEA early estimate)",
+      "source_version": "published 2025-11-06, modified 2026-07-10; data year 2024",
+      "applicability": "EU-27, public electricity generation (generation-based; direct emissions, not life-cycle)",
+      "notes": "2023: 207 g CO2e/kWh; 2022: 258 g CO2e/kWh; 1990: 501 g CO2e/kWh (same data file).",
+      "recorded_at": "2026-11-08"
+    }
+  },
+  "provenance": {
+    "kind": "preset",
+    "preset_id": "electric-car-eu-grid",
+    "preset_version": "2026-11",
+    "notes": "Platform preset: grid factor from the EEA; the consumption must be entered by the researcher."
+  },
+  "version": 1
+}

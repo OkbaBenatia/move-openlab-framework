@@ -41,9 +41,11 @@ def environment_descriptor(env: dict, problem: Problem) -> dict:
 
 
 def cell(problem: Problem, *, experiment_id: str, researcher: str, instance: dict, objective_id: str, evaluation: dict,
-         config: dict, environment: dict, method: dict, runs: list[dict], origin: str, installation_id: str = "") -> dict:
+         config: dict, environment: dict, method: dict, runs: list[dict], origin: str, installation_id: str = "",
+         domain: dict | None = None) -> dict:
     """One comparable unit: one method on one instance, under one configuration and environment, with its runs.
-    Every run is re-validated independently; stored verdicts are never trusted."""
+    Every run is re-validated independently; stored verdicts are never trusted. ``domain`` is the problem's domain
+    descriptor (e.g. the emission configuration the figures depend on), compared under its own claim."""
     vals = [problem.validate(instance, r["decisions"]) for r in runs]
     metrics = [problem.metric_values(v, instance, r["decisions"], evaluation) for v, r in zip(vals, runs)]
     sols = {canonical(problem.canonical_decisions(r["decisions"])) for r in runs}
@@ -60,6 +62,7 @@ def cell(problem: Problem, *, experiment_id: str, researcher: str, instance: dic
         C=config, M=method,
         V=dict(contract=evaluation, fingerprint=evaluation_fingerprint(evaluation)),
         ENV=dict(descriptor=environment, fingerprint=sha256(environment)),
+        E=domain,
         R=dict(repetitions=len(runs), feasible=bool(vals) and all(v["feasible"] for v in vals),
                canonical_metrics=vals[0]["metrics"] if vals else None, metrics=metrics[0] if metrics else None,
                repetitions_identical=len(sols) == 1, statuses=statuses,

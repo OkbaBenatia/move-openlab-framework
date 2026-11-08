@@ -112,10 +112,12 @@ class IsolationRefused(ContractError):
 
 
 def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, timeout_s: float = 120.0,
-             python: str | None = None, sandbox: SandboxSpec | None = None, cancel=None) -> dict:
+             python: str | None = None, sandbox: SandboxSpec | None = None, cancel=None,
+             experiment_config: dict | None = None) -> dict:
     """Execute one method on one instance. Built-in methods run in an isolated process. A plugin must carry an explicit
     ``isolation``: ``"sandbox"`` (requires ``sandbox`` and a successful isolation verification, otherwise the run is
-    refused) or ``"process"`` (trusted-process mode, decided by the installation's administrator)."""
+    refused) or ``"process"`` (trusted-process mode, decided by the installation's administrator).
+    ``experiment_config`` (the campaign configuration) reaches only the problem's domain metrics, never the method."""
     trace, t_stage = [], time.perf_counter()
 
     def stage(name: str, detail: str = "") -> None:
@@ -173,4 +175,8 @@ def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, t
                effective_config=reply.get("effective_config"), method_metadata=md,
                diagnostics=(out.get("diagnostics") if isinstance(out, dict) else None) or {})
     stage("validate", "independent validation: " + ("feasible" if val["feasible"] else f"{len(val['errors'])} error(s)"))
+    dom = problem.domain_metrics(instance, rec["decisions"], experiment_config) if rec["accepted"] else None
+    if dom is not None:                                        # domain figures from validated decisions only
+        rec["domain"] = dom
+        stage("domain", "domain metrics " + ("computed" if dom.get("complete") else "incomplete: " + ", ".join(dom.get("missing", [])[:3])))
     return rec

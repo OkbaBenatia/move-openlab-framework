@@ -21,8 +21,13 @@ Format 2 manifest (format 1 bundles are still imported; they lack the fields mar
   lineage²                 [root, parent, ...] with relations
   methods                  id, version, source, plugin code hash; ² configuration per campaign
   environment_requirements, environments²   requirements and the recorded execution environments
-  fingerprints²            experiment fingerprint (what was run) and semantic fingerprint (which problem)
+  vehicles³                every vehicle profile frozen in the instances (parameters, units, provenance)
+  emissions³               emission configuration per campaign (scope, baseline) and the domain descriptors
+  fingerprints²            experiment fingerprint (what was run) and semantic fingerprint (which problem; ³ plus
+                           the domain descriptors when the instances carry vehicle data)
   files                    SHA-256 of every other member
+
+³ added in a later format-2 revision; absent from older format-2 bundles, which keep verifying identically.
 
 Verification refuses, before anything is written: unknown formats, unlisted or missing members, any digest mismatch,
 unsafe names, oversized archives, instances failing the problem's checks, campaigns failing their checksum, broken
@@ -66,10 +71,28 @@ def experiment_fingerprint(chain: list[dict]) -> str:
                         config=c["config"]) for c in chain])
 
 
-def semantic_fingerprint(problem: Problem, instances: list[dict]) -> str:
-    """Which optimization problem: the problem fingerprints of the instances and the evaluation contract."""
-    fps = sorted(problem_fingerprint(problem, i, problem.objective_spec_id)["problem"] for i in instances)
-    return sha256(dict(problems=fps, evaluation=evaluation_fingerprint(problem.evaluation_contract())))
+def domain_descriptors(problem: Problem, instances: dict[str, dict], chain: list[dict]) -> list[dict]:
+    """Domain descriptors (e.g. emission configuration) of every campaign x instance that carries one."""
+    out = []
+    for c in chain:
+        for h in c["scenario_set"]["instance_hashes"]:
+            d = problem.domain_descriptor(instances[h], c["config"])
+            if d:
+                out.append(dict(campaign_id=c["campaign_id"], instance_hash=h,
+                                **{k: d.get(k) for k in ("scope", "baseline", "unit", "basis", "fingerprint")}))
+    return out
+
+
+def semantic_fingerprint(problem: Problem, instances: dict[str, dict], chain: list[dict]) -> str:
+    """Which optimization problem: the problem fingerprints of the instances and the evaluation contract — plus, when
+    the instances carry domain data (vehicles, emission parameters), the domain descriptors of every campaign.
+    Bundles without domain data keep the fingerprint they had before the domain component existed."""
+    fps = sorted(problem_fingerprint(problem, i, problem.objective_spec_id)["problem"] for i in instances.values())
+    d = dict(problems=fps, evaluation=evaluation_fingerprint(problem.evaluation_contract()))
+    dom = sorted({x["fingerprint"] for x in domain_descriptors(problem, instances, chain)})
+    if dom:
+        d["domain"] = dom
+    return sha256(d)
 
 
 def _scenario_entry(inst: dict) -> dict:
@@ -82,7 +105,21 @@ def _scenario_entry(inst: dict) -> dict:
     for k in ("drivers", "riders", "pairs"):
         if isinstance(inst.get(k), list):
             out[k] = len(inst[k])
+    vehicles = sorted({d["vehicle"]["id"] for d in inst.get("drivers", []) if isinstance(d.get("vehicle"), dict)})
+    if vehicles:
+        out["vehicles"] = vehicles
     return {k: v for k, v in out.items() if v is not None}
+
+
+def _vehicle_profiles(instances: dict[str, dict]) -> list[dict]:
+    """Every distinct vehicle profile frozen in the instances (values, units and provenance as recorded)."""
+    seen: dict[str, dict] = {}
+    for inst in instances.values():
+        default = (inst.get("vehicles") or {}).get("default")
+        for p in [d.get("vehicle") for d in inst.get("drivers", [])] + [default]:
+            if isinstance(p, dict):
+                seen.setdefault(sha256(p), p)
+    return [seen[k] for k in sorted(seen)]
 
 
 def _network_ref(network_store, nid: str) -> dict:
@@ -157,8 +194,13 @@ def export(ws, cid: str) -> tuple[bytes, dict]:
                                       note="methods are resolved from trusted local installations by id, version and "
                                            "code hash; the bundle contains no executable code"),
         environments=[dict(campaign_id=c["campaign_id"], environment=c.get("environment")) for c in chain],
-        fingerprints=dict(experiment=experiment_fingerprint(chain),
-                          semantic=semantic_fingerprint(problem, [instances[h] for h in hashes])),
+        vehicles=_vehicle_profiles(instances),
+        emissions=dict(configurations=[dict(campaign_id=c["campaign_id"], **c["config"]["emissions"]) for c in chain
+                                       if c["config"].get("emissions")],
+                       descriptors=domain_descriptors(problem, instances, chain),
+                       note="editable parameters and their provenance are frozen inside the instances (drivers' "
+                            "vehicle and vehicles.default); figures are recomputed from validated decisions"),
+        fingerprints=dict(experiment=experiment_fingerprint(chain), semantic=semantic_fingerprint(problem, instances, chain)),
         files={k: sha256_bytes(v) for k, v in sorted(files.items())})
     mbytes = canonical(manifest)
     buf = io.BytesIO()
@@ -266,8 +308,7 @@ def _verify(ws, data: bytes):
             raise IntegrityError(f"lineage of {c['campaign_id']} is incomplete or inconsistent in the bundle")
     fingerprints = None
     if fmt == FORMAT_V2:
-        fingerprints = dict(experiment=experiment_fingerprint(chain),
-                            semantic=semantic_fingerprint(problem, [instances[h] for h in man["instances"]]))
+        fingerprints = dict(experiment=experiment_fingerprint(chain), semantic=semantic_fingerprint(problem, instances, chain))
         if man.get("fingerprints") != fingerprints:
             raise IntegrityError("experiment or semantic fingerprint differs from the recomputed one")
     avail = []

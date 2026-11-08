@@ -39,6 +39,25 @@
     "total_time_s": {"type": ["number", "null"], "description": "Platform wall time of the isolated execution."},
     "isolation": {"enum": ["process", "sandbox"]},
     "trace": {"type": "array", "items": {"type": "object", "required": ["stage", "duration_s"]}},
+    "domain": {
+      "type": ["object", "null"],
+      "description": "Domain figures derived by the platform from the validated decisions (ride matching: emissions under the experiment's scope and baseline). Absent when the problem defines none; complete=false with the missing parameters when data is lacking.",
+      "required": ["complete"],
+      "properties": {
+        "complete": {"type": "boolean"},
+        "scope": {"type": "string"},
+        "baseline": {"type": "string"},
+        "missing": {"type": "array", "items": {"type": "string"}},
+        "basis": {"enum": ["CO2", "CO2e", "mixed"]},
+        "unit": {"type": "string"},
+        "solution_g": {"type": "number"}, "baseline_g": {"type": "number"}, "avoided_g": {"type": "number"},
+        "avoided_pct": {"type": ["number", "null"]}, "per_vehicle_g": {"type": ["number", "null"]},
+        "per_served_request_g": {"type": ["number", "null"]}, "per_passenger_km_g": {"type": ["number", "null"]},
+        "vehicle_km": {"type": "number"}, "baseline_vehicle_km": {"type": "number"}, "passenger_km": {"type": "number"},
+        "served": {"type": "integer"}, "vehicles_used": {"type": "integer"},
+        "parameters": {"type": "object", "description": "Per vehicle profile: the parameter records (value, unit, basis, source, ...) the figures were computed with."}
+      }
+    },
     "installation_id": {"type": "string"},
     "executed_at": {"type": "string", "format": "date-time"},
     "executed_by": {"type": "string"},

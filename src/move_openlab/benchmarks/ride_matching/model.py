@@ -41,12 +41,31 @@ def check_content(inst: dict) -> list[str]:
     direct = {d["id"]: d.get("direct_s") for d in inst["drivers"]}
     win_d = {d["id"]: (d.get("earliest"), d.get("latest")) for d in inst["drivers"]}
     win_r = {r["id"]: (r.get("earliest"), r.get("latest")) for r in inst["riders"]}
+    def metres(obj: dict, keys: tuple[str, ...], who) -> None:         # optional distances (mobility data)
+        for k in keys:
+            v = obj.get(k)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0):
+                errs.append(f"invalid distance {k} for {who}")
     for a in inst["drivers"] + inst["riders"]:
         e, l = a.get("earliest"), a.get("latest")
         if not (isinstance(e, int) and isinstance(l, int) and 0 <= e <= l):
             errs.append(f"invalid time window for {a.get('id')}")
         if not (isinstance(a.get("direct_s"), int) and a["direct_s"] >= 0):
             errs.append(f"invalid direct travel time for {a.get('id')}")
+        metres(a, ("direct_m",), a.get("id"))
+    for d in inst["drivers"]:
+        if d.get("vehicle") is not None:
+            try:
+                from ...mobility.vehicles import validate_profile
+                validate_profile(d["vehicle"])
+            except ValueError as e:
+                errs.append(f"invalid vehicle for {d.get('id')}: {e}")
+    if inst.get("emissions") is not None:
+        try:
+            from ...mobility.emissions import validate_config
+            validate_config(inst["emissions"])
+        except ValueError as e:
+            errs.append(str(e))
     seen = set()
     for p in inst["pairs"]:
         key = (p.get("driver"), p.get("rider"))
@@ -60,6 +79,7 @@ def check_content(inst: dict) -> list[str]:
             errs.append(f"non-integer pair data {key}"); continue
         if p["detour_s"] != p["to_pickup_s"] + p["ride_s"] + p["to_dest_s"] - direct[key[0]] or p["detour_s"] < 0:
             errs.append(f"detour of {key} is inconsistent with its travel times")
+        metres(p, ("to_pickup_m", "ride_m", "to_dest_m"), key)
         lo = max(win_d[key[0]][0] + p["to_pickup_s"], win_r[key[1]][0])
         hi = min(win_d[key[0]][1] + p["to_pickup_s"], win_r[key[1]][1])
         if (lo, hi) != (p["pickup_earliest"], p["pickup_latest"]) or lo > hi:
@@ -183,6 +203,7 @@ def components(inst: dict, objective_id: str) -> dict:
 
 SEMANTIC_KEYS = {"drivers", "riders", "pairs"}
 BOOKKEEPING = {"instance_hash", "instance_id", "derivation", "provenance", "name"}
+MOBILITY_KEYS = {"vehicles", "emissions"}            # vehicle and emission data: never part of the optimization problem
 
 
 def explain(a: dict, b: dict) -> dict:
@@ -200,12 +221,22 @@ def explain(a: dict, b: dict) -> dict:
     if changed:
         dims.append(dict(dimension="detour coefficients", detail=f"{len(changed)} pair detour(s) differ"))
     if not changed and set(pa) == set(pb):
-        other = sorted(k for k in set(a) | set(b) if k not in SEMANTIC_KEYS | BOOKKEEPING and a.get(k) != b.get(k))
+        other = sorted(k for k in set(a) | set(b) if k not in SEMANTIC_KEYS | BOOKKEEPING | MOBILITY_KEYS
+                       and a.get(k) != b.get(k))
         if other:
             nonbinding.append(dict(dimension="non-semantic or non-binding data", detail=f"field(s) {other} differ"))
+        if any(a.get(k) != b.get(k) for k in MOBILITY_KEYS):
+            nonbinding.append(dict(dimension="vehicle or emission data",
+                                   detail="differs; it does not change the optimization problem (emissions are compared "
+                                          "under their own claim)"))
+        strip = lambda x: {k: v for k, v in x.items() if k != "vehicle"}          # noqa: E731
         geo = [x["id"] for x in a["drivers"] + a["riders"]
-               if x != next((y for y in b["drivers"] + b["riders"] if y["id"] == x["id"]), x)]
+               if strip(x) != strip(next((y for y in b["drivers"] + b["riders"] if y["id"] == x["id"]), x))]
+        veh = [x["id"] for x in a["drivers"] if x.get("vehicle") != next((y.get("vehicle") for y in b["drivers"]
+                                                                          if y["id"] == x["id"]), x.get("vehicle"))]
         if geo:
             nonbinding.append(dict(dimension="agent attributes",
                                    detail=f"{len(geo)} agent(s) differ without changing compatible pairs or detours"))
+        if veh:
+            nonbinding.append(dict(dimension="vehicle assignment", detail=f"{len(veh)} driver(s) have another vehicle"))
     return dict(dimensions=dims, nonbinding=nonbinding)

@@ -10,10 +10,17 @@
 ``evidence``        fingerprints and component-level differences (machine-readable)
 
 Claims
-  ``quality``  "method M2 obtains a better / equal / worse objective than M1 on the same optimization problem"
-  ``runtime``  "method M2 is faster / slower than M1 on the same optimization problem"
+  ``quality``    "method M2 obtains a better / equal / worse objective than M1 on the same optimization problem"
+  ``runtime``    "method M2 is faster / slower than M1 on the same optimization problem"
+  ``emissions``  "the solution of M2 emits more / less than the solution of M1" — domain figures the platform derives
+                 from validated decisions under a declared scope, baseline and set of vehicle parameters
 
 Rules (the final status is the most restrictive one)
+  emissions problem fingerprint differs                                                 -> INCOMPATIBLE
+            no emission data on one side, or an infeasible result                       -> INCOMPATIBLE
+            scope, baseline, unit or CO2/CO2e basis differ                              -> INCOMPATIBLE
+            parameter values, vehicle assignment or riders' vehicle differ              -> CONDITIONAL
+            (quality and runtime are never affected by emission differences)
   quality   problem fingerprint differs (region, coefficients or objective)            -> INCOMPATIBLE
             invalid or infeasible result                                                -> INCOMPATIBLE
             evaluation contract differs and no verified transformation exists          -> INCOMPATIBLE
@@ -34,8 +41,9 @@ from ..problem import Problem
 
 DIRECT, CONDITIONAL, INCOMPATIBLE = "DIRECT", "CONDITIONAL", "INCOMPATIBLE"
 ORDER = {DIRECT: 0, CONDITIONAL: 1, INCOMPATIBLE: 2}
-CLAIMS = ("quality", "runtime")
-CONTRACT_VERSION = "move-openlab-comparability/1.0.0"
+CLAIMS = ("quality", "runtime", "emissions")
+CONTRACT_VERSION = "move-openlab-comparability/1.1.0"
+HARD_DOMAIN_KEYS = ("scope", "baseline", "unit", "basis")
 
 # Verified transformations between evaluation contracts. Each states its proof; nothing else is normalised.
 VERIFIED_TRANSFORMS = {
@@ -107,17 +115,58 @@ def env_differences(e1: dict, e2: dict) -> list[str]:
     return [k for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
 
 
+def domain_differences(e1: dict, e2: dict) -> dict:
+    """Differences between the two domain descriptors (``E``): ``hard`` keys make the figures incomparable, ``soft``
+    ones (parameter values, assignment) qualify the comparison."""
+    d1, d2 = e1.get("E"), e2.get("E")
+    if d1 is None or d2 is None:
+        return dict(applicable=False, identical=False, hard=[], soft=[],
+                    missing=[s for s, d in (("reference", d1), ("candidate", d2)) if d is None])
+    if d1["fingerprint"] == d2["fingerprint"]:
+        return dict(applicable=True, identical=True, hard=[], soft=[], missing=[])
+    hard = [f"{k}: {d1.get(k)} vs {d2.get(k)}" for k in HARD_DOMAIN_KEYS if d1.get(k) != d2.get(k)]
+    soft = []
+    p1, p2 = d1.get("profiles") or {}, d2.get("profiles") or {}
+    changed = sorted(k for k in set(p1) | set(p2) if p1.get(k) != p2.get(k))
+    if changed:
+        soft.append("vehicle parameters differ for " + ", ".join(changed[:5]))
+    if d1.get("assignment") != d2.get("assignment"):
+        soft.append("driver-to-vehicle assignment differs")
+    if d1.get("rider_vehicle") != d2.get("rider_vehicle"):
+        soft.append("the riders' baseline vehicle differs")
+    if not hard and not soft:
+        soft.append("emission configuration differs")
+    return dict(applicable=True, identical=False, hard=hard, soft=soft, missing=[])
+
+
 def check(problem: Problem, e1: dict, e2: dict, claim: str) -> dict:
     if claim not in CLAIMS:
         raise ValueError(f"unknown claim {claim!r}")
     pd, ed = problem_differences(problem, e1, e2), evaluation_differences(e1, e2)
     cd, envd = config_differences(e1, e2), env_differences(e1, e2)
+    dd = domain_differences(e1, e2)
     status, incompatible, qual, notes, norm = DIRECT, [], [], [], None
     notes += [f"{n['dimension']}: {n['detail']}" for n in pd["nonbinding"]]
     if not pd["identical"]:
         status = INCOMPATIBLE
         incompatible += [f"{d['dimension']}: {d['detail']}" for d in pd["dimensions"]]
-    if claim == "quality":
+    if claim == "emissions":
+        if not dd["applicable"]:
+            status = INCOMPATIBLE
+            incompatible.append(f"no emission data on the {' and '.join(dd['missing'])} side")
+        else:
+            if not (e1["R"]["feasible"] and e2["R"]["feasible"]):
+                status = INCOMPATIBLE
+                incompatible.append("result validity: at least one result is infeasible")
+            if dd["hard"]:
+                status = INCOMPATIBLE
+                incompatible += [f"emission {h}" for h in dd["hard"]]
+            if dd["soft"]:
+                status = _worst(status, CONDITIONAL)
+                qual += [f"{s}: emission figures are compared under different assumptions" for s in dd["soft"]]
+            if dd["identical"]:
+                notes.append("identical emission scope, baseline, vehicles and parameters")
+    elif claim == "quality":
         if not (e1["R"]["feasible"] and e2["R"]["feasible"]):
             status = INCOMPATIBLE
             incompatible.append("result validity: at least one result is infeasible")
@@ -154,7 +203,8 @@ def check(problem: Problem, e1: dict, e2: dict, claim: str) -> dict:
         if not ed["identical"] and ed["timing_identical"]:
             notes.append(f"metric definitions differ in {ed['fields']}: irrelevant to a runtime claim")
     supported = {"quality": "objective-quality comparison" + (" after normalisation" if norm else ""),
-                 "runtime": "runtime comparison"}[claim]
+                 "runtime": "runtime comparison",
+                 "emissions": "emission comparison under one scope and baseline"}[claim]
     return dict(contract=CONTRACT_VERSION, claim=claim, status=status, incompatible=incompatible, qualifications=qual,
                 notes=notes, normalization=dict(VERIFIED_TRANSFORMS[norm], name=norm, metric=ed["metric"]) if norm else None,
                 supported_comparison=None if status == INCOMPATIBLE else supported,
@@ -165,6 +215,7 @@ def check(problem: Problem, e1: dict, e2: dict, claim: str) -> dict:
                                               for k in ("region", "coefficients", "objective")},
                     evaluation_fingerprint_equal=ed["identical"], evaluation_fields_different=ed["fields"],
                     environment_fingerprint_equal=not envd, environment_fields_different=envd,
+                    domain=dict(applicable=dd["applicable"], identical=dd["identical"], hard=dd["hard"], soft=dd["soft"]),
                     config=dict(cd, budgets=list(cd["budgets"])), methods=[e1["M"]["method_id"], e2["M"]["method_id"]]))
 
 

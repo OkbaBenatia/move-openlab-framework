@@ -361,13 +361,22 @@ class Workspace:
 
     # ------------------------------------------------------------------ creation and execution
     def create_campaign(self, problem_id: str, title: str, scenario_params: dict, methods: list[tuple[str, str]],
-                        repetitions: int = 3, timeout_s: float = 120.0, time_budget_s: float | None = None) -> dict:
+                        repetitions: int = 3, timeout_s: float = 120.0, time_budget_s: float | None = None,
+                        emissions: dict | None = None) -> dict:
+        """``emissions`` (optional ``{scope, baseline}``) is experiment configuration: it is recorded in ``config``,
+        hence in the experiment fingerprint, and reaches only the problem's domain metrics."""
         try:
             problem = registry.get(problem_id)
         except registry.UnknownProblem as e:
             raise NotFound(str(e)) from None
         if not 1 <= int(repetitions) <= 20 or not 1 <= float(timeout_s) <= 3600:
             raise BenchError("repetitions must be 1-20 and timeout 1-3600 s")
+        if emissions is not None:
+            from .mobility.emissions import validate_config
+            try:
+                emissions = validate_config(emissions)
+            except ValueError as e:
+                raise BenchError(str(e)) from None
         if not methods:
             raise BenchError("select at least one method")
         params = scenario_params or {}
@@ -395,7 +404,8 @@ class Workspace:
         c = self._new(problem, title, "baseline",
                       dict(meta, instance_hashes=hashes, instance_ids=[i["instance_id"] for i in instances]), refs,
                       dict(repetitions=int(repetitions), timeout_s=float(timeout_s), time_budget_s=budget,
-                           order="repetition > instance > method", method_configs={r["method_id"]: {} for r in refs}),
+                           order="repetition > instance > method", method_configs={r["method_id"]: {} for r in refs},
+                           **(dict(emissions=emissions) if emissions else {})),
                       None)
         self._save(c)
         return c
@@ -430,7 +440,8 @@ class Workspace:
                             from .runner import Cancelled
                             raise Cancelled("campaign execution cancelled")
                         r = run_once(problem, ref, inst, c["config"]["method_configs"].get(m["method_id"], {}),
-                                     c["config"]["timeout_s"], sandbox=self.inst.sandbox_spec, cancel=cancel)
+                                     c["config"]["timeout_s"], sandbox=self.inst.sandbox_spec, cancel=cancel,
+                                     experiment_config=c["config"])
                         if event:
                             event("run", f"{inst['instance_id']} · {m['method_id']} · rep {rep}: "
                                          + ("accepted" if r["accepted"] else "rejected"),

@@ -24,7 +24,8 @@ def _cells(ws, problem, c: dict) -> dict:
                      researcher=c["owner_display"], instance=inst, objective_id=c["spec"]["objective_spec_id"],
                      evaluation=evaluation, config=dict(time_budget_s=budget, repetitions=len(rs), method_options=opts),
                      environment=env, method=dict(method_id=m["method_id"], version=m["version"], kind=m.get("kind")),
-                     runs=rs, origin=c["campaign_id"], installation_id=c["installation_id"])
+                     runs=rs, origin=c["campaign_id"], installation_id=c["installation_id"],
+                     domain=problem.domain_descriptor(inst, c["config"]))
             parent_hash = (inst.get("derivation") or {}).get("parent_instance_hash", h)
             out[(parent_hash, m["method_id"])] = e
     return out
@@ -41,10 +42,16 @@ def semantic_compare(ws, reference_id: str, candidate_id: str) -> dict:
         raise BenchError("both campaigns must have executed runs")
     ref_mid = problem.reference_method[0]
     rc, cc = _cells(ws, problem, ref), _cells(ws, problem, cand)
+    # a candidate scenario that is not the reference's instance (nor derived from it) still maps to a reference
+    # scenario when it is the same optimization problem (equal problem fingerprint): e.g. the same participants and
+    # travel times with other vehicle or emission data
+    by_fp: dict[str, str] = {}
+    for (ph, _mid), e in rc.items():
+        by_fp.setdefault(e["P"]["fingerprint"]["problem"], ph)
     rows, summary = [], {cl: dict(DIRECT=0, CONDITIONAL=0, INCOMPATIBLE=0) for cl in CLAIMS}
     items = list(cc.items()) + ([] if reference_id == candidate_id else [(k, v) for k, v in rc.items() if k[1] != ref_mid])
     for (ph, mid), e2 in sorted(items, key=lambda kv: (kv[0], kv[1]["origin"] != reference_id)):
-        e1 = rc.get((ph, ref_mid))
+        e1 = rc.get((ph, ref_mid)) or rc.get((by_fp.get(e2["P"]["fingerprint"]["problem"], ""), ref_mid))
         if e1 is None:
             continue
         dec = {cl: check(problem, e1, e2, cl) for cl in CLAIMS}
@@ -61,7 +68,9 @@ def semantic_compare(ws, reference_id: str, candidate_id: str) -> dict:
                          problem_fingerprint=dict(reference=e1["P"]["fingerprint"]["problem"][:12],
                                                   candidate=e2["P"]["fingerprint"]["problem"][:12]),
                          quality={k: dec["quality"][k] for k in ("status", "incompatible", "qualifications", "notes")},
-                         runtime={k: dec["runtime"][k] for k in ("status", "incompatible", "qualifications", "notes")}))
+                         runtime={k: dec["runtime"][k] for k in ("status", "incompatible", "qualifications", "notes")},
+                         emissions={k: dec["emissions"][k] for k in ("status", "incompatible", "qualifications", "notes")},
+                         emissions_applicable=e1.get("E") is not None or e2.get("E") is not None))
     if not rows:
         raise BenchError("no scenario of the candidate maps to a scenario of the reference")
     return dict(reference=dict(campaign_id=ref["campaign_id"], title=ref["title"], researcher=ref["owner_display"],

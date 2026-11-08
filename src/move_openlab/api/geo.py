@@ -104,6 +104,14 @@ def route(network_id: str, a: str, b: str, request: Request):
     net = network(request, network_id)
     try:
         (ua, da), (ub, db) = net.snap(*_pt(a)), net.snap(*_pt(b))
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from None
+    if ua == ub:                                       # a one-point "route" would draw nothing: refuse it explicitly
+        raise HTTPException(400, "origin and destination snap to the same road node: place them further apart")
+    for what, dist in (("origin", da), ("destination", db)):   # the same limit as scenarios: no route from off-network points
+        if dist > SC.MAX_SNAP_M:
+            raise HTTPException(400, f"{what} is {dist:.0f} m from the road network (limit {SC.MAX_SNAP_M:.0f} m)")
+    try:
         r = net.route(ua, ub)
     except ValueError as e:
         raise HTTPException(404, str(e)) from None
@@ -128,25 +136,119 @@ def _build_and_save(request: Request, scenario: dict, parent: str | None = None)
     return dict(rec, summary=SC.summary(inst))
 
 
+class ComposeBody(BaseModel):
+    """A scenario described by its source: regenerated deterministically from a seed (synthetic, dataset) or given
+    explicitly (manual). Vehicles and emissions are optional mobility data (see ``mobility``)."""
+    source: str = Field(pattern="^(synthetic|dataset|manual)$")
+    network_id: str = Field(min_length=8, max_length=64)
+    name: str = Field("New scenario", min_length=3, max_length=120)
+    n_drivers: int = Field(10, ge=1, le=100)
+    n_riders: int = Field(15, ge=1, le=100)
+    seed: int = Field(1, ge=0, le=1_000_000)
+    start_s: int = Field(25200, ge=0, le=172800)
+    end_s: int = Field(32400, ge=1, le=172800)
+    params: dict | None = None
+    min_trip_m: float = Field(1500.0, ge=200, le=50_000)
+    dataset_key: str | None = Field(None, max_length=120)
+    date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    drivers: list[dict] | None = Field(None, max_length=200)
+    riders: list[dict] | None = Field(None, max_length=200)
+    vehicles: dict | None = None
+    emissions: dict | None = None
+
+
 class ScenarioBody(BaseModel):
     scenario: dict
     parent: str | None = None
+    basis: ComposeBody | None = None            # the composition a wizard scenario started from (keeps its provenance)
+
+
+def _trips_inside(request: Request, net, key: str) -> tuple[list[dict], dict]:
+    trips, rep = load_dataset(request, key)
+    s, w, n, e = net.bounds()
+    inside = [t for t in trips if s <= t["start_lat"] <= n and w <= t["start_lon"] <= e
+              and s <= t["end_lat"] <= n and w <= t["end_lon"] <= e]
+    if not inside:
+        raise HTTPException(400, "no trip of this dataset lies inside the road network's area; choose the matching "
+                                 "area or dataset")
+    return inside, rep
+
+
+def _compose(request: Request, b: ComposeBody) -> dict:
+    """The (unsaved) scenario a composition yields."""
+    net = network(request, b.network_id)
+    try:
+        if b.source == "synthetic":
+            sc = SC.generate_synthetic(net, b.name, b.n_drivers, b.n_riders, b.seed, b.start_s, b.end_s, b.params, b.min_trip_m)
+        elif b.source == "dataset":
+            if not b.dataset_key:
+                raise HTTPException(400, "dataset_key is required")
+            inside, rep = _trips_inside(request, net, b.dataset_key)
+            sc = SC.generate_empirical(inside, rep, b.network_id, b.name, b.n_drivers, b.n_riders, b.seed, b.start_s,
+                                       b.end_s, b.params, b.date)
+        else:
+            sc = dict(name=b.name, network_id=b.network_id, params=b.params or dict(SC.DEFAULT_PARAMS),
+                      drivers=b.drivers or [], riders=b.riders or [], provenance=dict(source="editor"))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    if b.vehicles:
+        sc["vehicles"] = b.vehicles
+    if b.emissions:
+        sc["emissions"] = b.emissions
+    return sc
+
+
+def _edited_agents(base: dict, sc: dict) -> list[str]:
+    """Ids whose place or window differ between the composed scenario and the one being saved (added or removed too)."""
+    keys = ("origin", "destination", "earliest", "latest")
+    out = []
+    for role in ("drivers", "riders"):
+        ref = {a["id"]: a for a in base.get(role) or []}
+        cur = {str(a.get("id")): a for a in sc.get(role) or []}
+        out += [i for i in sorted(set(ref) ^ set(cur))]
+        out += [i for i in sorted(set(ref) & set(cur)) if any(ref[i].get(k) != cur[i].get(k) for k in keys)]
+    return out
 
 
 @router.get("/scenarios")
 def scenarios(request: Request):
-    return dict(scenarios=ws(request).scenarios(RIDE))
+    out = ws(request).scenarios(RIDE)
+    for s in out:
+        s["category"] = "Edited" if s.get("parent") else "Generated"
+    return dict(scenarios=out)
 
 
 @router.post("/scenarios")
 def save_scenario(body: ScenarioBody, request: Request):
-    """Scenarios saved from the editor. Provenance is set here, never taken from the client: an edited version records
-    its parent and keeps the parent's provenance (generator seed, open-data release, licence and attribution)."""
+    """Scenarios saved from the wizard. Provenance is set here, never taken from the client: a scenario composed from
+    a generator or a dataset keeps that provenance (seed, release, licence, attribution) plus the list of agents the
+    researcher edited; an edited version records its parent and keeps the parent's provenance."""
     prov: dict = dict(source="editor")
+    if body.basis is not None and body.basis.source != "manual":
+        base = _compose(request, body.basis)
+        prov = dict(base["provenance"])
+        edited = _edited_agents(base, body.scenario)
+        if edited:
+            prov.update(edited_agents=edited[:50], edited_in="wizard")
     if body.parent:
         parent = _call(ws(request).scenario, body.parent)
         prov.update(parent=body.parent, derived_from=parent["scenario"].get("provenance") or dict(source="editor"))
     return _build_and_save(request, dict(body.scenario, provenance=prov), body.parent)
+
+
+@router.post("/scenarios/preview")
+def preview(body: ComposeBody, request: Request):
+    """What a composition yields (participants, compatible pairs, snapping) — nothing is stored."""
+    sc = _compose(request, body)
+    try:
+        sc = SC.validate_scenario(sc)
+        inst = SC.build_instance(sc, network(request, sc["network_id"]), store(request).provenance(sc["network_id"]), "preview")
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    agents = [dict(id=a["id"], role=role, direct_s=a["direct_s"], direct_m=a["direct_m"], snap_m=a["snap_m"],
+                   vehicle=(a.get("vehicle") or {}).get("id"))
+              for role in ("drivers", "riders") for a in inst[role]]
+    return dict(scenario=sc, summary=SC.summary(inst), agents=agents, riders_with_option=SC.summary(inst)["riders_with_option"])
 
 
 class GenerateBody(BaseModel):
@@ -190,13 +292,7 @@ def load_dataset(request: Request, key: str) -> tuple[list[dict], dict]:
 @router.post("/scenarios/from-dataset")
 def from_dataset(body: DatasetScenarioBody, request: Request):
     net = network(request, body.network_id)
-    trips, rep = load_dataset(request, body.dataset_key)
-    s, w, n, e = net.bounds()
-    inside = [t for t in trips if s <= t["start_lat"] <= n and w <= t["start_lon"] <= e
-              and s <= t["end_lat"] <= n and w <= t["end_lon"] <= e]
-    if not inside:
-        raise HTTPException(400, "no trip of this dataset lies inside the road network's area; choose the matching "
-                                 "area or dataset")
+    inside, rep = _trips_inside(request, net, body.dataset_key)
     try:
         sc = SC.generate_empirical(inside, rep, body.network_id, body.name, body.n_drivers, body.n_riders, body.seed,
                                    body.start_s, body.end_s, body.params, body.date)

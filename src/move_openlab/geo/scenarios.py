@@ -5,12 +5,15 @@ Scenario (editor format)::
     {"name": str, "network_id": str, "params": {"max_detour_s": int, "max_detour_ratio": float},
      "drivers": [{"id", "origin": [lat, lon], "destination": [lat, lon], "earliest": s, "latest": s}],
      "riders":  [{"id", "origin": [lat, lon], "destination": [lat, lon], "earliest": s, "latest": s}],
+     "vehicles"?: {"profiles": [...], "default": id, "assignments": {driver_id: id}}   (mobility.vehicles)
+     "emissions"?: {"scope": ..., "baseline": ...}                                      (mobility.emissions)
      "provenance": {"source": "editor" | "generator" | "open-data", ...}}
 
 Times are seconds since midnight. For drivers the window is the departure window; for riders it is the pickup window.
 Building an instance snaps every point to the nearest road node (refused beyond ``MAX_SNAP_M``), computes free-flow
-travel times on the network, and keeps every driver–rider pair whose detour respects both limits and whose pickup
-window is non-empty. All times are stored in the instance, so it can be validated without the network.
+travel times and distances on the network, and keeps every driver–rider pair whose detour respects both limits and
+whose pickup window is non-empty. All times and distances are stored in the instance, so it can be validated and
+its emissions computed without the network; each driver's vehicle profile is frozen inside the instance.
 
 Three ways to create scenarios:
 * the map editor (points placed by the researcher);
@@ -73,8 +76,40 @@ def validate_scenario(sc: dict) -> dict:
         raise ValueError("a scenario needs at least one driver and one rider")
     if len(ids) > MAX_AGENTS:
         raise ValueError(f"at most {MAX_AGENTS} agents per scenario")
-    return dict(name=name, network_id=str(sc.get("network_id", "")), params=params, drivers=agents["drivers"],
-                riders=agents["riders"], provenance=sc.get("provenance") or dict(source="editor"))
+    out = dict(name=name, network_id=str(sc.get("network_id", "")), params=params, drivers=agents["drivers"],
+               riders=agents["riders"], provenance=sc.get("provenance") or dict(source="editor"))
+    if sc.get("vehicles"):
+        out["vehicles"] = validate_vehicles(sc["vehicles"], [d["id"] for d in agents["drivers"]])
+    if sc.get("emissions"):
+        from ..mobility.emissions import validate_config
+        out["emissions"] = validate_config(sc["emissions"])
+    return out
+
+
+def validate_vehicles(v, driver_ids: list[str]) -> dict:
+    """``{"profiles": [...], "default": id, "assignments": {driver: id}}``: the default profile is every driver's
+    vehicle unless assigned otherwise, and the riders' vehicle in the everyone-drives-alone baseline."""
+    from ..mobility.vehicles import validate_profile
+    if not isinstance(v, dict) or not isinstance(v.get("profiles"), list) or not v["profiles"]:
+        raise ValueError("vehicles must carry at least one profile")
+    if len(v["profiles"]) > 50:
+        raise ValueError("at most 50 vehicle profiles per scenario")
+    profiles = [validate_profile(p) for p in v["profiles"]]
+    ids = [p["id"] for p in profiles]
+    if len(set(ids)) != len(ids):
+        raise ValueError("vehicle profile ids must be distinct")
+    default = v.get("default") or ids[0]
+    if default not in ids:
+        raise ValueError(f"default vehicle {default!r} is not among the profiles")
+    assignments = v.get("assignments") or {}
+    if not isinstance(assignments, dict):
+        raise ValueError("vehicle assignments must map driver ids to profile ids")
+    for d, pid in assignments.items():
+        if d not in driver_ids:
+            raise ValueError(f"vehicle assigned to unknown driver {d!r}")
+        if pid not in ids:
+            raise ValueError(f"{d}: unknown vehicle profile {pid!r}")
+    return dict(profiles=profiles, default=default, assignments={d: assignments[d] for d in sorted(assignments)})
 
 
 def build_instance(sc: dict, net: RoadNetwork, network_prov: dict, instance_id: str) -> dict:
@@ -86,18 +121,26 @@ def build_instance(sc: dict, net: RoadNetwork, network_prov: dict, instance_id: 
             if d > MAX_SNAP_M:
                 raise ValueError(f"{a['id']}: {k} is {d:.0f} m from the road network (limit {MAX_SNAP_M:.0f} m)")
             nodes[(a["id"], k)] = (n, d)
-    t = {}
+    t: dict[tuple[int, int], tuple[int, float]] = {}
 
-    def tt(u: int, v: int) -> int:
+    def travel(u: int, v: int) -> tuple[int, float]:         # (seconds, metres) of the fastest path
         if (u, v) not in t:
-            t[(u, v)] = int(round(net.travel(u, v)[0]))
+            s, m = net.travel(u, v)
+            t[(u, v)] = (int(round(s)), round(float(m), 1))
         return t[(u, v)]
+    tt = lambda u, v: travel(u, v)[0]                           # noqa: E731
+    tm = lambda u, v: travel(u, v)[1]                           # noqa: E731
+    vehicles = sc.get("vehicles")
+    by_id = {p["id"]: p for p in vehicles["profiles"]} if vehicles else {}
     drivers, riders = [], []
     for role, out in (("drivers", drivers), ("riders", riders)):
         for a in sc[role]:
             o, d = nodes[(a["id"], "origin")], nodes[(a["id"], "destination")]
-            out.append(dict(a, origin_node=net.osm_node_ids[o[0]], destination_node=net.osm_node_ids[d[0]],
-                            snap_m=[o[1], d[1]], direct_s=tt(o[0], d[0])))
+            rec = dict(a, origin_node=net.osm_node_ids[o[0]], destination_node=net.osm_node_ids[d[0]],
+                       snap_m=[o[1], d[1]], direct_s=tt(o[0], d[0]), direct_m=tm(o[0], d[0]))
+            if vehicles and role == "drivers":                   # the vehicle travels frozen inside the instance
+                rec["vehicle"] = by_id[vehicles["assignments"].get(a["id"], vehicles["default"])]
+            out.append(rec)
     p = sc["params"]
     pairs = []
     for dr in drivers:
@@ -111,13 +154,18 @@ def build_instance(sc: dict, net: RoadNetwork, network_prov: dict, instance_id: 
             lo, hi = max(dr["earliest"] + tp, r["earliest"]), min(dr["latest"] + tp, r["latest"])
             if 0 <= detour <= limit and lo <= hi:
                 pairs.append(dict(driver=dr["id"], rider=r["id"], to_pickup_s=tp, ride_s=ride, to_dest_s=td,
-                                  detour_s=detour, pickup_earliest=lo, pickup_latest=hi))
+                                  detour_s=detour, pickup_earliest=lo, pickup_latest=hi,
+                                  to_pickup_m=tm(od, orn), ride_m=r["direct_m"], to_dest_m=tm(drn, dd)))
     inst = dict(schema=M.INSTANCE_SCHEMA, problem_id=M.PROBLEM_ID, problem_spec_version=M.PROBLEM_SPEC_VERSION,
                 instance_id=instance_id, name=sc["name"], params=p,
                 network=dict(network_id=net.network_id, attribution=network_prov["licence"]["attribution"],
                              licence=network_prov["licence"]["id"], osm_timestamp=network_prov["source"].get("osm_timestamp"),
                              travel_model="free-flow travel times from the OSM speed profile"),
                 drivers=drivers, riders=riders, pairs=pairs, provenance=sc["provenance"])
+    if vehicles:
+        inst["vehicles"] = dict(default=by_id[vehicles["default"]])
+    if sc.get("emissions"):
+        inst["emissions"] = sc["emissions"]
     return with_hash(inst)
 
 

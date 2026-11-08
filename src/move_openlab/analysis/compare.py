@@ -104,6 +104,7 @@ def compare(ws, cid: str) -> dict:
             lab = optimality_scope(rs[0], ws.inst.get_instance(h), m.get("kind"))
             scopes[lab] = scopes.get(lab, 0) + 1
         row["optimality_scope"] = scopes
+        row["domain"] = problem.aggregate_domain([rs[0].get("domain") for rs in cells.values()])
         if ref is not None:
             matches, shortfall, gaps, optimal = [0] * len(levels), 0.0, [], 0
             for h, rs in cells.items():
@@ -149,6 +150,7 @@ def compare(ws, cid: str) -> dict:
                 else "NOT REPRODUCED"
     return dict(campaign_id=cid, problem=dict(problem.spec_record(), title=problem.title, synthetic=problem.synthetic),
                 objective=[o.to_dict() for o in levels], metrics=[m.to_dict() for m in problem.metrics],
+                domain_metrics=problem.domain_metric_definitions(),
                 lineage=[dict(campaign_id=c["campaign_id"], kind=c["kind"], owner_display=c["owner_display"],
                               installation_id=c["installation_id"], checksum=c.get("checksum"),
                               relation=(c.get("parent") or {}).get("relation")) for c in chain],

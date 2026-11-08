@@ -55,6 +55,7 @@ class CreateBody(BaseModel):
     repetitions: int = Field(3, ge=1, le=20)
     timeout_s: float = Field(120.0, ge=1, le=3600)
     time_budget_s: float | None = Field(None, gt=0, le=86400)
+    emissions: dict | None = None                  # {scope, baseline}: experiment configuration of the domain metrics
 
 
 class ExtendBody(BaseModel):
@@ -127,7 +128,8 @@ def campaigns(request: Request, problem_id: str | None = None):
 @router.post("/campaigns")
 def create(body: CreateBody, request: Request):
     return _call(ws(request).create_campaign, body.problem_id, body.title, body.scenario_params,
-                 [tuple(m) for m in body.methods], body.repetitions, body.timeout_s, body.time_budget_s)
+                 [tuple(m) for m in body.methods], body.repetitions, body.timeout_s, body.time_budget_s,
+                 emissions=body.emissions)
 
 
 @router.get("/campaigns/{cid}")
@@ -162,8 +164,10 @@ def execute(cid: str, request: Request):
 
 
 @router.get("/jobs")
-def jobs_history(request: Request, limit: int = 50):
-    return dict(jobs=request.app.state.jobs.history(ws(request).user, limit))
+def jobs_history(request: Request, limit: int = 50, campaign: str | None = None):
+    """The user's jobs, newest first; ``campaign`` keeps only the executions of that campaign."""
+    user = ws(request).user
+    return dict(jobs=request.app.state.jobs.history(user, limit, subject=f"{user}/{campaign}" if campaign else None))
 
 
 @router.get("/jobs/{jid}")
