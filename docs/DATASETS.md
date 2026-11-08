@@ -3,6 +3,10 @@
 MOVE OpenLab works for any area covered by OpenStreetMap. An area is defined in the web interface, not in code;
 trip data can come from public open data, from the researcher's own files, or be generated synthetically.
 
+In the workspace, the **Area** selector filters the dataset, scenario and experiment lists to the selected area
+(datasets whose box overlaps it, scenarios and experiments built on its road network); *All areas* shows everything.
+The workspace always states the current *Area · Dataset · Scenario*.
+
 ## Areas and road networks
 
 An **area** is a name, a bounding box and a road-network profile, saved in the researcher's workspace
@@ -106,7 +110,7 @@ size, SHA-256, mapping, rejections) are kept, in the uploader's workspace. Other
 |---|---|
 | Nominatim (place search) | explicit searches only (no auto-complete); at most one request per second for the whole installation; results cached 30 days; identifying User-Agent; attribution shown; switch off with `MOVE_OPENLAB_GEOCODER_URL=off` |
 | Overpass API (road networks) | one query per download; one download at a time; bounded area and response size (256 MB); identifying User-Agent |
-| OpenStreetMap tiles | light interactive use with attribution; set `MOVE_OPENLAB_TILE_URL` for any heavier or public deployment |
+| OpenStreetMap tiles | light interactive (development) use with attribution; tile requests carry the page origin as referrer, as the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) requires. A public deployment must use its own or a commercial tile service (`MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_TILE_ATTRIBUTION`) or `MOVE_OPENLAB_TILE_URL=none`. When tiles cannot be loaded the map shows "Basemap unavailable — data still shown" and keeps routes, markers and coverage |
 | data.gouv.fr (RPC) | HTTPS data.gouv.fr hosts only, checked on every redirect; one ingestion at a time |
 
 OpenStreetMap data is © OpenStreetMap contributors under the ODbL; a road network or derived database shared

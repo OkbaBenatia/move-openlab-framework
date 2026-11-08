@@ -10,13 +10,16 @@ import { Datasets } from './Datasets';
 type View = 'areas' | 'datasets' | 'library' | 'editor' | 'generate';
 const CURRENT_KEY = 'move-openlab.area';
 
-export function GeoWorkbench({ setErr, onUseInCampaign }: { setErr: (s: string | null) => void; onUseInCampaign: (hashes: string[]) => void }) {
+const VIEWS: View[] = ['areas', 'datasets', 'library', 'editor', 'generate'];
+
+export function GeoWorkbench({ setErr, onUseInCampaign, initialView, onView }: { setErr: (s: string | null) => void; onUseInCampaign: (hashes: string[]) => void; initialView?: string; onView?: (v: string) => void }) {
   const [cfg, setCfg] = useState<GeoConfig | null>(null);
-  const [view, setView] = useState<View>('library');
+  const [view, setView] = useState<View>(VIEWS.includes(initialView as View) ? (initialView as View) : 'library');
   const [lib, setLib] = useState<Json[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [currentId, setCurrentId] = useState<string>(() => { try { return localStorage.getItem(CURRENT_KEY) ?? ''; } catch { return ''; } });
   const [editing, setEditing] = useState<{ scenario: Scenario; parent?: string } | null>(null);
+  useEffect(() => { if (VIEWS.includes(initialView as View)) setView(initialView as View); }, [initialView]);
   const load = useCallback(() => {
     geo.config().then(setCfg).catch((e) => setErr(errText(e)));
     geo.scenarios().then((r) => setLib(r.scenarios)).catch((e) => setErr(errText(e)));
@@ -37,7 +40,7 @@ export function GeoWorkbench({ setErr, onUseInCampaign }: { setErr: (s: string |
       {current && <span className="small muted">{current.profile} · {num(current.km2, 0)} km²</span>}
     </div>
     <nav className="subtabs" aria-label="geographic sections">{tabs.map(([v, label, Icon]) =>
-      <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setView(v); }}><Icon size={13} /> {label}</button>)}</nav>
+      <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setView(v); onView?.(v); }}><Icon size={13} /> {label}</button>)}</nav>
     {!netReady && (view === 'editor' || view === 'generate') && <p className="note warn">{current ? `No road network for “${current.name}” yet: download it under Areas.` : 'Create an area under Areas first.'}</p>}
     {view === 'areas' && <Areas cfg={cfg} areas={areas} current={current} setCurrent={setCurrent} setErr={setErr} onChanged={load} />}
     {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} />}

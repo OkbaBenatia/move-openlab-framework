@@ -151,3 +151,17 @@ def test_tile_configuration(monkeypatch):
     assert s.tile_url.startswith("https://tiles.example.org/") and "https://tiles.example.org" in csp_for(s.tile_url)
     monkeypatch.delenv("MOVE_OPENLAB_TILE_URL")
     assert Settings.from_env().tile_url.startswith("https://tile.openstreetmap.org/")
+
+
+def test_lab_summary_of_a_reproduction_covers_its_scope(tmp_path):
+    from test_api import wait
+    c = make_client(tmp_path, "lab2")
+    login(c, "alice")
+    root = c.post("/api/lab/demo").json()["root_campaign_id"]
+    r = c.post(f"/api/campaigns/{root}/reproduce").json()
+    wait(c, c.post(f"/api/campaigns/{r['campaign_id']}/execute").json())
+    e = c.get(f"/api/lab/experiments/{r['campaign_id']}").json()
+    assert e["reproduction"]["reproduced"] and e["campaign"]["parent"]["relation"] == "reproduces"
+    assert {x["campaign_id"] for x in e["runs"]} == {root, r["campaign_id"]}          # parent rows can be replayed
+    assert {x["campaign_kind"] for x in e["results"]["rows"]} == {"variant", "reproduction"}
+    assert e["comparability"]["quality"] == "direct"

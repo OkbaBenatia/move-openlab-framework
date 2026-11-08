@@ -108,3 +108,81 @@ input.time { width: 6.5em; font-family: ui-monospace, SFMono-Regular, Menlo, Con
 .hours span { flex: 1; background: var(--accent); opacity: .7; min-height: 1px; }
 details > summary { cursor: pointer; font-weight: 600; margin: 8px 0; }
 .bad:not(.badge) { color: var(--bad); }
+/* Map-first workspace */
+.topbar .sections { border: 0; padding: 0; background: none; flex: 1; }
+.topbar .tab { text-decoration: none; padding: 6px 10px; }
+.app-lab { height: 100vh; min-height: 0; overflow: hidden; }
+.lab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.labbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.labbar .selectors { flex: 1 1 520px; min-width: 0; }
+.labbar .sel { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.labbar .sel span { font-size: 12px; color: var(--muted); }
+.labbar .sel select { min-width: 0; max-width: 260px; }
+.labbar .sel.grow select { max-width: 360px; flex: 1; }
+.lab-notes { padding: 6px 12px 0; }
+.lab-notes .note { margin: 0 0 6px; }
+.lab-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr) 330px; }
+.lab-left, .lab-right { background: var(--panel); overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.lab-left { border-right: 1px solid var(--line); }
+.lab-right { border-left: 1px solid var(--line); }
+.lab-centre { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.lab-centre > .map-wrap { flex: 1; min-height: 0; }
+.lab-centre .map { border: 0; border-radius: 0; }
+.panel-body { padding: 12px; display: grid; gap: 10px; align-content: start; }
+.panel-body h3 { margin: 4px 0 0; }
+.card { display: grid; gap: 6px; }
+.card .title { font-size: 16px; line-height: 1.3; }
+.context { margin: 0; font-size: 13px; }
+.badges { gap: 4px; }
+.people, .methods { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; max-height: 46vh; overflow-y: auto; }
+.methods { max-height: none; }
+.people li, .methods li { border-bottom: 1px solid var(--line); }
+.people li:last-child, .methods li:last-child { border-bottom: 0; }
+.people button { all: unset; box-sizing: border-box; display: flex; gap: 6px; align-items: center; width: 100%; padding: 5px 8px; font-size: 12.5px; cursor: pointer; }
+.people button:hover, .people button:focus-visible { background: var(--hl); }
+.people label, .methods label { padding: 6px 8px; font-size: 12.5px; }
+.right { text-align: right; justify-content: flex-end; display: inline-flex; gap: 3px; align-items: center; }
+.drv { color: #1f5fd1; } .rdr { color: #c2410c; }
+.ok-text { color: var(--ok); display: inline-flex; gap: 3px; align-items: center; }
+.bad-text { color: var(--bad); display: inline-flex; gap: 3px; align-items: center; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; margin: 6px 0; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
+table.compact th, table.compact td { padding: 4px 6px; font-size: 12px; }
+.btn.link { border: 0; background: none; color: var(--accent); padding: 0 2px; text-decoration: underline; }
+input.full { width: 100%; }
+.replay { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 600; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; box-shadow: 0 2px 10px rgba(0,0,0,.18); display: grid; gap: 4px; }
+.timeline { position: relative; height: 26px; }
+.timeline-track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.timeline-track span { display: block; height: 100%; background: var(--accent); }
+.timeline .tick { position: absolute; top: 6px; width: 2px; height: 14px; border-radius: 1px; transform: translateX(-1px); pointer-events: none; }
+.timeline .tick.pickup { background: #15803d; } .timeline .tick.dropoff { background: #c2410c; }
+.timeline input[type="range"] { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 19, 24, .45); display: flex; justify-content: flex-end; }
+.drawer { background: var(--panel); width: min(560px, 100%); height: 100%; overflow-y: auto; padding: 14px 16px; display: grid; gap: 10px; align-content: start; box-shadow: -4px 0 18px rgba(0,0,0,.2); }
+.drawer.wide { width: min(860px, 100%); }
+.drawer-head h2 { margin: 0; }
+.chart-panel { display: grid; gap: 8px; }
+.tour { position: fixed; inset: 0; z-index: 2000; }
+.tour-dim { position: absolute; inset: 0; background: rgba(15, 19, 24, .55); }
+.tour-spot { position: absolute; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(15, 19, 24, .55); border: 2px solid var(--accent); pointer-events: none; transition: all .2s; }
+.tour-card { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.3); display: grid; gap: 6px; }
+.tour-card h3 { margin: 0; } .tour-card p { margin: 0; font-size: 13px; }
+.only-narrow { display: none; }
+@media (max-width: 1100px) { .lab-grid { grid-template-columns: 280px minmax(0, 1fr) 300px; } }
+@media (max-width: 900px) {
+  .only-narrow { display: inline-flex; }
+  .lab-grid { grid-template-columns: minmax(0, 1fr); position: relative; }
+  .lab-left, .lab-right { position: absolute; top: 0; bottom: 0; width: min(340px, 92vw); z-index: 700; display: none; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+  .lab-left { left: 0; } .lab-right { right: 0; }
+  .lab-left.open, .lab-right.open { display: block; }
+  .labbar .sel select { max-width: 150px; }
+  .labbar .actions-bar .btn { padding: 6px 8px; }
+  .topbar .user-name { display: none; }
+}
+@media (max-width: 560px) { .labbar .actions-bar .btn:not(.icon):not(.primary) { font-size: 0; gap: 0; } .labbar .actions-bar .btn svg { font-size: 14px; } }
+@media (max-width: 560px) {
+  .topbar { padding: 8px 10px; gap: 6px; flex-wrap: nowrap; }
+  .topbar .brand b { display: none; }
+  .topbar .tab { font-size: 0; gap: 0; padding: 6px 8px; }
+  .topbar .tab svg { width: 18px; height: 18px; }
+}

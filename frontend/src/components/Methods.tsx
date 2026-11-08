@@ -15,10 +15,12 @@ export function Methods({ problem, setErr }: { problem: Problem; setErr: (s: str
   };
   if (!m) return null;
   return <div>
-    <p className="muted">Extension interface <span className="mono">solve(instance, config) → {'{'}decisions, status, declared, metadata, diagnostics{'}'}</span>.
-      The operator places a plugin in the approved plugin directory; a researcher registers it here. Registration reads the metadata without executing the
-      plugin, checks problem and objective compatibility and the semantic version, pins the code hash, then runs a self-test with the installation's plugin isolation.
-      A plugin changed after registration is refused. Decisions: {problem.decision_description}.</p>
+    <p className="muted">Register a method from the approved plugin directory, then tick it in the workspace to run it.</p>
+    <details className="small muted"><summary>How registration works</summary>
+      <p>Interface <span className="mono">solve(instance, config) → {'{'}decisions, status, declared, metadata, diagnostics{'}'}</span>; decisions: {problem.decision_description}.
+        Registration reads the metadata without executing the plugin, checks problem and objective compatibility and the semantic version, pins the code hash,
+        then runs a self-test with the installation's plugin isolation. A plugin changed after registration is refused.
+        Create one with <span className="mono">move-openlab method new</span> and check it with <span className="mono">move-openlab method check</span> (docs/EXTENDING.md).</p></details>
     <h3>Built-in methods</h3>
     <table><tbody>{m.builtin.map((b: Json) => <tr key={b.method_id}><td><b>{b.name}</b></td><td className="mono">{b.method_id}@{b.version}</td><td>{b.kind}</td><td>{b.author}</td></tr>)}</tbody></table>
     <h3>Plugins in the approved directory</h3>

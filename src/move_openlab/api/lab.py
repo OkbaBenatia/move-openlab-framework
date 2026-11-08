@@ -83,13 +83,18 @@ def install_demo(request: Request):
     return dict(installed=True, campaigns=camps, root_campaign_id=rep["root_campaign_id"])
 
 
-def _networks(w, c: dict) -> list[str]:
-    nids = []
+def _refs(w, c: dict) -> tuple[list[str], list[str]]:
+    """Road networks and datasets the experiment's instances were built from (for filtering by area or dataset)."""
+    nids, keys = [], []
     for h in c["scenario_set"]["instance_hashes"]:
-        nid = (w.inst.get_instance(h).get("network") or {}).get("network_id")
+        inst = w.inst.get_instance(h)
+        nid = (inst.get("network") or {}).get("network_id")
+        key = (inst.get("provenance") or {}).get("dataset_key")
         if nid and nid not in nids:
             nids.append(nid)
-    return nids
+        if key and key not in keys:
+            keys.append(key)
+    return nids, keys
 
 
 @router.get("/experiments")
@@ -103,11 +108,12 @@ def experiments(request: Request):
             c = w.get(e["campaign_id"])
         except BenchError:
             continue
+        nids, keys = _refs(w, c)
         out.append(dict(campaign_id=e["campaign_id"], title=e["title"], kind=e["kind"], status=e["status"],
                         problem_id=e["problem_id"], imported=e["imported"], locked=bool(e["checksum"]),
                         created_at=e["created_at"], owner_display=e["owner_display"],
                         parent=(e.get("parent") or {}).get("campaign_id"), demo=e["campaign_id"] in demo_ids,
-                        network_ids=_networks(w, c)))
+                        network_ids=nids, dataset_keys=keys))
     return dict(experiments=out)
 
 
@@ -173,9 +179,9 @@ def experiment(cid: str, request: Request):
                    for i in insts],
         methods=[dict(method_id=m["method_id"], version=m["version"], name=m.get("name"), kind=m.get("kind"),
                       source=m["source"]) for m in c["methods"]],
-        runs=[dict(run_id=r["run_id"], instance_hash=r["instance_hash"], method_id=r["method_id"],
-                   accepted=r["accepted"], status=r.get("status_declared"))
-              for r in c["runs"] if r.get("repetition") == 1],
+        runs=[dict(run_id=r["run_id"], campaign_id=x["campaign_id"], instance_hash=r["instance_hash"],
+                   method_id=r["method_id"], accepted=r["accepted"], status=r.get("status_declared"))
+              for x in _scope(w, cid) for r in x["runs"] if r.get("repetition") == 1],
         results=None, comparability=None, reproduction=None)
     if c["runs"]:
         cmp = _call(compare, w, cid)
@@ -198,10 +204,23 @@ def experiment(cid: str, request: Request):
     return out
 
 
+def _scope(w, cid: str) -> list[dict]:
+    """The campaign and its ancestors on the same scenarios, back to the baseline or controlled variant that
+    defined them (the campaigns whose methods the workspace shows together)."""
+    out = []
+    for x in w.lineage(cid):
+        if out and x["scenario_set"]["instance_hashes"] != out[0]["scenario_set"]["instance_hashes"]:
+            break
+        out.append(x)
+        if x["kind"] in ("baseline", "variant"):
+            break
+    return out
+
+
 def _row(problem, insts, r: dict) -> dict:
     sc = r.get("optimality_scope") or {}
     proven = sc.get(SCOPE_FULL, 0)
-    return dict(method_id=r["method_id"], name=r["name"], kind=r["kind"], source=r["source"],
+    return dict(method_id=r["method_id"], version=r["version"], name=r["name"], kind=r["kind"], source=r["source"],
                 campaign_id=r["campaign_id"], origin=r["origin"], campaign_kind=r["campaign_kind"],
                 researcher=r["researcher"], scenarios=r["scenarios"], valid=r["all_feasible"],
                 proven_optimal=proven, optimal=r.get("optimal"), totals=r["totals"],

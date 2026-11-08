@@ -31,6 +31,33 @@
 | Generated scenario | Seed, generator version and inputs (network id, dataset key, time window, minimum trip length); same inputs give the same scenario |
 | Instance | Snapped points, travel times and compatible pairs are stored in the instance; methods, validation, bundles and reproductions need neither the network nor the open data |
 
+## Experiment bundles
+
+A bundle carries a locked experiment and its whole lineage between researchers, as JSON only (no code, no password,
+no server data). Format 2 (`move-openlab-bundle/2`) contains:
+
+| Member or manifest field | Content |
+|---|---|
+| `campaigns/*.json` | each campaign of the lineage with its checksum: problem specification, methods, configuration, runs, environment |
+| `instances/*.json` | every instance used: frozen participants, parameters, travel times, dataset and network provenance |
+| `geometry/*.json` | optional replay polylines of the legs an instance can use (derived from OpenStreetMap, ODbL) |
+| `problem` | objective levels, metric definitions, evaluation contract (validator, timing definitions), decision description |
+| `scenarios` | per instance: name, size, source, generator, seed, dataset key, network id, derivation |
+| `networks` | road-network references: id, profile, box, OSM data timestamp, raw-response SHA-256, builder version, licence |
+| `datasets` | dataset provenance: provider, release or source hash, licence, attribution |
+| `campaigns`, `lineage` | kind, relation to the parent, configuration and result summary of every campaign |
+| `methods`, `environment_requirements`, `environments` | method ids, versions, code hashes; recorded execution environments |
+| `fingerprints` | **experiment fingerprint** (what was run: specification, validator, instances, methods, configuration of the lineage) and **semantic fingerprint** (which problem: the instances' problem fingerprints and the evaluation contract) |
+| `files`, `manifest.sha256` | SHA-256 of every member and of the manifest |
+
+Importing recomputes and checks everything before writing: member hashes, instance hashes and structure, campaign
+checksums and lineage, the problem specification and validator version, both fingerprints and that every geometry
+member belongs to an instance of the bundle. Format 1 bundles (without the fields above) are still imported.
+
+The shipped demonstration (`src/move_openlab/demo/`) is such a bundle: two experiments on Paris built from RPC open
+data and OpenStreetMap routing with fixed seeds. Re-running it on any installation reproduces every result exactly
+(`tests/test_lab.py`).
+
 ## What a reproduction verifies
 
 A reproduction campaign re-executes the parent's methods on the parent's instance hashes in another workspace or

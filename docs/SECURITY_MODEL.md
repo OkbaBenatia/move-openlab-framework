@@ -56,8 +56,10 @@ but this does not protect files. Use this mode only for code you would install a
 
 Imports are verified completely before anything is written: archive integrity, safe member names, size limits, the
 manifest digest, every file hash, every instance hash and structure, every campaign checksum, the lineage, and an
-exact match of the problem specification and validator version with the local installation. Bundles contain JSON
-only; importing never executes code. Imported campaigns are read-only.
+exact match of the problem specification and validator version with the local installation; for format 2, the
+recomputed experiment and semantic fingerprints and the geometry members (each must belong to an instance of the
+bundle and use only that instance's legs). Bundles contain JSON only; importing never executes code. Imported
+campaigns are read-only. The shipped demonstration is imported through the same verified path.
 
 Checksums are unkeyed SHA-256 values: they detect accidental or partial modification and any change to a bundle in
 transit that is not accompanied by recomputed hashes; they do not authenticate the author against someone who can
@@ -93,7 +95,7 @@ administrators.
 | Nominatim (place search) | when a researcher submits a search | installation-wide one request per second (a search that would wait over 5 s is refused); 30-day cache; daily quota per user (cache hits free); query ≤ 120 characters; response ≤ 512 KB; can be switched off |
 | Overpass API (OpenStreetMap) | when an area's network is downloaded and no stored network matches | background job, one at a time; area within the profile limit; response ≤ 256 MB; daily quota; identifying User-Agent; raw response hashed and stored with the network |
 | data.gouv.fr (RPC releases) | when releases are listed or one is ingested for an area in France | HTTPS data.gouv.fr hosts only, checked on every redirect; background job, one at a time; daily quota; streamed and hashed; only rows inside the area kept, without identifiers; partial files removed on failure or cancellation |
-| Map tile server | by the browser, for map display | the Content Security Policy allows images from the configured tile origin only |
+| Map tile server | by the browser, for map display | the Content Security Policy allows images from the configured tile origin only; tile requests send the page origin as referrer (`strict-origin-when-cross-origin`, as tile servers such as tile.openstreetmap.org require), never the path; `MOVE_OPENLAB_TILE_URL=none` disables the basemap |
 
 Quotas are charged only when a request is really sent and refunded when a job could not start. Shared resources
 (road networks, RPC subsets) record a box and a profile, never a researcher's private area name.

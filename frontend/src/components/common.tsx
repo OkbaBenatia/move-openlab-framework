@@ -14,8 +14,7 @@ export function Lineage({ lineage }: { lineage: Json[] }) {
   const chain = [...lineage].reverse();
   return <div className="lineage" aria-label="lineage">{chain.map((l, i) => <span key={l.campaign_id} className="row">
     {i > 0 && <span className="arrow" aria-hidden>→</span>}
-    <span className="lin-node"><b>{l.owner_display}</b> · {KIND[l.kind] ?? l.kind}<br /><span className="mono small">{l.campaign_id}</span>
-      <br /><span className="mono small">sha {sh(l.checksum, 12)}</span></span></span>)}</div>;
+    <span className="lin-node" title={`${l.campaign_id}${l.checksum ? ` · checksum ${sh(l.checksum, 16)}` : ''}`}><b>{l.owner_display}</b> · {KIND[l.kind] ?? l.kind}</span></span>)}</div>;
 }
 
 export function MetricsCell({ metrics, defs }: { metrics: Json | null | undefined; defs: Metric[] }) {

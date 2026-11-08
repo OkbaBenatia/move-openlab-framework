@@ -29,19 +29,25 @@ export function CampaignView({ id, problem, go, setErr, onProblem }: { id: strin
       <span className={`badge ${c.checksum ? 'ok' : ''}`}>{c.status}</span>{c.checksum && <span className="badge ok"><Lock size={10} /> immutable</span>}</div>
     <Lineage lineage={d.lineage} />
     <table className="kv"><tbody>
-      <tr><th>Campaign</th><td className="mono">{c.campaign_id}</td><th>Researcher</th><td>{c.owner_display} · <span className="mono">{c.installation_id}</span></td></tr>
-      <tr><th>Scenarios</th><td>{c.scenario_set.instance_hashes.length} instances{c.scenario_set.params && !c.scenario_set.params.instance_hashes && <span className="mono small"> {JSON.stringify(c.scenario_set.params)}</span>}
-        <div className="mono small muted wrap-anywhere">{c.scenario_set.instance_hashes.map((h: string) => h.slice(0, 12)).join(' · ')}</div></td>
-        <th>Methods</th><td>{c.methods.map((m: Json) => <div key={m.method_id} className="mono small">{m.method_id}@{m.version}{m.code_sha256 ? ` · code ${sh(m.code_sha256)}` : ''}</div>)}</td></tr>
-      <tr><th>Configuration</th><td>{c.config.repetitions} repetitions · {c.config.order} · timeout {c.config.timeout_s} s · budget {c.config.time_budget_s} s</td>
-        <th>Specification</th><td className="mono small">{c.spec.problem_id} · {c.spec.objective_spec_id} · validator {c.spec.validator_version}</td></tr>
-      <tr><th>Checksum</th><td className="mono small">{c.checksum ?? 'not locked'}</td><th>Environment</th>
-        <td className="small">{c.environment ? `Python ${c.environment.python} · ${c.environment.os} ${c.environment.machine} · CPU ${sh(c.environment.cpu_model_sha256, 8)} · framework ${c.environment.framework_version}` : '—'}</td></tr>
-      {imported && <tr><th>Imported</th><td colSpan={3} className="small">by {d.import_record.imported_by} at {d.import_record.imported_at} · bundle <span className="mono">{sh(d.import_record.bundle_sha256, 16)}</span> · checksum re-verified · original researcher {d.import_record.original_owner_display} ({d.import_record.original_installation})</td></tr>}
-      {c.semantic_variant && <tr><th>Controlled variant</th><td colSpan={3} className="small"><b>{c.semantic_variant.variant}</b> — {c.semantic_variant.description} · {c.semantic_variant.modifications.length} derived scenario(s){c.semantic_variant.not_applicable.length ? ` · not applicable to ${c.semantic_variant.not_applicable.length}` : ''}</td></tr>}
+      <tr><th>Researcher</th><td>{c.owner_display}</td><th>Scenarios</th><td>{c.scenario_set.instance_hashes.length}</td></tr>
+      <tr><th>Methods</th><td>{c.methods.map((m: Json) => m.name ?? m.method_id).join(', ')}</td>
+        <th>Configuration</th><td>{c.config.repetitions} repetitions · time budget {c.config.time_budget_s} s</td></tr>
+      {imported && <tr><th>Imported</th><td colSpan={3} className="small">from {d.import_record.original_owner_display} · verified at import by {d.import_record.imported_by}</td></tr>}
+      {c.semantic_variant && <tr><th>Controlled variant</th><td colSpan={3} className="small">{c.semantic_variant.description} · {c.semantic_variant.modifications.length} derived scenario(s){c.semantic_variant.not_applicable.length ? ` · not applicable to ${c.semantic_variant.not_applicable.length}` : ''}</td></tr>}
       {c.threshold_study && <tr><th>Threshold study</th><td colSpan={3} className="small">method <span className="mono">{c.threshold_study.method.method_id}</span> · scorer <b>{c.threshold_study.scorer.label}</b> · {c.threshold_study.mode === 'share' ? 'shares kept' : 'score thresholds'} {c.threshold_study.thresholds.join(', ')}{c.threshold_study.top_k ? ` · top-k ${c.threshold_study.top_k}` : ''}</td></tr>}
-      {c.parent && <tr><th>Parent</th><td colSpan={3} className="small">{c.parent.relation} <span className="mono">{c.parent.campaign_id}</span> ({c.parent.owner_display}, checksum <span className="mono">{sh(c.parent.checksum, 16)}</span>) · differences: {c.config_differences_from_parent?.length ? c.config_differences_from_parent.join('; ') : 'none'}</td></tr>}
+      {c.parent && <tr><th>Parent</th><td colSpan={3} className="small">{c.parent.relation} {c.parent.owner_display}'s campaign · differences: {c.config_differences_from_parent?.length ? c.config_differences_from_parent.join('; ') : 'none'}</td></tr>}
     </tbody></table>
+    <details className="small"><summary>Details</summary><table className="kv"><tbody>
+      <tr><th>Campaign</th><td className="mono">{c.campaign_id} · installation {c.installation_id}</td></tr>
+      <tr><th>Specification</th><td className="mono">{c.spec.problem_id} · {c.spec.objective_spec_id} · validator {c.spec.validator_version}</td></tr>
+      <tr><th>Methods</th><td className="mono">{c.methods.map((m: Json) => `${m.method_id}@${m.version}${m.code_sha256 ? ` (code ${sh(m.code_sha256)})` : ''}`).join(' · ')}</td></tr>
+      <tr><th>Instances</th><td className="mono wrap-anywhere">{c.scenario_set.instance_hashes.map((h: string) => h.slice(0, 12)).join(' · ')}</td></tr>
+      <tr><th>Configuration</th><td>{c.config.order} · timeout {c.config.timeout_s} s</td></tr>
+      <tr><th>Checksum</th><td className="mono">{c.checksum ?? 'not locked'}</td></tr>
+      <tr><th>Environment</th><td>{c.environment ? `Python ${c.environment.python} · ${c.environment.os} ${c.environment.machine} · CPU ${sh(c.environment.cpu_model_sha256, 8)} · framework ${c.environment.framework_version}` : '—'}</td></tr>
+      {imported && <tr><th>Import</th><td>{d.import_record.imported_at} · bundle <span className="mono">{sh(d.import_record.bundle_sha256, 16)}</span> · original installation {d.import_record.original_installation}</td></tr>}
+      {c.parent && <tr><th>Parent</th><td className="mono">{c.parent.campaign_id} · checksum {sh(c.parent.checksum, 16)}</td></tr>}
+    </tbody></table></details>
     {runs.length > 0 && <><h3>Results <span className="muted small">({runs.length} runs · {imported ? 'imported records' : 'executed in this workspace'} · first repetition totals)</span></h3>
       <div className="table-scroll"><table aria-label="method summary"><thead><tr><th>Method</th><th>Runs</th><th>Accepted &amp; feasible</th>
         {problem.metrics.map((m) => <th key={m.id}>{m.label}</th>)}<th>Median solver time</th><th>Median total time</th></tr></thead>
@@ -63,7 +69,7 @@ export function CampaignView({ id, problem, go, setErr, onProblem }: { id: strin
       {c.checksum && c.kind === 'baseline' && <button className="btn" onClick={() => act(async () => { const r = await post(`/campaigns/${id}/reproduce`); go(`c:${r.campaign_id}`); })}><RotateCcw size={13} /> Independently re-execute</button>}
       {c.kind === 'reproduction' && runs.length > 0 && <button className="btn" onClick={() => go(`rep:${id}`)}><ShieldCheck size={13} /> Reproducibility verification</button>}
       {c.checksum && !imported && ['baseline', 'reproduction', 'extended'].includes(c.kind) && extendable.map((m) => <button key={m.method_id} className="btn" onClick={() => act(async () => { const r = await post(`/campaigns/${id}/extend`, { methods: [[m.method_id, m.version]] }); go(`c:${r.campaign_id}`); })}><GitBranch size={13} /> Extend with {m.name} {m.version}</button>)}
-      {['baseline', 'reproduction', 'extended'].includes(c.kind) && runs.length > 0 && <button className="btn" onClick={() => go(`cmp:${id}`)}><GitCompare size={13} /> Compare methods</button>}
+      {['baseline', 'reproduction', 'extended', 'variant'].includes(c.kind) && runs.length > 0 && <button className="btn" onClick={() => go(`cmp:${id}`)}><GitCompare size={13} /> Compare methods</button>}
       {c.parent && runs.length > 0 && ['variant', 'reproduction', 'extended'].includes(c.kind) && <button className="btn" onClick={() => go(`sem:${root}|${id}`)}><Scale size={13} /> Semantic comparability</button>}
       {c.kind === 'threshold-study' && runs.length > 0 && <button className="btn" onClick={() => go(`thr:${id}`)}><SlidersHorizontal size={13} /> Threshold report</button>}
     </div>

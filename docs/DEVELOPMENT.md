@@ -52,7 +52,7 @@ useful in development:
 |---|---|
 | `MOVE_OPENLAB_DATA_DIR` | data directory (accounts, workspaces, networks, datasets, jobs); keep it outside Git |
 | `MOVE_OPENLAB_PLUGIN_DIR`, `MOVE_OPENLAB_PLUGIN_MODE` | approved plugin directory and `disabled` / `sandbox` / `trusted-process` |
-| `MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_TILE_ATTRIBUTION` | map tile service |
+| `MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_TILE_ATTRIBUTION` | map tile service; `none` = maps without a basemap |
 | `MOVE_OPENLAB_OVERPASS_URL`, `MOVE_OPENLAB_GEOCODER_URL` | road-network and place-search services (`off` disables search) |
 | `MOVE_OPENLAB_EXTERNAL_FETCH` | `researcher` (default) or `admin`: who may start downloads from public services |
 

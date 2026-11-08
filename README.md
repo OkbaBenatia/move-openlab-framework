@@ -4,42 +4,126 @@
 
 **A reproducible experimentation framework for optimization research.**
 
-MOVE OpenLab runs optimization methods on versioned scenario sets, validates every solution independently, locks
-results as checksummed campaigns and moves them between researchers as verified bundles. A second researcher can
-re-execute an experiment on their own installation, extend it with their own method and compare all results under
-explicit, claim-dependent comparability rules. Scenarios can be synthetic or built on real road networks anywhere
-OpenStreetMap has data, from open data or from the researcher's own trip files.
+Run optimization methods on real or synthetic scenarios, validate every solution independently, compare methods
+fairly, and hand the whole experiment to a colleague who can reproduce it on their own machine and extend it with
+their own algorithm.
 
-> **Status: pre-release (0.2.0).** Functional and tested locally; licence, logo and demonstration video are being
-> prepared for the first public release.
-
-## Video demonstration
+> **Status: pre-release.** Functional and tested locally; licence, logo and demonstration video are being prepared
+> for the first public release.
 
 <!-- VIDEO: reserved for the 60–75 s demonstration video of the released version, to be supplied by the maintainer. -->
-A short demonstration video will be published with the first release.
+
+![The map-first workspace: the demonstration experiment on Paris, its participants, routes and results](docs/assets/screenshots/workspace.jpg)
+
+*The workspace with the built-in demonstration: Area · Dataset · Scenario on the left, routes of the exact method on
+the map, results and comparability on the right. Map tiles © OpenStreetMap contributors.*
+
+## Why MOVE OpenLab
+
+Comparing optimization methods fairly is hard: results depend on data, settings, solver versions and hardware, and
+experiments rarely travel between labs intact. MOVE OpenLab makes the experiment the unit of work: frozen scenarios,
+an independent validator, locked results with checksums, a portable bundle, and explicit rules saying when two
+results may be compared.
 
 ## Core features
 
-| Area | What it provides |
+| | |
 |---|---|
-| Experiments | Campaigns (baseline, reproduction, extension, controlled variant, threshold study) with lineage, locking and checksums |
-| Validation | Every solution re-validated by the problem's own validator; self-reported values are only compared |
-| Methods | Built-in exact and heuristic methods; researcher plugins in a verified sandbox (off by default) |
-| Results | Lexicographic comparison, optimality-scope labels, gaps, per-group results; Markdown, CSV and JSON reports |
-| Reproducibility | Verified bundles without code; independent re-execution compared cell by cell |
-| Semantic comparability | Problem, evaluation and environment fingerprints; separate verdicts for quality and runtime claims |
-| Candidate reduction | Scorers, fixed and dynamic (share) thresholds, top-k; threshold studies with reduction, recall and gaps |
-| Geography | Areas anywhere (place search, map selection, adjustable box), road-network profiles, routing, coverage, route playback |
-| Data | RPC open data (France), CSV and GeoJSON uploads with column mapping and validation, synthetic demand, provider plug-ins |
-| Operations | Background jobs with progress, cancellation, stage traces and replay; accounts, administration and audit log |
+| Map-first workspace | Choose an area, dataset and experiment; see participants and routes on the map; run, compare, replay, export — on one screen |
+| Built-in demonstration | Two experiments on Paris (open carpooling data, OpenStreetMap routing) open on first sign-in |
+| Methods | Exact MILP (HiGHS) and heuristics built in; your own methods as sandboxed plugins |
+| Independent validation | Every solution re-checked by the problem's validator; self-reported values are only compared |
+| Comparison | Concise table, charts of any supported metric (CSV, SVG, PNG export), what each result proves |
+| Reproducibility | Verified bundles without code; re-execution compared cell by cell; lineage of every experiment |
+| Semantic comparability | *Directly comparable*, *comparable with conditions* or *not comparable*, with the reasons |
+| Replay | Vehicles, pickups, drop-offs, served and unserved riders over time |
+| Geography and data | Any area OpenStreetMap covers; RPC open data (France), CSV, GeoJSON, synthetic demand, provider plug-ins |
+| Operations | Background jobs with progress and cancellation; accounts, administration, audit log |
 
-## Screenshots
+## Pipeline
+
+```mermaid
+flowchart LR
+  A[Area] --> D[Dataset] --> S[Scenario] --> M[Methods] --> R[Run]
+  R --> V{{Independent validator}} --> C[Compare]
+  C --> P[Replay] --> E[Export bundle]
+  E --> I[Import elsewhere] --> X[Reproduce] --> N[Extend with a new method] --> C
+```
+
+## Import → Reproduce → Extend
+
+1. **Import** — a colleague's bundle is verified completely (every hash, checksum, fingerprint and the lineage)
+   before anything is stored; it never contains code. The experiment opens marked *Imported from …*.
+2. **Reproduce** — *Run* with the same methods re-executes it on your installation; the experiment reads
+   *Reproduced ✓* when every result is identical.
+3. **Extend** — tick your own method and *Run*: it runs on exactly the same instances and appears in *Compare* next to
+   the original methods; the comparability badge tells you which claims hold.
+
+![Comparison of an imported experiment extended with a researcher's own method](docs/assets/screenshots/compare-own-method.jpg)
+
+## Geographic and data flexibility
+
+- **Any area.** Search a city or region, click the map or draw a box, resize it, save it, load its road network
+  (profiles: all roads, main roads, peak-hour speeds) and switch between areas. Nothing is tied to one city.
+- **Any trip data.** RPC carpooling open data for areas in France; CSV files with explicit column mapping; GeoJSON;
+  seeded synthetic demand; a provider interface for other sources. Invalid rows are counted with reasons.
+- **Lists follow the area.** Datasets, scenarios and experiments are filtered by the selected area, with *All areas*
+  available; the workspace always states *Area · Dataset · Scenario*.
+
+Details: [docs/DATASETS.md](docs/DATASETS.md).
 
 | Areas and routing (València) | Threshold study | Route playback |
 |---|---|---|
 | ![Area, coverage and measured route](docs/assets/screenshots/areas-route.jpg) | ![Threshold study chart and summary](docs/assets/screenshots/threshold-study.jpg) | ![Route playback of an exact solution](docs/assets/screenshots/route-playback.jpg) |
 
-Screenshots from a local run of this version; map tiles © OpenStreetMap contributors.
+## Add your own algorithm
+
+```bash
+move-openlab method new my_method --problem public-ride-matching --dir plugins
+```
+
+```bash
+move-openlab method check plugins/my_method --bundle experiment.zip
+```
+
+Implement `solve(instance, config)` in the generated `plugin.py`; `method check` verifies the metadata, runs a
+self-test in the sandbox, runs your method on every instance of the imported experiment and compares it with the
+experiment's methods, with clear errors at each step. Register it in the web interface, tick it in the workspace and
+press *Run*. The experiment keeps ownership of the scenario, objective, validator and metrics. Guide:
+[docs/EXTENDING.md](docs/EXTENDING.md); result and run-record schemas: [`schemas/`](schemas/).
+
+## Quick start
+
+Requirements: Python ≥ 3.11, Node.js ≥ 20; for sandboxed plugins, Linux with bubblewrap.
+
+```bash
+python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+```
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+```
+
+```bash
+.venv/bin/move-openlab users add alice --display-name "Alice" --role admin
+```
+
+```bash
+.venv/bin/move-openlab serve
+```
+
+Open http://127.0.0.1:8765, sign in with the temporary password printed by `users add` and choose your own. The
+demonstration opens automatically; the optional Quick Tour explains the screen in eight steps.
+
+## Demo
+
+*Public Mobility Demo — Baseline* and *Public Mobility Demo — Controlled Variant*: three scenarios of 20 drivers and
+30 riders resampled with fixed seeds from RPC open data (release 2026-08) inside Paris, travel times on the
+OpenStreetMap road network, an exact MILP and a greedy heuristic. The variant lowers the detour limit without
+removing any compatible pair, so its results are directly comparable with the baseline; a binding variant created
+from *Advanced* shows *Not comparable*, and a re-execution on another installation shows *comparable with conditions*
+for runtimes. Provenance and licences:
+[src/move_openlab/demo/README.md](src/move_openlab/demo/README.md).
 
 ## Architecture
 
@@ -54,122 +138,23 @@ flowchart LR
   G[Geography<br/>areas · OSM networks · routing] --> S
   D[Datasets<br/>RPC · CSV · GeoJSON · plug-ins] --> G
   J[Background jobs] --> X
-  UI[Web interface] --> API[FastAPI + accounts] --> S
+  UI[Map-first web interface] --> API[FastAPI + accounts] --> S
 ```
 
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Experimentation pipeline
-
-```mermaid
-flowchart LR
-  A[Area + dataset] --> B[Scenarios] --> C[Campaign] --> D[Execute] --> E[Validate + lock]
-  E --> F[Export bundle] --> G[Import elsewhere] --> H[Re-execute] --> I[Reproducibility check]
-  E --> J[Extend with a method · variant · threshold study] --> K[Compare · semantic check · report]
-```
-
-## Geographic and dataset flexibility
-
-- **Any area.** Search a city or region, click the map or draw a box; resize it with handles; choose a road-network
-  profile (all roads, main roads for larger areas, or a peak-hour speed factor). The network is downloaded once from
-  OpenStreetMap and reused. Tested with Paris and València.
-- **Any trip data.** RPC carpooling open data for areas in France; CSV files (encoding and delimiter detected,
-  explicit column mapping, French and Spanish headers recognised); GeoJSON LineString or two-point MultiPoint
-  features; seeded synthetic demand. Invalid rows are counted with reasons, never dropped silently.
-- **Private by default.** Uploaded data stay in the researcher's workspace; shared resources carry no private names.
-
-See [docs/DATASETS.md](docs/DATASETS.md) for formats, limits and the usage policies of OpenStreetMap, Nominatim,
-Overpass and data.gouv.fr.
-
-## Reproducibility and semantic comparability
-
-Every number shown is recomputed from locked records: instances are content-addressed, methods are identified by id,
-version and (for plugins) code hash, and every run is re-validated. A reproduction campaign re-executes the methods
-on the imported instances and is compared cell by cell with the original.
-
-A comparison is valid only for a stated claim. A problem fingerprint, computed from the data that define the
-feasible region and the objective, distinguishes a non-binding change (a different file describing the same problem)
-from a real change of problem; evaluation contract, time budget, method options and environment qualify or invalidate
-quality and runtime claims. Each result states what it proves: proven optimal for the full problem, optimal for a
-reduced instance only, not proven, heuristic or invalid. See [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
-
-## Installation
-
-Requirements: Python ≥ 3.11, Node.js ≥ 20; for sandboxed plugins, Linux with bubblewrap.
-
-```bash
-python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-```
-
-```bash
-cd frontend && npm ci && npm run build && cd ..
-```
-
-## Quick start
-
-```bash
-.venv/bin/move-openlab users add alice --display-name "Alice" --role admin
-```
-
-```bash
-.venv/bin/move-openlab serve
-```
-
-Open http://127.0.0.1:8765, sign in with the temporary password printed by `users add` and choose your own. Then:
-
-1. *Scenarios & maps → Areas*: search a place or draw a box, save it, download its road network.
-2. *Datasets* (optional): import RPC data for a French area or upload a CSV/GeoJSON file.
-3. *Generate* or *Editor*: build scenarios; select them in the *Library* and create a campaign.
-4. *Experiments*: execute, lock, compare, export, or start a threshold study.
-
-Administrators add accounts under *Administration*. Development setup, configuration and tests:
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-
-## Verified synthetic benchmark
-
-A fully synthetic capacitated assignment problem (artificial drivers, passengers, time windows and costs; maximise
-served passengers, then minimise cost) with an exact two-stage MILP (HiGHS), a greedy heuristic, an example
-researcher plugin (regret-2 greedy), controlled variants and a transparent scorer. The test suite certifies the exact
-method against brute force and an independent min-cost-flow oracle. It is a methodological benchmark, not evidence
-about real-world mobility.
-
-Output of `python scripts/smoke_synthetic.py` (3 sizes × 10 seeds, two installations; objective values are
-deterministic, run times are not reported here):
-
-| Method | Served | Cost | Equals the proven optimum |
-|---|---|---|---|
-| Exact MILP (HiGHS) | 467 | 126 928 | 30 / 30 |
-| Regret-2 greedy (plugin, sandboxed) | 460 | 128 249 | 16 / 30 |
-| Deterministic greedy | 402 | 90 384 | 7 / 30 |
-
-Independent re-execution in the second installation: 60 / 60 cells with identical solutions.
-
-The second benchmark, **ride matching on road networks** (one rider per driver; maximise served riders, then minimise
-the drivers' total detour), runs on any area's network with an exact MILP and a greedy heuristic. Travel times are
-stored in each instance, so validation and re-execution never need the network.
-
-## Extending MOVE OpenLab
-
-| Extension | Guide |
-|---|---|
-| Method adapter (plugin) | [docs/EXTENDING.md](docs/EXTENDING.md#a-method-plugin-adapter) |
-| Problem package | [docs/EXTENDING.md](docs/EXTENDING.md#a-problem-package) |
-| Dataset provider | [docs/DATASETS.md](docs/DATASETS.md#writing-a-dataset-provider) |
-
-None of them requires changing the core; plugins run in the verified sandbox ([docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md)).
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). A fully synthetic benchmark (capacitated assignment, certified
+against brute force and an independent min-cost-flow oracle) is included for methodological tests.
 
 ## Documentation
 
 | Document | Content |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data model, pipeline |
-| [docs/DATASETS.md](docs/DATASETS.md) | Areas, road networks, dataset formats, limits, external services, providers |
-| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Hashes, fingerprints, determinism, what is and is not reproducible |
-| [docs/EXTENDING.md](docs/EXTENDING.md) | Method adapters, problem packages, dataset providers |
-| [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts, uploads, external services, remaining risks |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, web interface, data model, pipeline |
+| [docs/DATASETS.md](docs/DATASETS.md) | Areas, road networks, datasets, external services and their rules |
+| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Bundles, fingerprints, determinism, semantic comparability |
+| [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, problem packages, dataset providers |
+| [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts, bundles, uploads, external services |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Installation, configuration, tests |
-| [docs/GITFLOW.md](docs/GITFLOW.md) | Branching model and repository settings |
-| [docs/RELEASING.md](docs/RELEASING.md) | Release procedure and checklist |
+| [docs/GITFLOW.md](docs/GITFLOW.md) · [docs/RELEASING.md](docs/RELEASING.md) | Branching model, release checklist |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ## Contributing

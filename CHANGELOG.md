@@ -5,7 +5,35 @@ interfaces.
 
 ## Unreleased
 
+### Fixed
+- Map tiles refused (HTTP 403) by tile servers requiring a referrer: tile images now send the page origin
+  (`strict-origin-when-cross-origin`); the page itself keeps `Referrer-Policy: same-origin`. When tiles cannot be
+  loaded the map says so and keeps showing the data.
+- Comparing a controlled variant (or an extension of one) reported its parent's rows; a variant now starts its own
+  comparison scope.
+
 ### Added
+- Map-first workspace as the main screen: Area, Dataset and Experiment selectors; Generate, Run, Compare, Replay,
+  Import, Export; participants with served status; routes of the selected method on the map; live run progress;
+  key results; comparability with the parent experiment (directly comparable / with conditions / not comparable,
+  with the reasons); Export, Reproduce, Extend; advanced options collapsed. Lists follow the selected area.
+- Comparison panel with a concise table and charts of any metric the problem supports (objective, mobility
+  descriptive metrics, gap, runtimes), exported as CSV, SVG or PNG; no chart library.
+- Replay bar: play, speed, timeline with pickup and drop-off ticks, vehicles moving, riders on board and delivered.
+- Optional Quick Tour (8 steps, Skip, "Don't show again" saved per account).
+- Demonstration experiment shipped with the framework (*Public Mobility Demo — Baseline* and *— Controlled
+  Variant*, Paris, RPC open data and OpenStreetMap routing, fixed seeds), imported into each workspace on first use
+  through the verified import path; `scripts/build_demo.py` rebuilds it.
+- Bundle format 2: problem definition, scenario, network and dataset references with licences, lineage, method and
+  campaign configuration, environments, experiment and semantic fingerprints (recomputed on import), replay geometry
+  so routes replay on installations without the road network. Format 1 bundles are still imported.
+- `move-openlab method new` (template with a local test) and `move-openlab method check` (metadata, sandboxed
+  self-test, run on an experiment bundle, comparison, actionable errors); example plugin `nearest_pickup` for ride
+  matching; JSON schemas of the method result and the run record (`schemas/`).
+- Display-only descriptive metrics declared by problems (`Problem.descriptive_metrics`): service rate and mean
+  detour per served rider for ride matching.
+- URL routing (hash routes) for every view; per-user workspace preferences.
+- `MOVE_OPENLAB_TILE_URL=none` for maps without a basemap.
 - Geographic areas in the researcher's workspace: place search (Nominatim proxy, cached, one request per second),
   map selection, box drawing and resizing, road-network profiles (`car`, `car-main-roads`, `car-peak`), network
   download with cache reuse, coverage map, route measurement, area switching.

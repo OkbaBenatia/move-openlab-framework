@@ -31,6 +31,16 @@ flowchart LR
   UI[React web interface<br/>maps · playback · charts] --> API
 ```
 
+## Web interface
+
+The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Dataset, Experiment; Generate,
+Run, Compare, Replay, Import, Export, Quick Tour), the experiment and its participants on the left, the map in the
+centre (charts for problems without geography), methods, live progress, results and comparability on the right.
+*Run* creates and executes a new experiment, executes a draft, or derives from a locked experiment: a re-execution
+with the same methods, an extension when methods were added. Secondary sections hold the data tools (areas,
+datasets, scenario library, editor, generators), the full experiment records and reports, jobs and administration.
+Every view has a URL (`#/workspace/<id>`, `#/data/<view>`, `#/experiments/<view>`, `#/jobs`, `#/admin`).
+
 ## Package layout
 
 | Module | Role |
@@ -41,16 +51,19 @@ flowchart LR
 | `move_openlab.plugins` | Approved plugin directory: static metadata, path confinement, code hashes |
 | `move_openlab.worker`, `runner` | Isolated execution, timing, independent validation of every run |
 | `move_openlab.sandbox` | Plugin modes, bubblewrap sandbox, isolation verification (fail closed), server hardening |
-| `move_openlab.store` | Installations, per-user workspaces, campaigns, derivations, lock, bundles |
+| `move_openlab.store` | Installations, per-user workspaces, campaigns, derivations, lock |
+| `move_openlab.bundles` | Bundle export, complete verification and import (formats 1 and 2), experiment and semantic fingerprints |
+| `move_openlab.demo` | The shipped demonstration bundle, imported once per workspace |
+| `move_openlab.method_tools` | `method new` (template) and `method check` (metadata, sandboxed self-test, run on a bundle) |
 | `move_openlab.analysis` | Comparison, reproducibility, semantic comparability, threshold studies, reports |
 | `move_openlab.comparability` | Fingerprints and the claim-dependent comparability contract |
 | `move_openlab.scoring` | Scorer interface, threshold / top-k selection |
 | `move_openlab.jobs` | Persistent background jobs: progress, events, cancellation, restart recovery, history |
-| `move_openlab.geo` | Road-network profiles, Overpass fetch and graph build, content-addressed store (`osm`), routing and coverage (`network`), workspace areas (`areas`), place-search proxy (`geocode`), scenarios and generators, route playback |
+| `move_openlab.geo` | Road-network profiles, Overpass fetch and graph build, content-addressed store (`osm`), routing and coverage (`network`), workspace areas (`areas`), place-search proxy (`geocode`), scenarios and generators, route playback, replay geometry carried by bundles (`geometry`) |
 | `move_openlab.datasets` | Trip normalisation and validation (`tabular`), CSV and GeoJSON readers, provider registry (`move_openlab.dataset_providers` entry points), workspace dataset store |
 | `move_openlab.integrations` | Public data connectors: `rpc` (RPC carpooling open-data releases, France) |
 | `move_openlab.limits` | Daily quotas and one-at-a-time locks for external services; bounded upload parsing |
-| `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`; request-size limits; single-origin web application |
+| `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`, `lab` (workspace preferences, demonstration, experiment summaries); request-size limits; single-origin web application |
 | `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment benchmark |
 | `move_openlab.benchmarks.ride_matching` | Ride matching on road networks (exact MILP, greedy, variants, relative-detour scorer) |
 
@@ -115,6 +128,8 @@ execute, validate) used for the stage-duration table and the replay in the web i
 <data>/workspaces/<user>/scenarios/<id>.json    scenario library entry (scenario, provenance, parent, instance hash)
 <data>/workspaces/<user>/areas/<id>.json        named area: box, profile, attached network id
 <data>/workspaces/<user>/datasets/<key>/        uploaded dataset: normalised trips + validation report (no raw file)
+<data>/workspaces/<user>/preferences.json       workspace preferences (tour, last experiment, area) and demo record
+<data>/geometry/<instance_hash>.json            replay geometry imported with bundles
 <data>/networks/<network_id>/                   road network, provenance, compressed raw Overpass response
 <data>/opendata/rpc/<dataset_key>/              cleaned RPC trips (no identifiers) and ingestion report
 <data>/cache/geocode/                           cached place-search results
