@@ -16,10 +16,14 @@ const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, icon
 
 /** Leaflet map without wrappers (BSD-2-Clause). Static layers refit the view when `fitKey` changes; `dynamic` points
  *  (e.g. playback positions) are redrawn without moving the view. Tiles and attribution come from the server config. */
-export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor }: {
+export interface MapView { center: [number, number]; zoom: number }
+
+export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor, view, onView }: {
   tileUrl: string; attribution: string; points?: MapPoint[]; lines?: MapLine[]; rects?: MapRect[]; dynamic?: MapPoint[];
   fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number | string; onBounds?: (b: BBox) => void;
   box?: EditBox | null; coverage?: Coverage | null; focus?: { key: string; bbox: BBox } | null; cursor?: 'crosshair';
+  /** Synchronised maps: `view` is applied when it differs from the current one; `onView` reports the user's moves. */
+  view?: MapView | null; onView?: (v: MapView) => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -27,6 +31,7 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const dyn = useRef<L.LayerGroup | null>(null);
   const click = useRef(onClick);
   const bounds = useRef(onBounds);
+  const viewCb = useRef(onView);
   const fitted = useRef<string | undefined>(undefined);
   const boxLayer = useRef<L.LayerGroup | null>(null);
   const covLayer = useRef<L.LayerGroup | null>(null);
@@ -34,6 +39,7 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const [tilesDown, setTilesDown] = useState(false);
   click.current = onClick;
   bounds.current = onBounds;
+  viewCb.current = onView;
 
   useEffect(() => {
     if (!el.current) return;
@@ -54,11 +60,23 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     boxLayer.current = L.layerGroup().addTo(m);
     dyn.current = L.layerGroup().addTo(m);
     m.on('click', (e: L.LeafletMouseEvent) => click.current?.(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6))));
-    const report = () => { const b = m.getBounds(); bounds.current?.([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map((x) => Number(x.toFixed(5))) as [number, number, number, number]); };
+    const report = () => {
+      const b = m.getBounds(); bounds.current?.([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map((x) => Number(x.toFixed(5))) as [number, number, number, number]);
+      const c = m.getCenter(); viewCb.current?.({ center: [Number(c.lat.toFixed(6)), Number(c.lng.toFixed(6))], zoom: m.getZoom() });
+    };
     m.on('moveend', report);
     map.current = m;
     return () => { m.remove(); map.current = null; fitted.current = undefined; focused.current = undefined; };
   }, [tileUrl, attribution]);
+
+  // synchronised view: applied only when it differs from the map's own (no feedback loop between two maps)
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !view) return;
+    const c = m.getCenter();
+    if (Math.abs(c.lat - view.center[0]) < 1e-6 && Math.abs(c.lng - view.center[1]) < 1e-6 && m.getZoom() === view.zoom) return;
+    m.setView(view.center, view.zoom, { animate: false });
+  }, [view]);
 
   useEffect(() => {
     const m = map.current;

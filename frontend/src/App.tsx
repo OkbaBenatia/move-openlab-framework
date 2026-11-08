@@ -4,10 +4,12 @@ import { api } from './api/client';
 import { APP_NAME, DEVELOPER } from './brand';
 import { UserContext } from './context';
 import { ErrorNote } from './components/common';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdminPage } from './components/AdminPage';
 import { ExperimentsSection } from './components/ExperimentsSection';
 import { JobsPage } from './components/JobsPage';
 import { GeoWorkbench } from './geo/GeoWorkbench';
+import { CompareAB } from './lab/CompareAB';
 import { Lab } from './lab/Lab';
 import { useRoute, type Section } from './router';
 
@@ -35,26 +37,30 @@ export default function App() {
   const sections: [Section, string, typeof Database][] = [['workspace', 'Workspace', LayoutDashboard], ['data', 'Data', Database],
     ['experiments', 'Experiments', FlaskConical], ['jobs', 'Jobs', ListChecks], ...(user.role === 'admin' ? [['admin', 'Administration', Users] as [Section, string, typeof Database]] : [])];
   const open = (s: Section, arg = '') => { setErr(null); go(s, arg); };
-  return <div className={`app ${route.section === 'workspace' ? 'app-lab' : ''}`}>
+  const full = route.section === 'workspace' || route.section === 'compare';
+  return <div className={`app ${full ? 'app-lab' : ''}`}>
     <header className="topbar">
       <div className="brand"><FlaskConical size={18} aria-hidden /><b>{APP_NAME}</b></div>
       <nav className="sections" aria-label="sections">{sections.map(([s, label, Icon]) =>
-        <a key={s} href={`#/${s}`} className={`tab ${route.section === s ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); open(s); }}><Icon size={14} /> {label}</a>)}</nav>
+        <a key={s} href={`#/${s}`} className={`tab ${route.section === s || (s === 'workspace' && route.section === 'compare') ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); open(s); }}><Icon size={14} /> {label}</a>)}</nav>
       <div className="row gap">
         <span className="small muted user-name">{user.display}</span>
         <button className="btn icon" aria-label="toggle theme" onClick={toggleTheme}>{theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
         <button className="btn icon" aria-label="log out" onClick={() => api.logout().finally(() => window.location.replace('/login'))}><LogOut size={15} /></button>
       </div>
     </header>
+    <ErrorBoundary resetKey={`${route.section}/${route.arg}`}>
     {route.section === 'workspace' && <Lab key="lab" cid={route.arg} go={go} />}
-    {route.section !== 'workspace' && <main className={route.section === 'experiments' ? '' : 'content'}>
+    {route.section === 'compare' && <CompareAB key={route.arg} arg={route.arg} go={(a, b) => go('compare', `${a}|${b}`)} />}
+    {!full && <main className={route.section === 'experiments' ? '' : 'content'}>
       {route.section !== 'experiments' && <ErrorNote text={err} />}
       {route.section === 'data' && <GeoWorkbench initialView={route.arg} onView={(v) => go('data', v)} setErr={setErr}
-        onUseInCampaign={(hashes) => { setPreset(hashes); open('experiments', 'new'); }} />}
+        onUseInCampaign={(hashes) => { setPreset(hashes); open('experiments', 'new'); }} onRun={(cid) => go('workspace', cid)} />}
       {route.section === 'experiments' && <ExperimentsSection view={route.arg} go={(v) => open('experiments', v)} preset={preset} clearPreset={() => setPreset(null)} />}
       {route.section === 'jobs' && <JobsPage setErr={setErr} />}
       {route.section === 'admin' && user.role === 'admin' && <AdminPage me={user.username} setErr={setErr} />}
     </main>}
-    {route.section !== 'workspace' && <footer className="foot small muted">{APP_NAME} {version} · developed by {DEVELOPER}</footer>}
+    </ErrorBoundary>
+    {!full && <footer className="foot small muted">{APP_NAME} {version} · developed by {DEVELOPER}</footer>}
   </div>;
 }

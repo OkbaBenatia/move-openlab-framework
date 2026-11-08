@@ -1,16 +1,21 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import type { Metric } from '../api/client';
+import { domainValue, sameEmissionSemantics } from '../mobility/api';
 import type { ResultRow } from './api';
 
 /** A metric that can be charted for every row of a comparison. Only metrics with a value for at least one row are
- *  offered: unsupported metrics are never shown. */
+ *  offered: unsupported metrics are never shown. Emission figures are offered only when every row that has them
+ *  shares one scope, baseline and CO2/CO2e basis. */
 export interface ChartMetric { id: string; label: string; unit: string; better: string | null; group: string; get: (r: ResultRow) => number | null }
+export type DomainMetric = { id: string; label: string; unit: string; better: string | null };
 
-export function chartMetrics(metrics: Metric[], rows: ResultRow[]): ChartMetric[] {
+export function chartMetrics(metrics: Metric[], rows: ResultRow[], domain: DomainMetric[] = []): ChartMetric[] {
+  const emissions = sameEmissionSemantics(rows.map((r) => r.domain)) && rows.every((r) => !r.domain || r.domain.complete);
   const all: ChartMetric[] = [
     ...metrics.map((m) => ({ id: m.id, label: m.label, unit: m.unit, better: m.better, group: 'Objective', get: (r: ResultRow) => r.totals[m.id] ?? null })),
     ...(rows[0]?.descriptive ?? []).map((d) => ({ id: d.id, label: d.label, unit: d.unit, better: d.better, group: 'Mobility', get: (r: ResultRow) => r.descriptive.find((x) => x.id === d.id)?.value ?? null })),
+    ...(emissions ? domain.map((d) => ({ id: `domain:${d.id}`, label: d.unit === '%' ? `${d.label} (%)` : d.label, unit: d.unit, better: d.better, group: 'Emissions', get: (r: ResultRow) => domainValue(r.domain, d.id) })) : []),
     { id: 'gap_pct', label: 'Gap to the exact reference', unit: '%', better: 'lower', group: 'Quality', get: (r) => r.gap_pct },
     { id: 'total_time_s', label: 'Median total time', unit: 's', better: 'lower', group: 'Runtime', get: (r) => r.total_time_s },
     { id: 'solver_time_s', label: 'Median solver time', unit: 's', better: 'lower', group: 'Runtime', get: (r) => r.solver_time_s },
@@ -23,13 +28,14 @@ export const rowLabel = (r: ResultRow, rows: ResultRow[]) =>
   rows.filter((x) => x.method_id === r.method_id).length > 1 ? `${r.name} (${ORIGIN_SHORT[r.campaign_kind] ?? r.campaign_kind})` : r.name;
 
 const fmt = (v: number, unit: string) => (unit === 's' ? (v < 1 ? `${(v * 1000).toFixed(1)} ms` : v < 120 ? `${v.toFixed(2)} s` : `${(v / 60).toFixed(1)} min`)
-  : `${Number.isInteger(v) ? v : v.toFixed(1)}${unit === '%' ? ' %' : ''}`);
+  : unit === 'g' ? (Math.abs(v) < 1000 ? `${Math.round(v)} g` : `${(v / 1000).toFixed(1)} kg`)
+  : `${Number.isInteger(v) ? v : v.toFixed(1)}${unit === '%' ? ' %' : unit === 'km' || unit === 'g/km' ? ` ${unit}` : ''}`);
 
 function cssVar(name: string) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'; }
 
 /** Horizontal bar chart of one metric across methods (hand-written SVG, no chart library) with CSV, SVG and PNG export. */
-export function Charts({ metrics, rows, title }: { metrics: Metric[]; rows: ResultRow[]; title: string }) {
-  const options = useMemo(() => chartMetrics(metrics, rows), [metrics, rows]);
+export function Charts({ metrics, rows, title, domain = [] }: { metrics: Metric[]; rows: ResultRow[]; title: string; domain?: DomainMetric[] }) {
+  const options = useMemo(() => chartMetrics(metrics, rows, domain), [metrics, rows, domain]);
   const [mid, setMid] = useState(options[0]?.id ?? '');
   const svg = useRef<SVGSVGElement>(null);
   const m = options.find((o) => o.id === mid) ?? options[0];

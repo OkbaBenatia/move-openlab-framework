@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 
 export const TOUR_STEPS: { anchor: string; title: string; text: string }[] = [
-  { anchor: 'context', title: 'Area, dataset, experiment', text: 'Choose where you work, which trip data you use and which experiment you open. Lists follow the selected area.' },
-  { anchor: 'scenario', title: 'Scenario and participants', text: 'The drivers and riders of the selected scenario, with their time windows and whether they were served.' },
-  { anchor: 'map', title: 'Map', text: 'Participants, pickups, drop-offs and the routes of the selected method on the road network.' },
-  { anchor: 'methods', title: 'Methods', text: 'Tick the methods to run. Keeping the same methods re-executes the experiment; adding one extends it.' },
-  { anchor: 'run', title: 'Run', text: 'Runs in the background with live progress. Every solution is checked by the independent validator.' },
-  { anchor: 'results', title: 'Results and comparability', text: 'Key results per method and whether this experiment can be compared with the one it derives from.' },
-  { anchor: 'compare', title: 'Compare and replay', text: 'Compare opens the table and charts; Replay plays the routes over time.' },
-  { anchor: 'share', title: 'Export and import', text: 'Export a verified bundle for a colleague, or import theirs and reproduce it here.' },
+  { anchor: 'scenario', title: 'Demo', text: 'The public demonstration opens first: participants, vehicles, methods and results on real road data.' },
+  { anchor: 'context', title: 'Area and data', text: 'Choose the area, the trip data and the experiment. Generate creates a scenario in five steps.' },
+  { anchor: 'scenario', title: 'Participants and vehicles', text: 'Drivers, riders and their vehicles; click a participant to find it on the map.' },
+  { anchor: 'run', title: 'Run', text: 'Runs the ticked methods in the background; every solution is checked independently.' },
+  { anchor: 'results', title: 'Results', text: 'Objective, runtime and CO₂ per method, with the comparability of this experiment.' },
+  { anchor: 'compare', title: 'Compare', text: 'Table and charts of the methods, or two experiments side by side.' },
+  { anchor: 'replay', title: 'Replay', text: 'Plays the routes over time on the map.' },
+  { anchor: 'share', title: 'Export, reproduce, extend', text: 'Export a verified bundle; import one to reproduce it or extend it with your method.' },
 ];
 
 /** Optional guided tour: highlights one interface element per step. Skip closes it; "Don't show again" is saved for

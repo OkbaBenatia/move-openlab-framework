@@ -186,3 +186,56 @@ input.full { width: 100%; }
   .topbar .tab { font-size: 0; gap: 0; padding: 6px 8px; }
   .topbar .tab svg { width: 18px; height: 18px; }
 }
+/* Mobility: wizard, vehicles, emissions, trace timeline, A/B comparison */
+.wizard { position: fixed; inset: 0; z-index: 900; display: grid; grid-template-columns: minmax(360px, 520px) minmax(0, 1fr); background: var(--bg); }
+.wizard-side { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+.wizard-head { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.wizard-head h2 { margin: 0; }
+.steps { display: flex; gap: 4px; list-style: none; margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; counter-reset: step; }
+.steps li { font-size: 11px; color: var(--muted); white-space: nowrap; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); counter-increment: step; }
+.steps li::before { content: counter(step) " "; font-weight: 600; }
+.steps li.current { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.steps li.done { color: var(--ok); border-color: var(--ok); }
+.wizard-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; max-width: none; align-content: start; }
+.wizard-foot { padding: 10px 14px; border-top: 1px solid var(--line); }
+.wizard-map { min-width: 0; min-height: 0; }
+.wizard-map .map { border: 0; border-radius: 0; }
+.wizard-map .map-wrap { height: 100%; }
+.review dt { font-weight: 600; color: var(--text); }
+.veh-grid { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.veh-grid .people button.hl { background: var(--hl); }
+.emissions { margin: 6px 0 0; }
+.emissions dt { color: var(--muted); }
+.chips { margin-top: 6px; }
+.vehicles { margin: 0; }
+.trace { display: grid; gap: 10px; }
+.phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.phase { display: grid; grid-template-columns: 64px minmax(0, 1fr) 160px 70px; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; }
+.phase:nth-child(odd) { background: var(--panel-2); }
+.phase-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phase-bar { position: relative; height: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.phase-bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+.phase.error .phase-bar i, .phase.cancelled .phase-bar i { background: var(--bad); }
+.phase.done.final .phase-bar i { background: var(--ok); }
+.phase-d { text-align: right; font-variant-numeric: tabular-nums; }
+.ab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ab-maps { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+.ab-map { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
+.ab-map > .map-wrap { flex: 1; min-height: 0; }
+.ab-map .map { border: 0; border-radius: 0; }
+.ab-title { padding: 4px 10px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+.ab-title select.small { font-size: 12px; padding: 2px 4px; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-panel { max-height: 40vh; overflow-y: auto; padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--line); display: grid; gap: 6px; align-content: start; }
+.ab-replay { position: static; margin: 6px 12px; box-shadow: none; }
+.ab-diff { display: grid; gap: 6px; }
+tr.dim td { opacity: .55; }
+@media (max-width: 900px) {
+  .wizard { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 38vh; }
+  .wizard-side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .veh-grid { grid-template-columns: minmax(0, 1fr); }
+  .ab-maps { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
+  .phase { grid-template-columns: 52px minmax(0, 1fr) 60px; }
+  .phase-bar { display: none; }
+}
+.badge.pt { font-size: 9px; padding: 0 4px; margin-left: 2px; }

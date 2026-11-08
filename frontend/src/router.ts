@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /** Hash routes, so that the browser's Back and Forward buttons and bookmarks work:
- *  #/workspace[/<experiment>] · #/data[/<view>] · #/experiments[/<view>] · #/jobs · #/admin */
-export type Section = 'workspace' | 'data' | 'experiments' | 'jobs' | 'admin';
+ *  #/workspace[/<experiment>] · #/compare/<A>|<B> · #/data[/<view>] · #/experiments[/<view>] · #/jobs · #/admin */
+export type Section = 'workspace' | 'compare' | 'data' | 'experiments' | 'jobs' | 'admin';
 export interface Route { section: Section; arg: string }
 
-const SECTIONS: Section[] = ['workspace', 'data', 'experiments', 'jobs', 'admin'];
+const SECTIONS: Section[] = ['workspace', 'compare', 'data', 'experiments', 'jobs', 'admin'];
 
 export function parse(hash: string): Route {
   const [s, ...rest] = hash.replace(/^#\/?/, '').split('/');

@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { call, download, post, type Json } from '../api/client';
+import { TraceDrawer } from '../components/TraceDrawer';
 import { ErrorNote, errText } from '../components/common';
-import { COLORS, LeafletMap, type MapLine, type MapPoint } from '../geo/LeafletMap';
-import { geo, hhmmss } from '../geo/api';
+import { COLORS, LeafletMap, type MapPoint } from '../geo/LeafletMap';
+import { geo } from '../geo/api';
 import { instanceLayers } from '../geo/GeoWorkbench';
+import { Wizard } from '../mobility/Wizard';
 import type { Section } from '../router';
 import { lab, rowKey, scopeMethods, type Experiment, type LabState } from './api';
 import { Charts } from './Charts';
 import { ComparePanel } from './ComparePanel';
-import { ReplayBar, positionAt, useReplay } from './ReplayBar';
+import { planLayers, planPositions } from './layers';
+import { ReplayBar, useReplay } from './ReplayBar';
 import { ResultPanel, methodKey, type RunOptions } from './ResultPanel';
 import { NewExperimentPanel, ScenarioPanel } from './ScenarioPanel';
 import { ALL, NEW, TopBar } from './TopBar';
 import { Tour } from './Tour';
 import { RIDE, overlaps, useLabData, useMethods } from './useLabData';
 
-const ROUTE_COLORS = ['#1f5fd1', '#15803d', '#7c3aed', '#c2410c', '#0f766e', '#a21caf', '#b45309', '#0369a1'];
 const AREA_KEY = 'move-openlab.area';
 const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
 
@@ -41,6 +43,9 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   const [comparing, setComparing] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [tour, setTour] = useState(false);
+  const [wizard, setWizard] = useState(false);
+  const [trace, setTrace] = useState<string | null>(null);
+  const [lastJob, setLastJob] = useState<string | null>(null);
   const [panel, setPanel] = useState<'left' | 'right' | null>(null);
   const [focus, setFocus] = useState<{ key: string; bbox: [number, number, number, number] } | null>(null);
   const isNew = cid === NEW;
@@ -111,8 +116,13 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   // lists follow the selected area (and dataset); "All areas" shows everything
   const area = areas.find((a) => a.area_id === areaId) ?? null;
   const shownDatasets = useMemo(() => (area ? datasets.filter((d) => overlaps(d.bbox, area.bbox)) : datasets), [datasets, area]);
-  const shownExps = useMemo(() => experiments.filter((x) => x.campaign_id === cid || ((!area || (!!area.network_id && x.network_ids.includes(area.network_id)))
+  const shownExps = useMemo(() => experiments.filter((x) => x.campaign_id === cid || (!x.hidden && (!area || (!!area.network_id && x.network_ids.includes(area.network_id)))
     && (!datasetKey || x.dataset_keys.includes(datasetKey)))), [experiments, area, datasetKey, cid]);
+  const hiddenIds = st?.preferences.hidden_ids ?? [];
+  const toggleHidden = () => act(async () => {
+    const next = hiddenIds.includes(cid) ? hiddenIds.filter((x) => x !== cid) : [...hiddenIds, cid];
+    setSt(await lab.prefs({ hidden_ids: next })); await reloadExperiments();
+  });
   const shownLib = useMemo(() => (area ? lib.filter((s) => s.network_id === area.network_id) : lib), [lib, area]);
   const setArea = (id: string) => {
     setAreaId(id); setDatasetKey(ALL);
@@ -121,18 +131,8 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   };
 
   // map layers: routes of the selected method, else the scenario's participants, else the selected area
-  const { points, lines } = useMemo(() => {
-    if (plan) {
-      const ls: MapLine[] = (plan.vehicles as Json[]).map((v, i) => ({ coords: v.path.map((p: number[]) => [p[0], p[1]]), color: v.rider ? ROUTE_COLORS[i % ROUTE_COLORS.length] : '#94a3b8', weight: v.rider ? 4 : 2, dash: v.rider ? undefined : '4 6', label: v.rider ? `${v.driver} carries ${v.rider}` : `${v.driver} alone` }));
-      const ps: MapPoint[] = [
-        ...(plan.vehicles as Json[]).map((v) => ({ lat: v.path[0][0], lon: v.path[0][1], color: COLORS.driver, radius: 5, label: `${v.driver} departs ${hhmmss(v.path[0][2])}` })),
-        ...(plan.vehicles as Json[]).flatMap((v) => v.stops.filter((s: Json) => s.type === 'pickup' || s.type === 'dropoff').map((s: Json) => ({ lat: s.at[0], lon: s.at[1], color: COLORS.match, fill: s.type === 'pickup', radius: 5, label: `${s.rider} ${s.type === 'pickup' ? 'pickup' : 'drop-off'} ${hhmmss(s.t)}` }))),
-        ...(plan.unserved as Json[]).map((u) => ({ lat: u.at[0], lon: u.at[1], color: COLORS.unserved, radius: 6, label: `${u.rider} unserved` }))];
-      return { points: ps, lines: ls };
-    }
-    return instanceLayers(inst, false);
-  }, [plan, inst]);
-  const dynamic: MapPoint[] = replaying && plan ? (plan.vehicles as Json[]).flatMap((v, i) => { const p = positionAt(v.path, replay.t); return p ? [{ lat: p[0], lon: p[1], color: v.rider ? ROUTE_COLORS[i % ROUTE_COLORS.length] : '#64748b', label: v.driver }] : []; }) : [];
+  const { points, lines } = useMemo(() => (plan ? planLayers(plan) : instanceLayers(inst, false)), [plan, inst]);
+  const dynamic: MapPoint[] = replaying && plan ? planPositions(plan, replay.t) : [];
   const rects = isNew && area ? [{ bbox: area.bbox, color: COLORS.area }] : [];
 
   // run: new experiment -> create; draft -> execute; locked -> re-execute (same methods) or extend (added methods)
@@ -153,8 +153,8 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   };
   const runBlocked = !!job || busy || (isNew ? !picked.length || !checked.length : !exp || (!exp.campaign.locked && exp.campaign.status !== 'draft'));
   const runTitle = isNew ? 'Choose scenarios and methods' : exp && !exp.campaign.locked && exp.campaign.status === 'completed' ? 'Lock the results first' : '';
-  const jobDone = () => {
-    setJob(null); reloadExperiments().catch(() => { /* list refresh only */ });
+  const jobDone = (j: Json) => {
+    setJob(null); setLastJob(j.job_id); reloadExperiments().catch(() => { /* list refresh only */ });
     const now = cidRef.current;
     if (jobTarget && jobTarget !== now) go('workspace', jobTarget); else if (now && now !== NEW) loadExp(now);
   };
@@ -178,19 +178,21 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   const variant = () => once(async () => { const r = await post(`/campaigns/${cid}/variant`, { variant: opts.variant }); await execute(r.campaign_id); });
   const parentTitle = exp?.campaign.parent ? experiments.find((x) => x.campaign_id === exp.campaign.parent!.campaign_id)?.title ?? null : null;
   const geographic = !exp || exp.campaign.problem_id === RIDE;
+  const traceId = job ? null : exp?.job_id ?? lastJob;
   if (!cfg) return <ErrorNote text={err} />;
 
   return <div className="lab">
     <TopBar areas={areas} areaId={areaId} setArea={setArea} datasets={shownDatasets} datasetKey={datasetKey} setDataset={setDatasetKey}
-      experiments={shownExps} expId={cid} setExp={(id) => go('workspace', id)} onGenerate={() => go('data', 'generate')}
+      experiments={shownExps} expId={cid} setExp={(id) => go('workspace', id)} onGenerate={() => setWizard(true)}
       onRun={run} runDisabled={runBlocked} runTitle={runTitle} onCompare={() => setComparing(true)} canCompare={!!exp?.results}
       onReplay={() => setReplaying(!replaying)} canReplay={!!plan} replaying={replaying} onImport={importBundle} onExport={exportBundle}
       canExport={!!exp && (exp.campaign.locked || exp.campaign.status === 'completed')} onTour={() => setTour(true)} onPanel={(p) => setPanel(panel === p ? null : p)} />
     {(err || notice) && <div className="lab-notes">{err && <ErrorNote text={err} />}{notice && <p className="note ok row gap" role="status">{notice}<span className="grow" /><button className="btn sm" onClick={() => setNotice(null)}>OK</button></p>}</div>}
     <div className="lab-grid">
       <aside className={`lab-left ${panel === 'left' ? 'open' : ''}`} data-tour="scenario" aria-label="scenario">
-        {isNew ? <NewExperimentPanel lib={shownLib} picked={picked} setPicked={setPicked} title={title} setTitle={setTitle} onGenerate={() => go('data', 'generate')} />
+        {isNew ? <NewExperimentPanel lib={shownLib} picked={picked} setPicked={setPicked} title={title} setTitle={setTitle} onGenerate={() => setWizard(true)} />
           : exp ? <ScenarioPanel exp={exp} hash={hash} setHash={setHash} inst={inst} plan={plan} parentTitle={parentTitle} onDetails={() => go('experiments', `c:${cid}`)}
+            hidden={hiddenIds.includes(cid)} onHide={toggleHidden}
             onFocus={(la, lo) => { setPanel(null); setFocus({ key: `${la},${lo},${Date.now()}`, bbox: [la - 0.004, lo - 0.006, la + 0.004, lo + 0.006] }); }} />
           : <p className="muted panel-body">{st ? 'Choose an experiment.' : 'Loading…'}</p>}
       </aside>
@@ -205,10 +207,17 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
           selected={selected} setSelected={setSelected} onExport={exportBundle} onReproduce={() => derive('reproduce')} onExtend={() => derive('extend')}
           onLock={() => act(async () => { await post(`/campaigns/${cid}/lock`); await loadExp(cid); await reloadExperiments(); })}
           opts={opts} setOpts={setOpts} variants={(problem?.variants ?? []).filter((v) => v.instance_level)} onVariant={variant}
-          onWhy={() => exp?.comparability && go('experiments', `sem:${exp.comparability.reference}|${cid}`)} />
+          onWhy={() => exp?.comparability && go('experiments', `sem:${exp.comparability.reference}|${cid}`)}
+          onTrace={traceId ? () => setTrace(traceId) : null} />
       </aside>
     </div>
-    {comparing && exp && <ComparePanel exp={exp} onClose={() => setComparing(false)} onDetails={() => go('experiments', `${exp.campaign.kind === 'threshold-study' ? 'thr' : 'cmp'}:${cid}`)} />}
+    {comparing && exp && <ComparePanel exp={exp} others={experiments.filter((x) => x.campaign_id !== cid && !x.hidden && x.problem_id === exp.campaign.problem_id)} onClose={() => setComparing(false)}
+      onDetails={() => go('experiments', `${exp.campaign.kind === 'threshold-study' ? 'thr' : 'cmp'}:${cid}`)} onAB={(other) => go('compare', `${cid}|${other}`)} />}
+    {trace && <TraceDrawer jobId={trace} onClose={() => setTrace(null)} />}
+    {wizard && <Wizard cfg={cfg} areas={areas} datasets={datasets} methods={methods} areaId={areaId || undefined} setErr={setErr} reloadAreas={reloadLists}
+      onClose={() => setWizard(false)}
+      onSaved={(rec) => { setWizard(false); reloadLists(); setPicked([rec.instance_hash]); go('workspace', NEW); }}
+      onRun={(r) => { setWizard(false); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}
     {tour && <Tour onClose={(never) => { setTour(false); if (never) lab.prefs({ tour_dismissed: true }).catch(() => { /* preference only */ }); }} />}
   </div>;
 }
