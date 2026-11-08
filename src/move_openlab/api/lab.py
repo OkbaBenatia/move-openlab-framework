@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -30,6 +31,7 @@ from .experiments import _call, ws
 
 router = APIRouter(prefix="/api/lab")
 PREFS = "preferences.json"
+_prefs_lock = threading.Lock()                # preference files are read-modify-written
 CID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
@@ -59,12 +61,13 @@ def state(request: Request):
 @router.put("/preferences")
 def set_preferences(body: PrefsBody, request: Request):
     w = ws(request)
-    p = _prefs(w)
-    for k, v in body.model_dump(exclude_unset=True).items():
-        if k == "last_experiment" and v is not None and not CID.match(v):
-            raise HTTPException(400, "invalid experiment id")
-        p[k] = v
-    _write(w.root / PREFS, p)
+    upd = body.model_dump(exclude_unset=True)
+    if upd.get("last_experiment") is not None and not CID.match(upd["last_experiment"]):
+        raise HTTPException(400, "invalid experiment id")
+    with _prefs_lock:
+        p = _prefs(w)
+        p.update(upd)
+        _write(w.root / PREFS, p)
     return state(request)
 
 
@@ -75,11 +78,12 @@ def install_demo(request: Request):
         raise HTTPException(404, "no demonstration is shipped with this installation")
     w = ws(request)
     rep = _call(w.import_bundle, demo.bundle_bytes())
-    p = _prefs(w)
     camps = [c["campaign_id"] for c in rep["campaigns_verified"]]
-    p.update(demo_installed=rep["bundle_sha256"], demo_campaigns=camps)
-    p.setdefault("last_experiment", rep["root_campaign_id"])
-    _write(w.root / PREFS, p)
+    with _prefs_lock:
+        p = _prefs(w)
+        p.update(demo_installed=rep["bundle_sha256"], demo_campaigns=camps)
+        p.setdefault("last_experiment", rep["root_campaign_id"])
+        _write(w.root / PREFS, p)
     return dict(installed=True, campaigns=camps, root_campaign_id=rep["root_campaign_id"])
 
 
@@ -105,10 +109,9 @@ def experiments(request: Request):
     out = []
     for e in w.list():
         try:
-            c = w.get(e["campaign_id"])
-        except BenchError:
+            nids, keys = _refs(w, w.get(e["campaign_id"]))
+        except (BenchError, KeyError, OSError, ValueError):     # an unreadable record never hides the others
             continue
-        nids, keys = _refs(w, c)
         out.append(dict(campaign_id=e["campaign_id"], title=e["title"], kind=e["kind"], status=e["status"],
                         problem_id=e["problem_id"], imported=e["imported"], locked=bool(e["checksum"]),
                         created_at=e["created_at"], owner_display=e["owner_display"],
@@ -179,12 +182,15 @@ def experiment(cid: str, request: Request):
                    for i in insts],
         methods=[dict(method_id=m["method_id"], version=m["version"], name=m.get("name"), kind=m.get("kind"),
                       source=m["source"]) for m in c["methods"]],
-        runs=[dict(run_id=r["run_id"], campaign_id=x["campaign_id"], instance_hash=r["instance_hash"],
-                   method_id=r["method_id"], accepted=r["accepted"], status=r.get("status_declared"))
-              for x in _scope(w, cid) for r in x["runs"] if r.get("repetition") == 1],
+        runs=[],
         results=None, comparability=None, reproduction=None)
     if c["runs"]:
         cmp = _call(compare, w, cid)
+        scope = {r["campaign_id"] for r in cmp["rows"]} | {cid}          # the campaigns the comparison shows
+        out["runs"] = [dict(run_id=r["run_id"], campaign_id=x["campaign_id"], instance_hash=r["instance_hash"],
+                            method_id=r["method_id"], accepted=r["accepted"], status=r.get("status_declared"))
+                       for x in _call(w.lineage, cid) if x["campaign_id"] in scope
+                       for r in x["runs"] if r.get("repetition") == 1]
         out["results"] = dict(rows=[_row(problem, insts, r) for r in cmp["rows"]], warnings=cmp["warnings"],
                               reference=cmp["reference"], metrics=cmp["metrics"])
         if parent:
@@ -201,19 +207,6 @@ def experiment(cid: str, request: Request):
             rr = _call(reproducibility, w, cid)
             out["reproduction"] = dict(reproduced=rr["numerically_reproduced"], cells=rr["cells"],
                                        agreement=rr["agreement"])
-    return out
-
-
-def _scope(w, cid: str) -> list[dict]:
-    """The campaign and its ancestors on the same scenarios, back to the baseline or controlled variant that
-    defined them (the campaigns whose methods the workspace shows together)."""
-    out = []
-    for x in w.lineage(cid):
-        if out and x["scenario_set"]["instance_hashes"] != out[0]["scenario_set"]["instance_hashes"]:
-            break
-        out.append(x)
-        if x["kind"] in ("baseline", "variant"):
-            break
     return out
 
 

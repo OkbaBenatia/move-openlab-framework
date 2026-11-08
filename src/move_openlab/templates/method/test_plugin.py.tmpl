@@ -20,11 +20,11 @@ def _load():
 
 
 def test_metadata_is_compatible():
-    check_metadata(_load().METADATA, registry.get("$problem_id"))
+    check_metadata(_load().METADATA, registry.get($problem_id_lit))
 
 
 def test_selftest_instance_is_solved_validly():
-    problem, mod = registry.get("$problem_id"), _load()
+    problem, mod = registry.get($problem_id_lit), _load()
     inst = problem.selftest_instance()
     out = mod.solve(inst, dict(mod.METADATA["default_config"]))
     assert not problem.check_decisions(out["decisions"])

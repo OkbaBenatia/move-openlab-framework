@@ -82,3 +82,12 @@ def test_documented_schemas_match_the_records():
         assert set(r) <= set(run_schema["properties"]), set(r) - set(run_schema["properties"])
     from move_openlab.methods import STATUSES
     assert tuple(res_schema["properties"]["status"]["enum"]) == STATUSES
+
+
+def test_template_values_cannot_break_the_generated_python(tmp_path):
+    import ast
+    d = new_method("quoted_author", PID, tmp_path / 'dir with "quotes" and \\U', author='O"Brien """ \\U0001')
+    for f in ("plugin.py", "test_plugin.py"):
+        ast.parse((d / f).read_text())
+    assert check_method(d / "test_plugin.py")["steps"][0]["ok"] is False            # only plugin.py is accepted
+    assert main(["method", "check", str(d), "--bundle", str(tmp_path / "missing.zip")]) == 2

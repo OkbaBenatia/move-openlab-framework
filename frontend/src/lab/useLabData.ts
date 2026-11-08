@@ -21,7 +21,7 @@ export function useLabData(setErr: (s: string | null) => void) {
   const [lib, setLib] = useState<Json[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const fail = useCallback((e: unknown) => setErr(errText(e)), [setErr]);
-  const reloadExperiments = useCallback(() => lab.experiments().then((r) => setExperiments(r.experiments)).catch(fail), [fail]);
+  const reloadExperiments = useCallback(() => lab.experiments().then((r) => { setExperiments(r.experiments); return r.experiments; }), []);
   const reloadLists = useCallback(() => {
     geo.areas().then((r) => setAreas(r.areas)).catch(fail);
     geo.scenarios().then((r) => setLib(r.scenarios)).catch(fail);

@@ -54,7 +54,7 @@ export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone,
       {exp?.reproduction && <p className="small">{exp.reproduction.reproduced ? `Reproduced: ${exp.reproduction.cells} of ${exp.reproduction.cells} results identical.` : `${exp.reproduction.agreement.different} of ${exp.reproduction.cells} results differ.`}</p>}
     </section>
     {exp && <section className="row gap actions" data-tour="share">
-      <button className="btn sm" onClick={onExport}><Download size={12} /> Export</button>
+      <button className="btn sm" onClick={onExport} disabled={!exp.campaign.locked && exp.campaign.status !== 'completed'}><Download size={12} /> Export</button>
       {exp.campaign.locked && <button className="btn sm" onClick={onReproduce}><RotateCcw size={12} /> Reproduce</button>}
       {exp.campaign.locked && <button className="btn sm" disabled={!added.length} onClick={onExtend} title={added.length ? '' : 'tick a method that is not in this experiment'}><GitBranch size={12} /> Extend</button>}
       {!exp.campaign.locked && !exp.campaign.imported && exp.campaign.status === 'completed' && <button className="btn sm" onClick={onLock}><Lock size={12} /> Lock results</button>}

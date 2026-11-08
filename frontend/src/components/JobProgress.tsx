@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CircleStop, RotateCcw } from 'lucide-react';
 import { call, post, type Json } from '../api/client';
 import { errText } from './common';
@@ -6,6 +6,8 @@ import { errText } from './common';
 /** Live status of one background job: stage, progress, last events, cancellation. Calls `onFinished` once. */
 export function JobProgress({ job, onFinished, setErr, unit }: { job: Json; onFinished: (j: Json) => void; setErr: (s: string | null) => void; unit?: 'bytes' | 'runs' }) {
   const [j, setJ] = useState<Json>(job);
+  const finished = useRef(onFinished);
+  finished.current = onFinished;
   useEffect(() => {
     let alive = true, failures = 0, t: ReturnType<typeof setTimeout>;
     const tick = async () => {
@@ -13,7 +15,7 @@ export function JobProgress({ job, onFinished, setErr, unit }: { job: Json; onFi
         const n = await call(`/jobs/${job.job_id}`);
         if (!alive) return;
         failures = 0; setJ(n);
-        if (n.state === 'running') t = setTimeout(tick, 600); else onFinished(n);
+        if (n.state === 'running') t = setTimeout(tick, 600); else finished.current(n);
       } catch (e) {                       // transient errors: keep polling with back-off, report after 5 failures
         if (!alive) return;
         failures += 1;

@@ -129,7 +129,7 @@ execute, validate) used for the stage-duration table and the replay in the web i
 <data>/workspaces/<user>/areas/<id>.json        named area: box, profile, attached network id
 <data>/workspaces/<user>/datasets/<key>/        uploaded dataset: normalised trips + validation report (no raw file)
 <data>/workspaces/<user>/preferences.json       workspace preferences (tour, last experiment, area) and demo record
-<data>/geometry/<instance_hash>.json            replay geometry imported with bundles
+<data>/workspaces/<user>/geometry/<hash>.json   replay geometry imported with bundles (per workspace)
 <data>/networks/<network_id>/                   road network, provenance, compressed raw Overpass response
 <data>/opendata/rpc/<dataset_key>/              cleaned RPC trips (no identifiers) and ingestion report
 <data>/cache/geocode/                           cached place-search results

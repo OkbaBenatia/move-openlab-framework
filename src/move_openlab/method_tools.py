@@ -11,6 +11,7 @@ Each step reports ``ok`` and an actionable ``detail``. Nothing is written outsid
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -27,6 +28,11 @@ TEMPLATES = Path(__file__).resolve().parent / "templates" / "method"
 NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 
 
+def _doc(value) -> str:
+    """Text safe inside a generated docstring: no backslash escapes, no closing triple quote."""
+    return str(value).replace("\\", "/").replace('"' * 3, "'" * 3)
+
+
 def new_method(name: str, problem_id: str, dest: Path, author: str = "") -> Path:
     if not NAME.match(name):
         raise ValueError("name must be 3-41 characters: lowercase letters, digits, '_' and start with a letter")
@@ -38,10 +44,13 @@ def new_method(name: str, problem_id: str, dest: Path, author: str = "") -> Path
     if d.exists():
         raise ValueError(f"{d} already exists")
     keys = ", ".join(k for k in sorted(problem.selftest_instance()) if k not in ("instance_hash", "schema"))
-    values = dict(name=name.replace("_", " ").title(), method_id=name.replace("_", "-"), problem_id=problem_id,
-                  objective_spec_id=problem.objective_spec_id, author=author or "Your name",
-                  decisions=problem.decision_description or "the problem's decision list", instance_keys=keys,
-                  test_file=str(d / "test_plugin.py"), plugin_dir=str(d))
+    title = name.replace("_", " ").title()
+    lit = json.dumps                                  # a JSON string is a valid Python string literal
+    values = dict(name=_doc(title), name_lit=lit(title), method_id_lit=lit(name.replace("_", "-")),
+                  problem_id=_doc(problem_id), problem_id_lit=lit(problem_id),
+                  objective_lit=lit(problem.objective_spec_id), author_lit=lit(author or "Your name"),
+                  decisions=_doc(problem.decision_description or "the problem's decision list"),
+                  instance_keys=_doc(keys), test_file=_doc(d / "test_plugin.py"), plugin_dir=_doc(d))
     d.mkdir(parents=True)
     for tmpl, out in (("plugin.py.tmpl", PLUGIN_FILE), ("test_plugin.py.tmpl", "test_plugin.py")):
         (d / out).write_text(Template((TEMPLATES / tmpl).read_text()).substitute(values))
@@ -58,7 +67,7 @@ def check_method(path: Path, bundle: bytes | None = None, plugin_mode: str = "sa
     f = path / PLUGIN_FILE if path.is_dir() else path
     steps: list[dict] = []
     report = dict(plugin=str(f), steps=steps, ok=False)
-    if not f.is_file():
+    if not f.is_file() or f.name != PLUGIN_FILE:
         _step(steps, "metadata", False, f"{f} not found (expected <method directory>/{PLUGIN_FILE})")
         return report
     try:
@@ -68,14 +77,15 @@ def check_method(path: Path, bundle: bytes | None = None, plugin_mode: str = "sa
     except registry.UnknownProblem:
         _step(steps, "metadata", False, f"problem_id {meta.get('problem_id')!r} is not installed")
         return report
-    except (ContractError, SyntaxError, ValueError) as e:
+    except (ContractError, SyntaxError, ValueError, OSError) as e:
         _step(steps, "metadata", False, str(e))
         return report
     _step(steps, "metadata", True, f"{m.method_id}@{m.version} ({m.kind}) for {problem.problem_id}")
     report["method"] = dict(method_id=m.method_id, version=m.version, problem_id=problem.problem_id)
     with tempfile.TemporaryDirectory(prefix="move-openlab-check-") as tmp:
         tmp = Path(tmp)
-        shutil.copytree(f.parent, tmp / "plugins" / f.parent.name, ignore=shutil.ignore_patterns("__pycache__"))
+        (tmp / "plugins" / f.parent.name).mkdir(parents=True)          # only the plugin file is checked and run
+        shutil.copyfile(f, tmp / "plugins" / f.parent.name / PLUGIN_FILE)
         inst = Installation(tmp / "data", tmp / "plugins", "method-check", plugin_mode=plugin_mode)
         w = inst.workspace("checker", "Method check")
         try:

@@ -244,7 +244,7 @@ def playback(cid: str, run_id: str, request: Request):
             net = None                                      # network not installed here
     legs = None
     if net is None:                                         # replay geometry imported with a bundle, else straight lines
-        legs = (GeometryStore(request.app.state.settings.data_dir).get(inst["instance_hash"]) or {}).get("legs")
+        legs = (GeometryStore(w.root).get(inst["instance_hash"]) or {}).get("legs")
     try:
         return dict(PB.plan(inst, run["decisions"], net, legs), run_id=run_id, method_id=run["method_id"],
                     accepted=run["accepted"], metrics=run["validation"]["metrics"])

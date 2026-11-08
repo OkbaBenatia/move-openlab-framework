@@ -10,7 +10,9 @@ const SECTIONS: Section[] = ['workspace', 'data', 'experiments', 'jobs', 'admin'
 export function parse(hash: string): Route {
   const [s, ...rest] = hash.replace(/^#\/?/, '').split('/');
   const section = (SECTIONS as string[]).includes(s) ? (s as Section) : 'workspace';
-  return { section, arg: decodeURIComponent(rest.join('/')) };
+  let arg = rest.join('/');
+  try { arg = decodeURIComponent(arg); } catch { arg = ''; }           // malformed escapes: ignore the argument
+  return { section, arg };
 }
 
 export const href = (section: Section, arg = '') => `#/${section}${arg ? `/${encodeURIComponent(arg)}` : ''}`;

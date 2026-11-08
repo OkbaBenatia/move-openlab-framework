@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { call, download, post, type Json } from '../api/client';
 import { ErrorNote, errText } from '../components/common';
 import { COLORS, LeafletMap, type MapLine, type MapPoint } from '../geo/LeafletMap';
@@ -48,7 +48,14 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   const methods = useMethods(problemId, setErr);
   const problem = problems.find((p) => p.spec.problem_id === problemId);
   const replay = useReplay(plan, replaying);
+  const [busy, setBusy] = useState(false);
   const act = useCallback(async (fn: () => Promise<unknown>) => { setErr(null); try { await fn(); } catch (e) { setErr(errText(e)); } }, []);
+  const busyRef = useRef(false);                 // synchronous guard: a double click starts one run only
+  const once = (fn: () => Promise<unknown>) => {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true);
+    return act(fn).finally(() => { busyRef.current = false; setBusy(false); });
+  };
 
   // first use: the demonstration is imported once into this workspace; the tour opens until dismissed
   useEffect(() => {
@@ -56,12 +63,9 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
       let s = await lab.state();
       if (s.demo.available && !s.demo.installed) {
         setNotice('Loading the demonstration experiment…');
-        await lab.installDemo();
-        s = await lab.state();
-        setNotice(null);
+        try { await lab.installDemo(); s = await lab.state(); } catch (e) { setErr(errText(e)); } finally { setNotice(null); }
       }
-      const list = (await lab.experiments()).experiments;
-      await reloadExperiments();
+      const list = await reloadExperiments();
       if (s.preferences.area_id) setAreaId(s.preferences.area_id);
       const last = list.find((x) => x.campaign_id === s.preferences.last_experiment) ?? list[list.length - 1];
       if (!cid && last) go('workspace', last.campaign_id, true);
@@ -70,7 +74,11 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
     });
   }, []);                                                                    // eslint-disable-line react-hooks/exhaustive-deps
 
+  // responses for an experiment that is no longer the current one are ignored
+  const cidRef = useRef(cid);
+  cidRef.current = cid;
   const loadExp = useCallback((id: string) => lab.experiment(id).then((e) => {
+    if (cidRef.current !== id) return;
     setExp(e);
     lab.prefs({ last_experiment: id }).catch(() => { /* preference only */ });
     setHash((h) => (e.scenarios.some((s) => s.instance_hash === h) ? h : e.scenarios[0]?.instance_hash ?? ''));
@@ -78,19 +86,26 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
     const rows = e.results?.rows ?? [];
     const pick = rows.find((r) => r.campaign_id === id && r.method_id === e.results?.reference?.method_id) ?? rows.find((r) => r.campaign_id === id) ?? rows[0];
     setSelected((k) => (rows.some((r) => rowKey(r) === k) ? k : pick ? rowKey(pick) : ''));
-  }).catch((x) => { setExp(null); setErr(errText(x)); }), []);
+  }).catch((x) => { if (cidRef.current === id) { setExp(null); setErr(errText(x)); } }), []);
   useEffect(() => {
     setReplaying(false); setComparing(false); setPlan(null);
     if (!cid || isNew) { setExp(null); setInst(null); return; }
     loadExp(cid);
   }, [cid, isNew, loadExp]);
-  useEffect(() => { if (isNew && !checked.length && methods.length) setChecked(methods.filter((m) => m.source === 'builtin').map(methodKey)); }, [isNew, methods, checked.length]);
+  useEffect(() => { if (isNew) setChecked(methods.filter((m) => m.source === 'builtin').map(methodKey)); }, [isNew, methods]);
   useEffect(() => { if (problem?.variants.length && !opts.variant) setOpts((o) => ({ ...o, variant: problem.variants.find((v) => v.instance_level)?.id ?? problem.variants[0].id })); }, [problem, opts.variant]);
-  useEffect(() => { setInst(null); if (hash && exp?.campaign.problem_id === RIDE) geo.instance(hash).then(setInst).catch((e) => setErr(errText(e))); }, [hash, exp?.campaign.problem_id]);
   useEffect(() => {
+    let live = true;
+    setInst(null);
+    if (hash && exp?.campaign.problem_id === RIDE) geo.instance(hash).then((i) => live && setInst(i)).catch((e) => live && setErr(errText(e)));
+    return () => { live = false; };
+  }, [hash, exp?.campaign.problem_id]);
+  useEffect(() => {
+    let live = true;
     setPlan(null);
     const run = exp?.runs.find((r) => r.instance_hash === hash && rowKey(r) === selected);
-    if (exp && run && exp.campaign.problem_id === RIDE) geo.playback(run.campaign_id, run.run_id).then(setPlan).catch((e) => setErr(errText(e)));
+    if (exp && run && exp.campaign.problem_id === RIDE) geo.playback(run.campaign_id, run.run_id).then((p) => live && setPlan(p)).catch((e) => live && setErr(errText(e)));
+    return () => { live = false; };
   }, [exp, hash, selected]);
 
   // lists follow the selected area (and dataset); "All areas" shows everything
@@ -122,23 +137,27 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
 
   // run: new experiment -> create; draft -> execute; locked -> re-execute (same methods) or extend (added methods)
   const execute = async (target: string) => { const j = await post(`/campaigns/${target}/execute`); setJobTarget(target); setJob(j); };
-  const derive = (kind: 'reproduce' | 'extend') => act(async () => {
+  const derive = (kind: 'reproduce' | 'extend') => once(async () => {
     const added = checked.filter((k) => !(exp ? scopeMethods(exp) : []).includes(k)).map((k) => k.split('@'));
     const r = kind === 'extend' ? await post(`/campaigns/${cid}/extend`, { methods: added }) : await post(`/campaigns/${cid}/reproduce`);
     await execute(r.campaign_id);
   });
   const run = () => {
-    if (isNew) return act(async () => {
+    if (isNew) return once(async () => {
       const c = await post('/campaigns', { problem_id: RIDE, title, scenario_params: { instance_hashes: picked }, methods: checked.map((k) => k.split('@')), repetitions: opts.repetitions, timeout_s: 120 });
       await execute(c.campaign_id);
     });
     if (!exp) return;
     if (exp.campaign.locked) return derive(checked.some((k) => !scopeMethods(exp).includes(k)) ? 'extend' : 'reproduce');
-    if (exp.campaign.status === 'draft') return act(() => execute(cid));
+    if (exp.campaign.status === 'draft') return once(() => execute(cid));
   };
-  const runBlocked = !!job || (isNew ? !picked.length || !checked.length : !exp || (!exp.campaign.locked && exp.campaign.status !== 'draft'));
+  const runBlocked = !!job || busy || (isNew ? !picked.length || !checked.length : !exp || (!exp.campaign.locked && exp.campaign.status !== 'draft'));
   const runTitle = isNew ? 'Choose scenarios and methods' : exp && !exp.campaign.locked && exp.campaign.status === 'completed' ? 'Lock the results first' : '';
-  const jobDone = () => { setJob(null); reloadExperiments(); if (jobTarget && jobTarget !== cid) go('workspace', jobTarget); else if (cid && !isNew) loadExp(cid); };
+  const jobDone = () => {
+    setJob(null); reloadExperiments().catch(() => { /* list refresh only */ });
+    const now = cidRef.current;
+    if (jobTarget && jobTarget !== now) go('workspace', jobTarget); else if (now && now !== NEW) loadExp(now);
+  };
   const exportBundle = () => act(async () => {
     if (!exp) return;
     if (!exp.campaign.locked) {
@@ -156,7 +175,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
       go('workspace', rep.root_campaign_id);
     } catch (e) { throw new Error(`Bundle rejected: ${errText(e)}`); }
   });
-  const variant = () => act(async () => { const r = await post(`/campaigns/${cid}/variant`, { variant: opts.variant }); await execute(r.campaign_id); });
+  const variant = () => once(async () => { const r = await post(`/campaigns/${cid}/variant`, { variant: opts.variant }); await execute(r.campaign_id); });
   const parentTitle = exp?.campaign.parent ? experiments.find((x) => x.campaign_id === exp.campaign.parent!.campaign_id)?.title ?? null : null;
   const geographic = !exp || exp.campaign.problem_id === RIDE;
   if (!cfg) return <ErrorNote text={err} />;
@@ -184,7 +203,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
       <aside className={`lab-right ${panel === 'right' ? 'open' : ''}`} aria-label="results">
         <ResultPanel exp={isNew ? null : exp} methods={methods} checked={checked} setChecked={setChecked} job={job} onJobDone={jobDone} setErr={setErr}
           selected={selected} setSelected={setSelected} onExport={exportBundle} onReproduce={() => derive('reproduce')} onExtend={() => derive('extend')}
-          onLock={() => act(async () => { await post(`/campaigns/${cid}/lock`); await loadExp(cid); reloadExperiments(); })}
+          onLock={() => act(async () => { await post(`/campaigns/${cid}/lock`); await loadExp(cid); await reloadExperiments(); })}
           opts={opts} setOpts={setOpts} variants={(problem?.variants ?? []).filter((v) => v.instance_level)} onVariant={variant}
           onWhy={() => exp?.comparability && go('experiments', `sem:${exp.comparability.reference}|${cid}`)} />
       </aside>

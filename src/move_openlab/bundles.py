@@ -49,6 +49,7 @@ FORMAT_V2 = "move-openlab-bundle/2"
 FORMATS = (FORMAT_V1, FORMAT_V2)
 MAX_MEMBERS = 5000
 MAX_MEMBER_BYTES = 16 * 1024 * 1024
+MAX_TOTAL_BYTES = 256 * 1024 * 1024                 # sum of uncompressed members (decompression bombs)
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: identical content -> identical bundle
 DATASET_KEYS = ("source", "provider", "dataset_key", "release", "licence", "attribution", "source_sha256")
 NETWORK_KEYS = ("network_id", "profile", "builder", "nodes", "edges", "network_sha256", "licence")
@@ -109,21 +110,19 @@ def export(ws, cid: str) -> tuple[bytes, dict]:
     for h, inst in instances.items():
         files[f"instances/{h}.json"] = canonical(inst)
     nets = NetworkStore(ws.inst.data)
-    gstore = G.GeometryStore(ws.inst.data)
+    gstore = G.GeometryStore(ws.root)
     net_ids = sorted({(i.get("network") or {}).get("network_id") for i in instances.values()} - {None, ""})
     loaded = {}
     for h, inst in instances.items():
         nid = (inst.get("network") or {}).get("network_id")
         if not nid or "pairs" not in inst:
             continue
-        doc = gstore.get(h)
-        if doc is None:
-            try:
-                if nid not in loaded:
-                    loaded[nid] = nets.load(nid)
-                doc = G.build(inst, loaded[nid])
-            except (KeyError, ValueError):
-                doc = None
+        try:                                            # the installed network first, imported geometry otherwise
+            if nid not in loaded:
+                loaded[nid] = nets.load(nid)
+            doc = G.build(inst, loaded[nid])
+        except (KeyError, ValueError):
+            doc = gstore.get(h)
         if doc and doc["legs"]:
             files[f"geometry/{h}.json"] = canonical(doc)
     datasets = {}
@@ -198,8 +197,8 @@ def _verify(ws, data: bytes):
         raise IntegrityError("too many or duplicate bundle members")
     if any(n.startswith("/") or ".." in n.split("/") or "\\" in n or ":" in n for n in names):
         raise IntegrityError("unsafe bundle member names")
-    if any(i.file_size > MAX_MEMBER_BYTES for i in infos):
-        raise IntegrityError("bundle member too large")
+    if any(i.file_size > MAX_MEMBER_BYTES for i in infos) or sum(i.file_size for i in infos) > MAX_TOTAL_BYTES:
+        raise IntegrityError("bundle member too large or bundle too large once uncompressed")
     if "manifest.json" not in names or "manifest.sha256" not in names:
         raise IntegrityError("manifest missing")
     mbytes = z.read("manifest.json")
@@ -255,16 +254,18 @@ def _verify(ws, data: bytes):
         campaigns[c["campaign_id"]] = c
     if man["root_campaign_id"] not in campaigns:
         raise IntegrityError("root campaign missing from the bundle")
+    chain, cur = [], campaigns[man["root_campaign_id"]]
+    while cur is not None and cur not in chain:
+        chain.append(cur)
+        cur = campaigns.get((cur.get("parent") or {}).get("campaign_id"))
+    if len(chain) != len(campaigns):
+        raise IntegrityError("the bundle contains campaigns outside the root campaign's lineage")
     for c in campaigns.values():
         p = c.get("parent")
         if p and (p["campaign_id"] not in campaigns or campaigns[p["campaign_id"]]["checksum"] != p["checksum"]):
             raise IntegrityError(f"lineage of {c['campaign_id']} is incomplete or inconsistent in the bundle")
     fingerprints = None
     if fmt == FORMAT_V2:
-        chain, cur = [], campaigns[man["root_campaign_id"]]
-        while cur is not None:
-            chain.append(cur)
-            cur = campaigns.get((cur.get("parent") or {}).get("campaign_id"))
         fingerprints = dict(experiment=experiment_fingerprint(chain),
                             semantic=semantic_fingerprint(problem, [instances[h] for h in man["instances"]]))
         if man.get("fingerprints") != fingerprints:
@@ -298,7 +299,7 @@ def import_(ws, data: bytes) -> dict:
                 raise IntegrityError(f"a different campaign {cid} already exists in this workspace")
         for inst in instances.values():
             ws.inst.put_instance(problem, inst)
-        gstore = G.GeometryStore(ws.inst.data)
+        gstore = G.GeometryStore(ws.root)
         for doc in geometry.values():
             gstore.put(doc)
         for cid, c in campaigns.items():

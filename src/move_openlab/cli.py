@@ -59,7 +59,11 @@ def _method_check(args) -> int:
     import json
     from pathlib import Path
     from .method_tools import check_method
-    bundle = Path(args.bundle).read_bytes() if args.bundle else None
+    try:
+        bundle = Path(args.bundle).read_bytes() if args.bundle else None
+    except OSError as e:
+        print(f"error: cannot read the bundle: {e}", file=sys.stderr)
+        return 2
     rep = check_method(Path(args.path), bundle)
     if args.json:
         print(json.dumps(rep, indent=1))

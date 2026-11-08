@@ -10,6 +10,8 @@ export interface EditBox { bbox: BBox; color: string; onChange?: (b: BBox) => vo
 export interface Coverage { cells: [number, number, number][]; step: number }
 
 const r5 = (x: number) => Number(x.toFixed(5));
+/** Tooltip content as a text node: labels may come from imported data and are never interpreted as HTML. */
+const text = (s: string) => { const el = document.createElement('span'); el.textContent = s; return el; };
 const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, iconSize: [14, 14] });
 
 /** Leaflet map without wrappers (BSD-2-Clause). Static layers refit the view when `fitKey` changes; `dynamic` points
@@ -112,12 +114,12 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     }
     for (const ln of lines) {
       const pl = L.polyline(ln.coords, { color: ln.color, weight: ln.weight ?? 3, dashArray: ln.dash, opacity: ln.opacity ?? 0.85 }).addTo(g);
-      if (ln.label) pl.bindTooltip(ln.label, { sticky: true });
+      if (ln.label) pl.bindTooltip(text(ln.label), { sticky: true });
       all.push(...ln.coords);
     }
     for (const p of points) {
       const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 6, color: p.color, weight: 2, fillColor: p.color, fillOpacity: p.fill === false ? 0 : 0.85 }).addTo(g);
-      if (p.label) c.bindTooltip(p.label);
+      if (p.label) c.bindTooltip(text(p.label));
       all.push([p.lat, p.lon]);
     }
     // refit only when the displayed subject changes (fitKey), never on edits: clicks must stay where the user aims
@@ -130,7 +132,7 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     g.clearLayers();
     for (const p of dynamic) {
       const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 7, color: '#ffffff', weight: 2, fillColor: p.color, fillOpacity: 1 }).addTo(g);
-      if (p.label) c.bindTooltip(p.label);
+      if (p.label) c.bindTooltip(text(p.label));
     }
   }, [dynamic]);
 

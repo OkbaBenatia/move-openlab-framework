@@ -165,3 +165,38 @@ def test_lab_summary_of_a_reproduction_covers_its_scope(tmp_path):
     assert {x["campaign_id"] for x in e["runs"]} == {root, r["campaign_id"]}          # parent rows can be replayed
     assert {x["campaign_kind"] for x in e["results"]["rows"]} == {"variant", "reproduction"}
     assert e["comparability"]["quality"] == "direct"
+
+
+def test_geometry_must_start_and_end_at_the_instance_points(tmp_path):
+    from move_openlab.geo import geometry as G
+    m = demo.manifest()
+    h = next(k for k in m["files"] if k.startswith("geometry/"))
+    doc = json.loads((demo.ROOT / h).read_text())
+    inst = json.loads((demo.ROOT / "instances" / h.split("/")[1]).read_text())
+    assert G.check(doc, inst) == []
+    k = next(iter(doc["legs"]))
+    doc["legs"][k] = [[0.0, 0.0], [0.1, 0.1]]                              # a fake route for a real leg
+    assert "does not start and end" in G.check(doc, inst)[0]
+
+
+def test_bundles_outside_the_lineage_or_too_large_are_refused(tmp_path, monkeypatch):
+    from move_openlab import bundles
+    w = Installation(tmp_path / "i").workspace("researcher1", "R1")
+
+    def drop_root(man, m):                                                   # root = baseline; variant now outside
+        man["root_campaign_id"] = man["lineage"][-1]["campaign_id"]
+        return man, m
+    with pytest.raises(IntegrityError):
+        w.import_bundle(_rewrite(demo.bundle_bytes(), drop_root))
+    monkeypatch.setattr(bundles, "MAX_TOTAL_BYTES", 1024)
+    with pytest.raises(IntegrityError):
+        w.import_bundle(demo.bundle_bytes())
+    assert w.list() == []
+
+
+def test_imported_geometry_stays_in_the_importing_workspace(tmp_path):
+    inst = Installation(tmp_path / "i")
+    a, b = inst.workspace("researcher1", "R1"), inst.workspace("researcher2", "R2")
+    a.import_bundle(demo.bundle_bytes())
+    assert list((a.root / "geometry").glob("*.json")) and not (b.root / "geometry").exists()
+    assert not (inst.data / "geometry").exists()

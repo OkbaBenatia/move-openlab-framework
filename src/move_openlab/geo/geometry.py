@@ -8,8 +8,9 @@ A ride-matching plan only ever drives these legs (OSM node ids)::
     rider destination -> driver destination        (to destination, for every compatible pair)
 
 The geometry is derived from OpenStreetMap data (ODbL): it carries the network id and attribution. It is stored per
-instance under ``<data>/geometry/<instance_hash>.json``, travels in bundles (format 2) and is used by route playback
-when the road network itself is not installed. It never affects validation or comparison.
+instance in the importing researcher's workspace (``<workspace>/geometry/<instance_hash>.json``: an imported file can
+never change what other researchers see), travels in bundles (format 2) and is used by route playback when the road
+network itself is not installed. It never affects validation or comparison.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from pathlib import Path
 GEOMETRY_SCHEMA = "move-openlab-replay-geometry/1"
 MAX_LEGS = 20000
 MAX_POINTS = 400000
+TOLERANCE_M = 25.0
 
 
 def _key(a: int, b: int) -> str:
@@ -33,6 +35,16 @@ def legs_needed(inst: dict) -> set[tuple[int, int]]:
     for p in inst["pairs"]:
         out.add((d[p["driver"]]["origin_node"], r[p["rider"]]["origin_node"]))
         out.add((r[p["rider"]]["destination_node"], d[p["driver"]]["destination_node"]))
+    return out
+
+
+def _anchors(inst: dict) -> dict[int, list[tuple[list[float], float]]]:
+    """OSM node -> [(agent point, snapping distance)]: where a leg starting or ending at that node must lie."""
+    out: dict[int, list] = {}
+    for a in inst["drivers"] + inst["riders"]:
+        snap = a.get("snap_m") or [0.0, 0.0]
+        out.setdefault(a["origin_node"], []).append((a["origin"], float(snap[0])))
+        out.setdefault(a["destination_node"], []).append((a["destination"], float(snap[1])))
     return out
 
 
@@ -62,7 +74,12 @@ def check(doc: dict, inst: dict) -> list[str]:
     legs = doc.get("legs")
     if not isinstance(legs, dict) or len(legs) > MAX_LEGS:
         return ["invalid or oversized legs"]
-    allowed = {_key(a, b) for a, b in legs_needed(inst)}
+    from .osm import haversine_m
+    allowed = {_key(a, b): (a, b) for a, b in legs_needed(inst)}
+    anchors = _anchors(inst)
+
+    def near(p, node) -> bool:                        # a polyline must start and end at the instance's own nodes
+        return any(haversine_m(p[0], p[1], q[0], q[1]) <= snap + TOLERANCE_M for q, snap in anchors.get(node, []))
     points = 0
     for k, v in legs.items():
         if k not in allowed:
@@ -73,6 +90,8 @@ def check(doc: dict, inst: dict) -> list[str]:
             if not (isinstance(p, list) and len(p) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool)
                                                                  for x in p) and -90 <= p[0] <= 90 and -180 <= p[1] <= 180):
                 return [f"leg {k[:40]} has an invalid point"]
+        if not (near(v[0], allowed[k][0]) and near(v[-1], allowed[k][1])):
+            return [f"leg {k[:40]} does not start and end at the instance's points"]
         points += len(v)
     if points > MAX_POINTS:
         return ["geometry too large"]
@@ -80,8 +99,10 @@ def check(doc: dict, inst: dict) -> list[str]:
 
 
 class GeometryStore:
-    def __init__(self, data_dir: Path):
-        self.root = Path(data_dir) / "geometry"
+    """Replay geometry under ``<root>/geometry/`` (``root`` = a researcher's workspace)."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root) / "geometry"
 
     def _file(self, h: str) -> Path:
         if not h or len(h) != 64 or not all(c in "0123456789abcdef" for c in h):
@@ -97,8 +118,6 @@ class GeometryStore:
 
     def put(self, doc: dict) -> None:
         f = self._file(doc["instance_hash"])
-        if f.exists():
-            return
         f.parent.mkdir(parents=True, exist_ok=True)
         tmp = f.with_suffix(f".tmp{os.getpid()}")
         tmp.write_text(json.dumps(doc, sort_keys=True, separators=(",", ":")))

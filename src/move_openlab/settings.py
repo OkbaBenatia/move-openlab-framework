@@ -87,8 +87,7 @@ class Settings:
                    external_fetch="admin" if fetch == "admin" else "researcher",
                    daily_networks=_int("MOVE_OPENLAB_DAILY_NETWORKS", 10), daily_rpc=_int("MOVE_OPENLAB_DAILY_RPC", 3),
                    daily_searches=_int("MOVE_OPENLAB_DAILY_SEARCHES", 200),
-                   **({"tile_url": ""} if os.environ.get("MOVE_OPENLAB_TILE_URL", "").strip().lower() in ("none", "off")
-                      else {}),
+                   **({"tile_url": ""} if _tile_env() == "" and os.environ.get("MOVE_OPENLAB_TILE_URL", "").strip() else {}),
                    **{k: v for k, v in dict(tile_url=_tile_env(),
                                             tile_attribution=os.environ.get("MOVE_OPENLAB_TILE_ATTRIBUTION", "").strip(),
                                             overpass_url=os.environ.get("MOVE_OPENLAB_OVERPASS_URL", "").strip(),

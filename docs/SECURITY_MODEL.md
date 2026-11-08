@@ -58,7 +58,9 @@ Imports are verified completely before anything is written: archive integrity, s
 manifest digest, every file hash, every instance hash and structure, every campaign checksum, the lineage, and an
 exact match of the problem specification and validator version with the local installation; for format 2, the
 recomputed experiment and semantic fingerprints and the geometry members (each must belong to an instance of the
-bundle and use only that instance's legs). Bundles contain JSON only; importing never executes code. Imported
+bundle, use only that instance's legs and start and end at the instance's own points). Imported geometry is stored
+in the importer's workspace only, and exports rebuild it from the road network when it is installed. The sum of
+uncompressed members is limited (256 MB) and a bundle may contain only the root campaign's lineage. Bundles contain JSON only; importing never executes code. Imported
 campaigns are read-only. The shipped demonstration is imported through the same verified path.
 
 Checksums are unkeyed SHA-256 values: they detect accidental or partial modification and any change to a bundle in
