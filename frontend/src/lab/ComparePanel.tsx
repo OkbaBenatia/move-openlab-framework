@@ -4,7 +4,7 @@ import { secs, num } from '../components/common';
 import { dur } from '../geo/api';
 import { BASELINE_LABEL, SCOPE_LABEL, grams, pct, sameEmissionSemantics } from '../mobility/api';
 import { Charts, rowLabel } from './Charts';
-import type { ExpItem, Experiment, ResultRow } from './api';
+import type { Experiment, ResultRow } from './api';
 
 export const statusOf = (r: ResultRow) => !r.valid ? { label: 'Invalid', cls: 'bad' }
   : r.proven_optimal === r.scenarios ? { label: 'Proven optimal', cls: 'ok' }
@@ -15,9 +15,8 @@ const desc = (r: ResultRow, id: string) => r.descriptive.find((d) => d.id === id
 
 /** Comparison of the methods of one experiment: a concise table, then charts of any metric the problem supports;
  *  or two experiments side by side (A/B). */
-export function ComparePanel({ exp, others, onClose, onDetails, onAB }: { exp: Experiment; others: ExpItem[]; onClose: () => void; onDetails: () => void; onAB: (other: string) => void }) {
+export function ComparePanel({ exp, onClose, onDetails, onPick }: { exp: Experiment; onClose: () => void; onDetails: () => void; onPick: () => void }) {
   const [tab, setTab] = useState<'table' | 'charts'>('table');
-  const [other, setOther] = useState('');
   const rows = exp.results?.rows ?? [];
   const metrics = exp.problem.metrics;
   const hasGap = rows.some((r) => r.gap_pct != null);
@@ -33,9 +32,7 @@ export function ComparePanel({ exp, others, onClose, onDetails, onAB }: { exp: E
         <button className={`btn sm ${tab === 'table' ? 'primary' : ''}`} onClick={() => setTab('table')}><Table2 size={12} /> Table</button>
         <button className={`btn sm ${tab === 'charts' ? 'primary' : ''}`} onClick={() => setTab('charts')}><BarChart3 size={12} /> Charts</button>
         <span className="grow" />
-        <label className="row small">A/B with <select aria-label="other experiment" value={other} onChange={(e) => setOther(e.target.value)}><option value="">—</option>
-          {others.map((x) => <option key={x.campaign_id} value={x.campaign_id}>{x.title}</option>)}</select></label>
-        <button className="btn sm" disabled={!other} onClick={() => onAB(other)}><Columns2 size={12} /> Open</button></nav>
+        <button className="btn sm" onClick={onPick}><Columns2 size={12} /> Compare with other experiments…</button></nav>
       {rows.length === 0 && <p className="muted">Run the experiment to compare its methods.</p>}
       {rows.length > 0 && tab === 'table' && <div className="table-scroll"><table aria-label="method comparison">
         <thead><tr><th>Method</th><th>Status</th><th title={exp.problem.objective.map((o) => `${o.sense} ${o.metric}`).join(', then ')}>Objective</th>

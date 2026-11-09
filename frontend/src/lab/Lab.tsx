@@ -6,6 +6,8 @@ import { COLORS, LeafletMap, type MapPoint } from '../geo/LeafletMap';
 import { geo } from '../geo/api';
 import { instanceLayers } from '../geo/GeoWorkbench';
 import { Wizard } from '../mobility/Wizard';
+import { AddMethod } from './AddMethod';
+import { ComparePicker } from './ComparePicker';
 import type { Section } from '../router';
 import { lab, rowKey, scopeMethods, type Experiment, type LabState } from './api';
 import { Charts } from './Charts';
@@ -16,7 +18,7 @@ import { ResultPanel, methodKey, type RunOptions } from './ResultPanel';
 import { NewExperimentPanel, ScenarioPanel } from './ScenarioPanel';
 import { ALL, NEW, TopBar } from './TopBar';
 import { Tour } from './Tour';
-import { RIDE, overlaps, useLabData, useMethods } from './useLabData';
+import { RIDE, datasetLabel, overlaps, useLabData, useMethods } from './useLabData';
 
 const AREA_KEY = 'move-openlab.area';
 const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -41,6 +43,9 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   const [picked, setPicked] = useState<string[]>([]);
   const [title, setTitle] = useState(`Experiment ${stamp()}`);
   const [comparing, setComparing] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const [addMethod, setAddMethod] = useState(false);
+  const [methodsKey, setMethodsKey] = useState(0);
   const [replaying, setReplaying] = useState(false);
   const [tour, setTour] = useState(false);
   const [wizard, setWizard] = useState(false);
@@ -50,7 +55,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   const [focus, setFocus] = useState<{ key: string; bbox: [number, number, number, number] } | null>(null);
   const isNew = cid === NEW;
   const problemId = exp?.campaign.problem_id ?? RIDE;
-  const methods = useMethods(problemId, setErr);
+  const methods = useMethods(problemId, setErr, methodsKey);
   const problem = problems.find((p) => p.spec.problem_id === problemId);
   const replay = useReplay(plan, replaying);
   const [busy, setBusy] = useState(false);
@@ -71,7 +76,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
         try { await lab.installDemo(); s = await lab.state(); } catch (e) { setErr(errText(e)); } finally { setNotice(null); }
       }
       const list = await reloadExperiments();
-      if (s.preferences.area_id) setAreaId(s.preferences.area_id);
+      if (s.preferences.area_id && !(s.preferences.hidden_ids ?? []).includes(s.preferences.area_id)) setAreaId(s.preferences.area_id);   // a hidden area is never pre-selected
       const last = list.find((x) => x.campaign_id === s.preferences.last_experiment) ?? list[list.length - 1];
       if (!cid && last) go('workspace', last.campaign_id, true);
       setSt(s);
@@ -113,17 +118,19 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
     return () => { live = false; };
   }, [exp, hash, selected]);
 
-  // lists follow the selected area (and dataset); "All areas" shows everything
+  // lists follow the selected area (and dataset); "All areas" shows everything; hidden records stay out of the lists
+  const hiddenIds = useMemo(() => st?.preferences.hidden_ids ?? [], [st]);
   const area = areas.find((a) => a.area_id === areaId) ?? null;
-  const shownDatasets = useMemo(() => (area ? datasets.filter((d) => overlaps(d.bbox, area.bbox)) : datasets), [datasets, area]);
+  const shownAreas = useMemo(() => areas.filter((a) => !hiddenIds.includes(a.area_id) || a.area_id === areaId), [areas, hiddenIds, areaId]);
+  const shownDatasets = useMemo(() => (area ? datasets.filter((d) => overlaps(d.bbox, area.bbox)) : datasets)
+    .filter((d) => !hiddenIds.includes(d.dataset_key) || d.dataset_key === datasetKey).map((d) => ({ ...d, label: datasetLabel(d, areas) })), [datasets, area, hiddenIds, datasetKey, areas]);
   const shownExps = useMemo(() => experiments.filter((x) => x.campaign_id === cid || (!x.hidden && (!area || (!!area.network_id && x.network_ids.includes(area.network_id)))
     && (!datasetKey || x.dataset_keys.includes(datasetKey)))), [experiments, area, datasetKey, cid]);
-  const hiddenIds = st?.preferences.hidden_ids ?? [];
   const toggleHidden = () => act(async () => {
     const next = hiddenIds.includes(cid) ? hiddenIds.filter((x) => x !== cid) : [...hiddenIds, cid];
     setSt(await lab.prefs({ hidden_ids: next })); await reloadExperiments();
   });
-  const shownLib = useMemo(() => (area ? lib.filter((s) => s.network_id === area.network_id) : lib), [lib, area]);
+  const shownLib = useMemo(() => (area ? lib.filter((s) => s.network_id === area.network_id) : lib).filter((s) => !hiddenIds.includes(s.scenario_id)), [lib, area, hiddenIds]);
   const setArea = (id: string) => {
     setAreaId(id); setDatasetKey(ALL);
     try { if (id) localStorage.setItem(AREA_KEY, id); } catch { /* storage unavailable */ }
@@ -182,7 +189,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
   if (!cfg) return <ErrorNote text={err} />;
 
   return <div className="lab">
-    <TopBar areas={areas} areaId={areaId} setArea={setArea} datasets={shownDatasets} datasetKey={datasetKey} setDataset={setDatasetKey}
+    <TopBar areas={shownAreas} areaId={areaId} setArea={setArea} datasets={shownDatasets} datasetKey={datasetKey} setDataset={setDatasetKey}
       experiments={shownExps} expId={cid} setExp={(id) => go('workspace', id)} onGenerate={() => setWizard(true)}
       onRun={run} runDisabled={runBlocked} runTitle={runTitle} onCompare={() => setComparing(true)} canCompare={!!exp?.results}
       onReplay={() => setReplaying(!replaying)} canReplay={!!plan} replaying={replaying} onImport={importBundle} onExport={exportBundle}
@@ -190,7 +197,7 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
     {(err || notice) && <div className="lab-notes">{err && <ErrorNote text={err} />}{notice && <p className="note ok row gap" role="status">{notice}<span className="grow" /><button className="btn sm" onClick={() => setNotice(null)}>OK</button></p>}</div>}
     <div className="lab-grid">
       <aside className={`lab-left ${panel === 'left' ? 'open' : ''}`} data-tour="scenario" aria-label="scenario">
-        {isNew ? <NewExperimentPanel lib={shownLib} picked={picked} setPicked={setPicked} title={title} setTitle={setTitle} onGenerate={() => setWizard(true)} />
+        {isNew ? <NewExperimentPanel lib={shownLib} picked={picked} setPicked={setPicked} title={title} setTitle={setTitle} onGenerate={() => setWizard(true)} onRun={run} canRun={!runBlocked} runTitle={runTitle} />
           : exp ? <ScenarioPanel exp={exp} hash={hash} setHash={setHash} inst={inst} plan={plan} parentTitle={parentTitle} onDetails={() => go('experiments', `c:${cid}`)}
             hidden={hiddenIds.includes(cid)} onHide={toggleHidden}
             onFocus={(la, lo) => { setPanel(null); setFocus({ key: `${la},${lo},${Date.now()}`, bbox: [la - 0.004, lo - 0.006, la + 0.004, lo + 0.006] }); }} />
@@ -208,13 +215,15 @@ export function Lab({ cid, go }: { cid: string; go: (s: Section, arg?: string, r
           onLock={() => act(async () => { await post(`/campaigns/${cid}/lock`); await loadExp(cid); await reloadExperiments(); })}
           opts={opts} setOpts={setOpts} variants={(problem?.variants ?? []).filter((v) => v.instance_level)} onVariant={variant}
           onWhy={() => exp?.comparability && go('experiments', `sem:${exp.comparability.reference}|${cid}`)}
-          onTrace={traceId ? () => setTrace(traceId) : null} />
+          onTrace={traceId ? () => setTrace(traceId) : null} onAddMethod={() => setAddMethod(true)} />
       </aside>
     </div>
-    {comparing && exp && <ComparePanel exp={exp} others={experiments.filter((x) => x.campaign_id !== cid && !x.hidden && x.problem_id === exp.campaign.problem_id)} onClose={() => setComparing(false)}
-      onDetails={() => go('experiments', `${exp.campaign.kind === 'threshold-study' ? 'thr' : 'cmp'}:${cid}`)} onAB={(other) => go('compare', `${cid}|${other}`)} />}
+    {comparing && exp && <ComparePanel exp={exp} onClose={() => setComparing(false)}
+      onDetails={() => go('experiments', `${exp.campaign.kind === 'threshold-study' ? 'thr' : 'cmp'}:${cid}`)} onPick={() => { setComparing(false); setPicker(true); }} />}
+    {picker && exp && <ComparePicker a={cid} onClose={() => setPicker(false)} onCompare={(ids) => go('compare', `${cid}|${ids.join(',')}`)} />}
+    {addMethod && <AddMethod problemId={problemId} onClose={() => setAddMethod(false)} onChanged={() => setMethodsKey((k) => k + 1)} setErr={setErr} />}
     {trace && <TraceDrawer jobId={trace} onClose={() => setTrace(null)} />}
-    {wizard && <Wizard cfg={cfg} areas={areas} datasets={datasets} methods={methods} areaId={areaId || undefined} setErr={setErr} reloadAreas={reloadLists}
+    {wizard && <Wizard cfg={cfg} areas={shownAreas} datasets={datasets.filter((d) => !hiddenIds.includes(d.dataset_key))} methods={methods} areaId={areaId || undefined} setErr={setErr} reloadAreas={reloadLists} onAddMethod={() => setAddMethod(true)}
       onClose={() => setWizard(false)}
       onSaved={(rec) => { setWizard(false); reloadLists(); setPicked([rec.instance_hash]); go('workspace', NEW); }}
       onRun={(r) => { setWizard(false); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}

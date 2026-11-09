@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, GitBranch, ListTree, Lock, RotateCcw } from 'lucide-react';
+import { Download, GitBranch, ListTree, Lock, Plus, RotateCcw } from 'lucide-react';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { num, secs } from '../components/common';
@@ -17,13 +17,13 @@ export function methodKey(m: { method_id: string; version: string }) { return `$
 
 /** Right panel: methods to run, live progress, key results (objective, runtime, CO₂ of the selected method),
  *  comparability with the parent, export / reproduce / extend, trace. */
-export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone, setErr, selected, setSelected, onExport, onReproduce, onExtend, onLock, opts, setOpts, variants, onVariant, onWhy, onTrace }: {
+export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone, setErr, selected, setSelected, onExport, onReproduce, onExtend, onLock, opts, setOpts, variants, onVariant, onWhy, onTrace, onAddMethod }: {
   exp: Experiment | null; methods: MethodRef[]; checked: string[]; setChecked: (k: string[]) => void;
   job: Json | null; onJobDone: (j: Json) => void; setErr: (s: string | null) => void;
   selected: string; setSelected: (m: string) => void;
   onExport: () => void; onReproduce: () => void; onExtend: () => void; onLock: () => void;
   opts: RunOptions; setOpts: (o: RunOptions) => void; variants: { id: string; description: string }[]; onVariant: () => void; onWhy: () => void;
-  onTrace: (() => void) | null;
+  onTrace: (() => void) | null; onAddMethod: () => void;
 }) {
   const [why, setWhy] = useState(false);
   const inExp = new Set(exp ? scopeMethods(exp) : []);
@@ -35,7 +35,7 @@ export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone,
   const dom = sel?.domain;
   return <div className="panel-body">
     <section data-tour="methods" aria-label="methods">
-      <h3>Methods</h3>
+      <div className="row gap"><h3>Method</h3><span className="grow" /><button className="btn sm" onClick={onAddMethod} data-tour="add-method"><Plus size={12} /> Add method</button></div>
       <ul className="methods">{methods.map((m) => { const k = methodKey(m); return <li key={k}><label className="row">
         <input type="checkbox" aria-label={m.name} checked={checked.includes(k)} disabled={inExp.has(k) && exp?.campaign.locked === true} onChange={() => toggle(k)} />
         <span className="grow">{m.name}<span className="muted small"> · {m.kind}{m.source === 'plugin' ? ' · your method' : ''}</span></span></label></li>; })}</ul>

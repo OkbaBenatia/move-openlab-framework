@@ -1,4 +1,4 @@
-import { Car, CheckCircle2, CircleDashed, ExternalLink, Eye, EyeOff, User } from 'lucide-react';
+import { Car, CheckCircle2, CircleDashed, ExternalLink, Eye, EyeOff, Play, User } from 'lucide-react';
 import type { Json } from '../api/client';
 import { KIND } from '../components/common';
 import { hhmm } from '../geo/api';
@@ -15,7 +15,8 @@ export function ExperimentBadges({ exp }: { exp: Experiment }) {
   </div>;
 }
 
-/** Left panel: the experiment, its Area + Dataset + Scenario context, the participants and vehicles of one scenario. */
+/** Left panel: the experiment and its context — Area, Road network, Mobility data, Scenario — each on its own line,
+ *  then the participants and vehicles of one scenario. */
 export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetails, parentTitle, hidden, onHide }: {
   exp: Experiment; hash: string; setHash: (h: string) => void; inst: Json | null; plan: Json | null;
   onFocus: (lat: number, lon: number) => void; onDetails: () => void; parentTitle: string | null; hidden: boolean; onHide: () => void;
@@ -27,15 +28,23 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
   const sc = exp.scenarios.find((s) => s.instance_hash === hash);
   const vehicles = sc?.vehicles ?? null;
   const emis = sc?.emissions ?? exp.campaign.emissions;
+  const net = inst?.network;
+  const network = net ? `${net.profile_label ?? net.travel_model ?? 'OpenStreetMap'}${net.osm_timestamp ? ` · OSM ${String(net.osm_timestamp).slice(0, 10)}` : ''}` : ctx.area.network_id ? 'OpenStreetMap' : null;
+  const data = ctx.dataset ?? (prov.method === 'synthetic' || prov.generator ? 'synthetic demand' : prov.method === 'manual' ? 'placed on the map' : null);
   return <div className="panel-body">
     <div className="card">
+      <span className="eyebrow">Experiment</span>
       <h2 className="title">{exp.campaign.title}</h2>
       <ExperimentBadges exp={exp} />
       {exp.campaign.parent && <p className="small muted">{exp.campaign.parent.relation === 'perturbs' ? 'Variant of' : exp.campaign.parent.relation === 'reproduces' ? 'Re-execution of' : 'Extends'} {parentTitle ?? 'its parent experiment'}{exp.campaign.variant ? ` — ${exp.campaign.variant}` : ''}</p>}
-      <p className="context" aria-label="area, dataset and scenario"><b>{ctx.area.label ?? 'No area'}</b> · {ctx.dataset ?? 'no dataset'} · {ctx.scenario}</p>
+      <dl className="ctx" aria-label="area, road network, mobility data and scenario">
+        <dt>Area</dt><dd>{ctx.area.label ?? <span className="muted">—</span>}</dd>
+        <dt>Road network</dt><dd>{network ?? <span className="muted">—</span>}</dd>
+        <dt>Mobility data</dt><dd>{data ?? <span className="muted">—</span>}</dd>
+        <dt>Scenario</dt><dd>{exp.scenarios.length > 1 ? <select aria-label="scenario" value={hash} onChange={(e) => setHash(e.target.value)} className="full">
+          {exp.scenarios.map((s) => <option key={s.instance_hash} value={s.instance_hash}>{s.name ?? s.instance_id}</option>)}</select> : (sc?.name ?? ctx.scenario)}</dd>
+      </dl>
     </div>
-    {exp.scenarios.length > 1 && <label className="row small">Scenario <select aria-label="scenario" value={hash} onChange={(e) => setHash(e.target.value)} className="grow">
-      {exp.scenarios.map((s) => <option key={s.instance_hash} value={s.instance_hash}>{s.name ?? s.instance_id}</option>)}</select></label>}
     {inst?.drivers && <>
       <div className="row gap small muted"><span><Car size={12} /> {inst.drivers.length} drivers</span><span><User size={12} /> {inst.riders.length} riders</span>
         {plan && <span><CheckCircle2 size={12} /> {served.size} served</span>}</div>
@@ -52,14 +61,14 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
       <summary>Details</summary>
       <dl className="facts">
         {prov.attribution && <><dt>Data</dt><dd>{prov.attribution}</dd></>}
-        {inst?.network && <><dt>Road network</dt><dd>{inst.network.attribution} ({inst.network.licence}) · OSM data {inst.network.osm_timestamp ?? 'n/a'} · {inst.network.travel_model}</dd></>}
+        {net && <><dt>Road network</dt><dd>{net.attribution} ({net.licence}) · OSM data {net.osm_timestamp ?? 'n/a'} · {net.travel_model}</dd></>}
         {prov.seed != null && <><dt>Sampling</dt><dd>seed {prov.seed}{prov.window ? ` · ${hhmm(prov.window[0])}–${hhmm(prov.window[1])}` : ''}{prov.method ? ` · ${prov.method}` : ''}{prov.edited_agents ? ` · edited: ${prov.edited_agents.join(', ')}` : ''}</dd></>}
         {inst?.params && <><dt>Limits</dt><dd>detour ≤ {Math.round(inst.params.max_detour_s / 60)} min and ≤ {Math.round(100 * inst.params.max_detour_ratio)} % of the direct trip</dd></>}
         {vehicles && <><dt>Vehicles</dt><dd>{vehicles.fleet.map((f) => <div key={f.id}>{f.name} ×{f.drivers} · {POWERTRAIN_LABEL[f.powertrain] ?? f.powertrain} · {f.passenger_capacity} seats · {f.provenance}
           {Object.entries(f.parameters as Record<string, Json>).filter(([, r]) => r.value != null).map(([k, r]) => <div key={k} className="muted">{k.replace(/_/g, ' ')}: {r.value} {r.unit}{r.basis ? ` ${r.basis}` : ''}{r.source ? ` — ${r.source}${r.source_version ? ` (${r.source_version})` : ''}` : ''}</div>)}</div>)}
           {vehicles.default && <div>riders' baseline vehicle: {vehicles.default.name}</div>}</dd></>}
-        {emis && <><dt>Emissions</dt><dd>{SCOPE_LABEL[emis.scope] ?? emis.scope} · baseline: {BASELINE_LABEL[emis.baseline] ?? emis.baseline}</dd></>}
-        {!vehicles && inst?.drivers && <><dt>Emissions</dt><dd className="muted">no vehicle data in this scenario</dd></>}
+        {emis && <><dt>CO₂ calculation</dt><dd>{SCOPE_LABEL[emis.scope] ?? emis.scope} · baseline: {BASELINE_LABEL[emis.baseline] ?? emis.baseline}</dd></>}
+        {!vehicles && inst?.drivers && <><dt>CO₂ calculation</dt><dd className="muted">no vehicle data in this scenario</dd></>}
         <dt>Researcher</dt><dd>{exp.campaign.owner_display}</dd>
         <dt>Identifiers</dt><dd className="mono wrap-anywhere">{exp.campaign.campaign_id}<br />{hash}</dd>
       </dl>
@@ -69,18 +78,21 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
   </div>;
 }
 
-/** Left panel when starting a new experiment: scenarios of the scenario library, filtered by the selected area. */
-export function NewExperimentPanel({ lib, picked, setPicked, title, setTitle, onGenerate }: {
+/** Left panel when starting a new experiment: scenarios of the scenario library, filtered by the selected area;
+ *  the main action creates the experiment and runs it. */
+export function NewExperimentPanel({ lib, picked, setPicked, title, setTitle, onGenerate, onRun, canRun, runTitle }: {
   lib: Json[]; picked: string[]; setPicked: (h: string[]) => void; title: string; setTitle: (t: string) => void; onGenerate: () => void;
+  onRun: () => void; canRun: boolean; runTitle: string;
 }) {
   const toggle = (h: string) => setPicked(picked.includes(h) ? picked.filter((x) => x !== h) : [...picked, h]);
   return <div className="panel-body">
-    <div className="card"><h2 className="title">New experiment</h2>
+    <div className="card"><span className="eyebrow">Experiment</span><h2 className="title">New experiment</h2>
       <label className="small">Name <input aria-label="experiment name" value={title} onChange={(e) => setTitle(e.target.value)} className="full" /></label></div>
     <h3>Scenarios</h3>
     {lib.length === 0 ? <p className="small muted">No scenario yet. <button className="btn sm" onClick={onGenerate}>Generate one</button></p> :
       <ul className="people" aria-label="scenarios">{lib.map((s) => <li key={s.instance_hash}><label className="row">
         <input type="checkbox" aria-label={s.name} checked={picked.includes(s.instance_hash)} onChange={() => toggle(s.instance_hash)} />
         <span className="grow"><b>{s.name}</b><br /><span className="muted small">{s.drivers} drivers · {s.riders} riders · {s.category ?? s.source}</span></span></label></li>)}</ul>}
+    <div className="row gap"><button className="btn primary" onClick={onRun} disabled={!canRun} title={runTitle}><Play size={13} /> Save &amp; Run</button></div>
   </div>;
 }

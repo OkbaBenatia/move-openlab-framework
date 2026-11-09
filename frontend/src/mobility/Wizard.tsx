@@ -24,11 +24,11 @@ export interface WizardProps {
   cfg: GeoConfig; areas: Area[]; datasets: DatasetItem[]; methods: MethodRef[]; areaId?: string;
   initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string } | null;
   onClose: () => void; onSaved: (rec: Json) => void; onRun: (r: { campaign_id: string; job: Json }) => void;
-  reloadAreas: () => void; setErr: (s: string | null) => void;
+  reloadAreas: () => void; setErr: (s: string | null) => void; onAddMethod?: () => void;
 }
 
 /** Scenario creation in five steps over the map. Nothing is stored before the Review step's Save buttons. */
-export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial, onClose, onSaved, onRun, reloadAreas, setErr }: WizardProps) {
+export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial, onClose, onSaved, onRun, reloadAreas, setErr, onAddMethod }: WizardProps) {
   const [step, setStep] = useState(1);
   const [areaId, setAreaId] = useState(() => initial ? (areas.find((a) => a.network_id === initial.scenario.network_id)?.area_id ?? '') : (areaId0 && areas.some((a) => a.area_id === areaId0) ? areaId0 : areas.find((a) => a.network_id)?.area_id ?? ''));
   const [source, setSource] = useState<Source>(initial ? 'manual' : 'synthetic');
@@ -53,6 +53,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const [mapMode, setMapMode] = useState<'none' | 'point'>('none');
   const [job, setJob] = useState<Json | null>(null);
   const [focus, setFocus] = useState<{ key: string; bbox: BBox } | null>(null);
+  const [boxKm, setBoxKm] = useState(5);
   const area = areas.find((a) => a.area_id === areaId) ?? null;
   const netReady = !!area?.network_id;
   const shownDatasets = useMemo(() => datasets.filter((d) => overlaps(d.bbox, area?.bbox)), [datasets, area]);
@@ -116,7 +117,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const onMap = async (lat: number, lon: number) => {
     if (step === 1 && mapMode === 'point') {
       setMapMode('none');
-      await act(async () => { const a = await geo.createArea({ name: `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}`, bbox: around(lat, lon), profile: 'car' }); reloadAreas(); setAreaId(a.area_id); await download(a.area_id); });
+      await act(async () => { const a = await geo.createArea({ name: `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}`, bbox: around(lat, lon, boxKm / 2), profile: 'car' }); reloadAreas(); setAreaId(a.area_id); await download(a.area_id); });
       return;
     }
     if (!pick) return;
@@ -127,7 +128,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
 
   // areas: search, pick on map, road network download
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); setErr(null); try { await fn(); } catch (e) { setErr(errText(e)); } finally { setBusy(false); } };
-  const search = () => act(async () => { const r = await geo.geocode(q); setResults(r.results); if (!r.results.length) setErr(`no place found for “${q}”`); });
+  const auto = !!cfg.geocoding?.autocomplete, minChars = cfg.geocoding?.min_chars ?? 2;
+  const sTimer = useRef<number | null>(null);
+  const search = (text = q) => act(async () => { try { const r = await geo.geocode(text); setResults(r.results); if (!r.results.length && !auto) setErr(`no place found for “${text}”`); } catch (e) { if (!auto) throw e; setResults(null); } });
   const download = async (id: string) => { const r = await geo.areaNetwork(id); if (r.cached) reloadAreas(); else setJob(r.job); };
   const choose = (r: Json) => act(async () => {
     let b = r.bbox as BBox;
@@ -142,8 +145,8 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const layers = useMemo(() => {
     const points: MapPoint[] = [], lines: MapLine[] = [];
     const sc = source === 'manual' ? manual : preview?.scenario;
-    for (const d of sc?.drivers ?? []) { points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, label: `${d.id} origin · ${hhmm(d.earliest)}–${hhmm(d.latest)}` }); if (placed(d)) points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, label: `${d.id} destination` }); }
-    for (const r of sc?.riders ?? []) { points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, label: `${r.id} origin · ${hhmm(r.earliest)}–${hhmm(r.latest)}` }); if (placed(r)) points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, label: `${r.id} destination` }); }
+    for (const d of sc?.drivers ?? []) { points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, label: `${d.id} start · ${hhmm(d.earliest)}–${hhmm(d.latest)}` }); if (placed(d)) points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, label: `${d.id} end` }); }
+    for (const r of sc?.riders ?? []) { points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, label: `${r.id} start · ${hhmm(r.earliest)}–${hhmm(r.latest)}` }); if (placed(r)) points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, label: `${r.id} end` }); }
     for (const r of Object.values(routes)) if (r.line) lines.push(r.line);
     return { points, lines };
   }, [source, manual, preview, routes]);
@@ -170,11 +173,11 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const drivers = source === 'manual' ? manual.drivers : preview?.scenario.drivers ?? [];
   const row = (role: Role, a: Agent) => { const r = routes[a.id]; return <tr key={a.id} className={pick?.id === a.id ? 'hl' : ''}>
     <td className="mono">{a.id}</td>
-    <td><button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'origin' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'origin' })}>Origin</button>{' '}
-      <button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'destination' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'destination' })}>Destination</button></td>
+    <td><button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'origin' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'origin' })}>Start point</button>{' '}
+      <button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'destination' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'destination' })}>End point</button></td>
     <td><input aria-label={`${a.id} earliest`} className="time" defaultValue={hhmm(a.earliest)} onBlur={(e) => { const v = toSec(e.target.value); if (!Number.isNaN(v)) update(role, a.id, { earliest: v }); }} /></td>
     <td><input aria-label={`${a.id} latest`} className="time" defaultValue={hhmm(a.latest)} onBlur={(e) => { const v = toSec(e.target.value); if (!Number.isNaN(v)) update(role, a.id, { latest: v }); }} /></td>
-    <td><button type="button" className="btn sm" disabled={!placed(a)} title={placed(a) ? '' : 'place the origin and the destination first'} onClick={() => route(a)}>Route</button>
+    <td><button type="button" className="btn sm" disabled={!placed(a)} title={placed(a) ? '' : 'place the start and end points first'} onClick={() => route(a)}>Route</button>
       {r && <span className={`small ${r.error ? 'bad' : 'muted'}`}> {r.text}</span>}</td>
     <td><button type="button" className="btn icon" aria-label={`remove ${a.id}`} onClick={() => remove(role, a.id)}><Trash2 size={12} /></button></td></tr>; };
 
@@ -189,12 +192,14 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
           {area && !area.network_id && <div className="row gap"><button className="btn sm" disabled={busy || (!cfg.can_fetch && !area.cached_network) || (!!job && job.state === 'running')} onClick={() => act(() => download(area.area_id))}><Download size={12} /> {area.cached_network ? 'Use stored road network' : 'Download road network'}</button></div>}
           {job && <JobProgress job={job} setErr={setErr} onFinished={(j) => { setJob(j); reloadAreas(); }} />}
           <fieldset><legend>New area</legend>
-            <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= 2) search(); }}>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={cfg.geocoder ? 'City or region' : 'Place search is off'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
-              <button className="btn sm" disabled={!cfg.geocoder || busy || q.trim().length < 2}><Search size={12} /> Search</button>
-              <button type="button" className={`btn sm ${mapMode === 'point' ? 'primary' : ''}`} onClick={() => setMapMode(mapMode === 'point' ? 'none' : 'point')}>Pick on map</button></form>
+            <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= minChars) search(); }}>
+              <input value={q} onChange={(e) => { setQ(e.target.value); if (auto) { if (sTimer.current) window.clearTimeout(sTimer.current); if (e.target.value.trim().length >= minChars) sTimer.current = window.setTimeout(() => search(e.target.value), 450); } }}
+                placeholder={cfg.geocoder ? 'City or region' : 'Place search is off'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
+              <button className="btn sm" disabled={!cfg.geocoder || busy || q.trim().length < minChars}><Search size={12} /> Search</button>
+              <button type="button" className={`btn sm ${mapMode === 'point' ? 'primary' : ''}`} onClick={() => setMapMode(mapMode === 'point' ? 'none' : 'point')}>Pick on map</button>
+              {mapMode === 'point' && <select aria-label="box size" value={boxKm} onChange={(e) => setBoxKm(Number(e.target.value))} className="small">{[3, 5, 8, 12].map((k) => <option key={k} value={k}>{k} km</option>)}</select>}</form>
             {results && results.length > 0 && <ul className="results" aria-label="search results">{results.map((r, i) => <li key={i} tabIndex={0} onClick={() => choose(r)} onKeyDown={(e) => e.key === 'Enter' && choose(r)}>{r.name}<span className="muted small"> · {r.kind}</span></li>)}</ul>}
-            {mapMode === 'point' && <p className="small muted">Click the map: a 5 × 5 km area is centred on the point.</p>}
+            {mapMode === 'point' && <p className="small muted">Click the map: a {boxKm} × {boxKm} km area is centred on the point.</p>}
           </fieldset>
           <fieldset><legend>Data</legend>
             <label className="row"><input type="radio" name="src" checked={source === 'synthetic'} onChange={() => setSource('synthetic')} /> Synthetic demand on the road network</label>
@@ -213,7 +218,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
             {source === 'dataset' && <label>Date <input value={f.date} placeholder="YYYY-MM-DD" onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="date" /></label>}
           </div>}
           {source === 'manual' && <>
-            <p className="small muted"><b>Origin</b> = trip starting point · <b>Destination</b> = trip ending point. {pick ? `Click the map to place the ${pick.field} of ${pick.id}.` : 'Select Origin or Destination, then click the map.'}</p>
+            <p className="small muted">{pick ? `Click the map to place the ${pick.field === 'origin' ? 'start point' : 'end point'} of ${pick.id}.` : 'Select Start point or End point, then click the map.'}</p>
             {(['drivers', 'riders'] as const).map((role) => <fieldset key={role}><legend>{role === 'drivers' ? 'Drivers' : 'Riders'} ({manual[role].length})</legend>
               {manual[role].length > 0 && <div className="table-scroll"><table className="compact" aria-label={role}><thead><tr><th>Id</th><th>Place</th><th>Earliest</th><th>Latest</th><th>Route</th><th /></tr></thead><tbody>{manual[role].map((a) => row(role, a))}</tbody></table></div>}
               <button type="button" className="btn sm" onClick={() => add(role)}><Plus size={12} /> Add {role === 'drivers' ? 'driver' : 'rider'}</button></fieldset>)}
@@ -240,17 +245,17 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
         </>}
         {step === 4 && <>
           <label>Experiment name <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="experiment name" /></label>
-          <fieldset><legend>Methods</legend><ul className="methods">{methods.map((m) => { const k = methodKey(m); return <li key={k}><label className="row"><input type="checkbox" checked={checked.includes(k)} onChange={() => setChecked(checked.includes(k) ? checked.filter((x) => x !== k) : [...checked, k])} /> <span className="grow">{m.name}<span className="muted small"> · {m.kind}{m.source === 'plugin' ? ' · your method' : ''}</span></span></label></li>; })}</ul></fieldset>
+          <fieldset><legend className="row gap">Method{onAddMethod && <button type="button" className="btn sm" onClick={onAddMethod}><Plus size={12} /> Add method</button>}</legend><ul className="methods">{methods.map((m) => { const k = methodKey(m); return <li key={k}><label className="row"><input type="checkbox" checked={checked.includes(k)} onChange={() => setChecked(checked.includes(k) ? checked.filter((x) => x !== k) : [...checked, k])} /> <span className="grow">{m.name}<span className="muted small"> · {m.kind}{m.source === 'plugin' ? ' · your method' : ''}</span></span></label></li>; })}</ul></fieldset>
           <div className="row gap"><label>Repetitions <input type="number" min={1} max={20} value={reps} onChange={(e) => setReps(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} aria-label="repetitions" style={{ width: '5em' }} /></label>
             <span className="small muted">Seed {source === 'manual' ? '—' : f.seed}</span></div>
-          {profile && veh && <fieldset><legend>Emissions</legend>
-            <label>Scope <select aria-label="emission scope" value={emis.scope} onChange={(e) => setEmis({ ...emis, scope: e.target.value })}>{veh.scopes.map((s) => <option key={s.id} value={s.id}>{SCOPE_LABEL[s.id] ?? s.id}</option>)}</select></label>
+          {profile && veh && <fieldset><legend>CO₂ calculation</legend>
+            <label>Method <select aria-label="emission scope" value={emis.scope} onChange={(e) => setEmis({ ...emis, scope: e.target.value })}>{veh.scopes.map((s) => <option key={s.id} value={s.id}>{SCOPE_LABEL[s.id] ?? s.id}</option>)}</select></label>
             <label>Baseline <select aria-label="emission baseline" value={emis.baseline} onChange={(e) => setEmis({ ...emis, baseline: e.target.value })}>{veh.baselines.map((b) => <option key={b.id} value={b.id}>{BASELINE_LABEL[b.id] ?? b.id}</option>)}</select></label>
             <p className="small muted">{veh.scopes.find((s) => s.id === emis.scope)?.definition}. Baseline: {veh.baselines.find((b) => b.id === emis.baseline)?.definition}.</p></fieldset>}
         </>}
         {step === 5 && <dl className="facts review" aria-label="review">
           <dt>Area</dt><dd>{area?.name}</dd>
-          <dt>Dataset</dt><dd>{source === 'synthetic' ? 'synthetic demand' : source === 'manual' ? 'placed on the map' : shownDatasets.find((d) => d.dataset_key === datasetKey)?.name}</dd>
+          <dt>Mobility data</dt><dd>{source === 'synthetic' ? 'synthetic demand' : source === 'manual' ? 'placed on the map' : shownDatasets.find((d) => d.dataset_key === datasetKey)?.name}</dd>
           <dt>Scenario</dt><dd>{f.name}</dd>
           <dt>Drivers</dt><dd>{drivers.length}</dd>
           <dt>Riders</dt><dd>{(source === 'manual' ? manual.riders : preview?.scenario.riders ?? []).length}{summary ? ` · ${summary.pairs} compatible pairs` : ''}</dd>
@@ -259,7 +264,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
           <dt>Constraints</dt><dd>detour ≤ {f.detour} min and ≤ {Math.round(f.ratio * 100)} % of the direct trip · one rider per driver</dd>
           <dt>Seed</dt><dd>{source === 'manual' ? '—' : f.seed}</dd>
           <dt>Methods</dt><dd>{checked.map((k) => methods.find((m) => methodKey(m) === k)?.name ?? k).join(', ')} · {reps} repetition{reps === 1 ? '' : 's'}</dd>
-          <dt>Emissions</dt><dd>{profile ? `${SCOPE_LABEL[emis.scope]} · baseline: ${BASELINE_LABEL[emis.baseline]}` : 'not computed (no vehicle)'}</dd>
+          <dt>CO₂ calculation</dt><dd>{profile ? `${SCOPE_LABEL[emis.scope]} · baseline: ${BASELINE_LABEL[emis.baseline]}` : 'not computed (no vehicle)'}</dd>
           <dt>Provenance</dt><dd>{source === 'synthetic' ? `seeded generator on ${area?.name} road network` : source === 'dataset' ? `seeded resampling of ${shownDatasets.find((d) => d.dataset_key === datasetKey)?.name}` : initial?.parent ? 'edited from a library scenario' : 'map editor'}</dd>
         </dl>}
       </div>

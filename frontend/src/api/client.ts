@@ -1,6 +1,6 @@
 /** Thin typed client for the MOVE OpenLab API (same origin, cookie session). */
 export type Json = Record<string, any>;
-export interface User { username: string; display: string; role: string; must_change_password: boolean; expires_at: number }
+export interface User { username: string; display: string; role: string; must_change_password: boolean; expires_at: number; can_supervise?: boolean }
 export interface Metric { id: string; label: string; unit: string; definition: string; better: string | null }
 export interface Level { metric: string; sense: 'max' | 'min' }
 export interface Field { id: string; label: string; type: string; choices?: { id: string; label: string }[]; min?: number; max?: number; help?: string }

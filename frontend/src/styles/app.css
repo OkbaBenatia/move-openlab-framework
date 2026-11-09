@@ -67,7 +67,7 @@ legend { font-weight: 600; padding: 0 4px; }
   .content { padding: 12px 16px; }
   .topbar .muted.small { display: none; }
 }
-/* Phase 3: sections, maps, jobs, charts */
+/* sections, maps, jobs, charts */
 .sections { display: flex; gap: 4px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
 .tab { display: inline-flex; align-items: center; gap: 6px; font: inherit; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; cursor: pointer; white-space: nowrap; }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
@@ -239,3 +239,29 @@ tr.dim td { opacity: .55; }
   .phase-bar { display: none; }
 }
 .badge.pt { font-size: 9px; padding: 0 4px; margin-left: 2px; }
+
+/* identity, context, candidates, methods */
+.brand .logo-mark { width: 26px; height: 26px; border-radius: 6px; display: block; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ctx { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 10px; margin: 4px 0 0; font-size: 13px; }
+.ctx dt { color: var(--muted); } .ctx dd { margin: 0; overflow-wrap: anywhere; }
+.ctx select.full { width: 100%; font-size: 12.5px; padding: 2px 4px; }
+.phases-inline { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0 0; padding: 0; }
+.phases-inline li { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.phases-inline li + li::before { content: "→"; margin: 0 6px 0 -2px; color: var(--muted); }
+.phases-inline li.current { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.phases-inline li.done { color: var(--ok); border-color: var(--ok); }
+.cands h3 { margin: 8px 0 4px; font-size: 13px; }
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.card-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
+.card-row label { align-items: flex-start; }
+.card-row.hl { border-color: var(--accent); background: var(--hl); }
+.card-row.dim { opacity: .6; }
+.reasons { margin: 4px 0 0 16px; }
+.cmd { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+.cmd code { overflow-wrap: anywhere; }
+.plug { padding: 6px 8px; font-size: 12.5px; }
+.ab-tabs .btn { padding: 3px 8px; }
+th.hl { background: var(--hl); }
+select.small { font-size: 12px; padding: 2px 4px; }
+legend.row { gap: 8px; align-items: center; }

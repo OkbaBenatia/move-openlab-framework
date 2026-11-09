@@ -3,7 +3,8 @@ import { call, post, type Json } from '../api/client';
 export interface Agent { id: string; origin: [number, number]; destination: [number, number]; earliest: number; latest: number }
 export interface Scenario { name: string; network_id: string; params: { max_detour_s: number; max_detour_ratio: number }; drivers: Agent[]; riders: Agent[]; provenance?: Json }
 export interface Profile { id: string; label: string; max_bbox_deg2: number }
-export interface GeoConfig { tile_url: string; tile_attribution: string; can_manage: boolean; can_fetch: boolean; geocoder: boolean; profiles: Profile[]; networks: Json[]; datasets: Json[]; osm_licence: string }
+export interface Geocoding { enabled: boolean; provider: string; label: string; autocomplete: boolean; min_chars: number; attribution: string }
+export interface GeoConfig { tile_url: string; tile_attribution: string; can_manage: boolean; can_fetch: boolean; geocoder: boolean; geocoding: Geocoding; profiles: Profile[]; networks: Json[]; datasets: Json[]; osm_licence: string }
 export interface Area { area_id: string; name: string; bbox: [number, number, number, number]; profile: string; km2: number; network_id: string | null; cached_network: string | null; origin: Json; updated_at: string }
 
 const form = (path: string, fields: Record<string, string | Blob | boolean | null | undefined>) => {

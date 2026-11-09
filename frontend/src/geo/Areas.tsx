@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Crosshair, Download, MousePointerClick, Ruler, Save, Search, Square, Trash2 } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Crosshair, Download, Eye, EyeOff, MousePointerClick, Ruler, Save, Search, Square, Trash2 } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import { JobProgress } from '../components/JobProgress';
 import { COLORS, LeafletMap, type BBox, type MapLine, type MapPoint } from './LeafletMap';
 import { dur, geo, km, type Area, type GeoConfig } from './api';
+import type { HideProps } from './GeoWorkbench';
 
 type Mode = 'none' | 'point' | 'draw' | 'measure';
 const deg2 = (b: BBox) => (b[2] - b[0]) * (b[3] - b[1]);
@@ -16,9 +17,9 @@ const around = (lat: number, lon: number, halfKm = 2.5): BBox => {
 
 /** Named areas of the workspace: place search, map selection, box drawing and resizing, road-network profile,
  *  network download (background job) with coverage, distances and travel times. */
-export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
+export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged, hiddenIds, onToggleHidden }: {
   cfg: GeoConfig; areas: Area[]; current: Area | null; setCurrent: (id: string) => void; setErr: (s: string | null) => void; onChanged: () => void;
-}) {
+} & HideProps) {
   const [draft, setDraft] = useState<{ id?: string; name: string; bbox: BBox | null; profile: string; origin?: Json }>({ name: '', bbox: null, profile: 'car' });
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Json[] | null>(null);
@@ -42,9 +43,11 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
   }, [net, setErr]);
   useEffect(() => { if (current && !draft.id && !draft.bbox) setFocus({ key: current.area_id, bbox: current.bbox }); }, [current, draft.id, draft.bbox]);
 
-  const search = async () => {
+  const auto = !!cfg.geocoding?.autocomplete, minChars = cfg.geocoding?.min_chars ?? 2;
+  const timer = useRef<number | null>(null);
+  const search = async (text = q) => {
     setErr(null); setSearching(true);
-    try { const r = await geo.geocode(q); setResults(r.results); if (!r.results.length) setErr(`no place found for “${q}”`); } catch (e) { setErr(errText(e)); setResults(null); } finally { setSearching(false); }
+    try { const r = await geo.geocode(text); setResults(r.results); if (!r.results.length && !auto) setErr(`no place found for “${text}”`); } catch (e) { if (!auto) setErr(errText(e)); setResults(null); } finally { setSearching(false); }
   };
   const choose = (r: Json) => {
     let b = r.bbox as BBox;
@@ -94,13 +97,14 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
 
   return <div className="split">
     <div>
-      <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= 2) search(); }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={cfg.geocoder ? 'City, locality or region' : 'Place search is off — draw on the map'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
-        <button className="btn" disabled={!cfg.geocoder || searching || q.trim().length < 2}><Search size={13} /> {searching ? 'Searching…' : 'Search'}</button>
+      <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= minChars) search(); }}>
+        <input value={q} onChange={(e) => { setQ(e.target.value); if (auto) { if (timer.current) window.clearTimeout(timer.current); if (e.target.value.trim().length >= minChars) timer.current = window.setTimeout(() => search(e.target.value), 450); } }}
+          placeholder={cfg.geocoder ? 'City, locality or region' : 'Place search is off — draw on the map'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
+        <button className="btn" disabled={!cfg.geocoder || searching || q.trim().length < minChars}><Search size={13} /> {searching ? 'Searching…' : 'Search'}</button>
       </form>
       {results && results.length > 0 && <ul className="results" aria-label="search results">{results.map((r, i) =>
         <li key={i} tabIndex={0} onClick={() => choose(r)} onKeyDown={(e) => e.key === 'Enter' && choose(r)}>{r.name}<span className="muted small"> · {r.kind} · {num(km2(r.bbox), 0)} km²</span></li>)}</ul>}
-      {cfg.geocoder && <p className="small muted">Search by Nominatim, © OpenStreetMap contributors. One search at a time; results are cached.</p>}
+      {cfg.geocoder && <p className="small muted">{cfg.geocoding?.attribution ?? 'Search: © OpenStreetMap contributors'}.{auto ? '' : ' Press Enter to search; results are cached.'}</p>}
       <div className="row gap actions">
         <button className={`btn sm ${mode === 'point' ? 'primary' : ''}`} onClick={() => { setMode(mode === 'point' ? 'none' : 'point'); setCorner(null); }}><MousePointerClick size={12} /> Pick on map</button>
         <button className={`btn sm ${mode === 'draw' ? 'primary' : ''}`} onClick={() => { setMode(mode === 'draw' ? 'none' : 'draw'); setCorner(null); }}><Square size={12} /> Draw box</button>
@@ -126,10 +130,11 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged }: {
       <h3>My areas</h3>
       {areas.length === 0 ? <p className="muted">No area yet: search a place or draw a box.</p> :
         <div className="table-scroll"><table aria-label="areas"><thead><tr><th>Area</th><th>Profile</th><th>km²</th><th>Network</th><th /></tr></thead>
-          <tbody>{areas.map((a) => <tr key={a.area_id} className={current?.area_id === a.area_id ? 'hl' : ''}>
+          <tbody>{areas.map((a) => <tr key={a.area_id} className={current?.area_id === a.area_id ? 'hl' : hiddenIds.includes(a.area_id) ? 'dim' : ''}>
             <td><b>{a.name}</b></td><td className="small">{a.profile}</td><td>{num(a.km2, 0)}</td>
             <td className="small">{a.network_id ? <span className="badge ok">ready</span> : a.cached_network ? <span className="badge">stored</span> : <span className="badge warn">not downloaded</span>}</td>
             <td><div className="row gap"><button className="btn sm" onClick={() => setCurrent(a.area_id)}>Use</button><button className="btn sm" onClick={() => edit(a)}>Edit</button>
+              <button className="btn icon" aria-label={hiddenIds.includes(a.area_id) ? `show ${a.name}` : `hide ${a.name}`} title={hiddenIds.includes(a.area_id) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(a.area_id)}>{hiddenIds.includes(a.area_id) ? <Eye size={12} /> : <EyeOff size={12} />}</button>
               <button className="btn icon" aria-label={`delete ${a.name}`} title="Delete the area (a downloaded network stays available)" onClick={() => remove(a)}><Trash2 size={12} /></button></div></td></tr>)}</tbody></table></div>}
 
       {current && <div className="form">

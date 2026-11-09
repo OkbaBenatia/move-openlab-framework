@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { Database, FlaskConical, LayoutDashboard, ListChecks, LogOut, Moon, Sun, Users } from 'lucide-react';
+import { Database, FlaskConical, GraduationCap, LayoutDashboard, ListChecks, LogOut, Moon, Sun, Users } from 'lucide-react';
 import { api } from './api/client';
 import { APP_NAME, DEVELOPER } from './brand';
 import { UserContext } from './context';
@@ -24,8 +24,8 @@ function useTheme(): [string, () => void] {
   return [t, toggle];
 }
 
-/** Application shell: the map-first workspace is the main screen; data, experiment records, jobs and
- *  administration are secondary sections. Every view has a URL (hash routes). */
+/** Application shell: the map-first workspace is the main screen; data, experiment records, jobs, students (for
+ *  supervising researchers) and administration are secondary sections. Every view has a URL (hash routes). */
 export default function App() {
   const user = useContext(UserContext)!;
   const [theme, toggleTheme] = useTheme();
@@ -34,13 +34,16 @@ export default function App() {
   const [preset, setPreset] = useState<string[] | null>(null);
   const [version, setVersion] = useState('');
   useEffect(() => { api.info().then((i) => setVersion(i.version)).catch(() => { /* optional */ }); }, []);
+  const supervises = user.role === 'admin' || (user.role === 'researcher' && !!user.can_supervise);
   const sections: [Section, string, typeof Database][] = [['workspace', 'Workspace', LayoutDashboard], ['data', 'Data', Database],
-    ['experiments', 'Experiments', FlaskConical], ['jobs', 'Jobs', ListChecks], ...(user.role === 'admin' ? [['admin', 'Administration', Users] as [Section, string, typeof Database]] : [])];
+    ['experiments', 'Experiments', FlaskConical], ['jobs', 'Jobs', ListChecks],
+    ...(user.role === 'researcher' && user.can_supervise ? [['students', 'Students', GraduationCap] as [Section, string, typeof Database]] : []),
+    ...(user.role === 'admin' ? [['admin', 'Administration', Users] as [Section, string, typeof Database]] : [])];
   const open = (s: Section, arg = '') => { setErr(null); go(s, arg); };
   const full = route.section === 'workspace' || route.section === 'compare';
   return <div className={`app ${full ? 'app-lab' : ''}`}>
     <header className="topbar">
-      <div className="brand"><FlaskConical size={18} aria-hidden /><b>{APP_NAME}</b></div>
+      <div className="brand"><img src="/brand/move-openlab-icon-64.png" alt="" className="logo-mark" width={26} height={26} /><b>{APP_NAME}</b></div>
       <nav className="sections" aria-label="sections">{sections.map(([s, label, Icon]) =>
         <a key={s} href={`#/${s}`} className={`tab ${route.section === s || (s === 'workspace' && route.section === 'compare') ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); open(s); }}><Icon size={14} /> {label}</a>)}</nav>
       <div className="row gap">
@@ -58,9 +61,10 @@ export default function App() {
         onUseInCampaign={(hashes) => { setPreset(hashes); open('experiments', 'new'); }} onRun={(cid) => go('workspace', cid)} />}
       {route.section === 'experiments' && <ExperimentsSection view={route.arg} go={(v) => open('experiments', v)} preset={preset} clearPreset={() => setPreset(null)} />}
       {route.section === 'jobs' && <JobsPage setErr={setErr} />}
+      {route.section === 'students' && supervises && user.role !== 'admin' && <AdminPage me={user.username} supervisorMode setErr={setErr} />}
       {route.section === 'admin' && user.role === 'admin' && <AdminPage me={user.username} setErr={setErr} />}
     </main>}
     </ErrorBoundary>
-    {!full && <footer className="foot small muted">{APP_NAME} {version} · developed by {DEVELOPER}</footer>}
+    {!full && <footer className="foot small muted">{APP_NAME}{version ? ` · ${version}` : ''} · developed by {DEVELOPER}</footer>}
   </div>;
 }

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileUp, Trash2 } from 'lucide-react';
+import { CheckCircle2, Download, FileUp, Trash2, Eye, EyeOff } from 'lucide-react';
+import type { HideProps } from './GeoWorkbench';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import { JobProgress } from '../components/JobProgress';
@@ -11,7 +12,7 @@ const FIELDS: [string, string][] = [['origin_lat', 'Origin latitude'], ['origin_
 const GEO_FIELDS: [string, string][] = [['departure', 'Departure time'], ['date', 'Date (optional)'], ['role', 'Role (optional)']];
 
 /** Trip datasets: shared RPC open-data subsets (France) and the researcher's own CSV / GeoJSON uploads. */
-export function Datasets({ cfg, areas, current, setErr, onChanged }: { cfg: GeoConfig; areas: Area[]; current: Area | null; setErr: (s: string | null) => void; onChanged: () => void }) {
+export function Datasets({ cfg, areas, current, setErr, onChanged, hiddenIds, showHidden, onToggleHidden }: { cfg: GeoConfig; areas: Area[]; current: Area | null; setErr: (s: string | null) => void; onChanged: () => void } & HideProps) {
   const [list, setList] = useState<Json | null>(null);
   const [sel, setSel] = useState<Json | null>(null);
   const load = useCallback(() => { geo.datasets().then(setList).catch((e) => setErr(errText(e))); }, [setErr]);
@@ -34,11 +35,12 @@ export function Datasets({ cfg, areas, current, setErr, onChanged }: { cfg: GeoC
       <h3>Datasets</h3>
       {!list ? <p className="muted">Loading…</p> : list.shared.length + list.mine.length === 0 ? <p className="muted">No dataset yet.</p> :
         <div className="table-scroll"><table aria-label="datasets"><thead><tr><th>Dataset</th><th>Source</th><th>Trips</th><th /></tr></thead>
-          <tbody>{[...list.mine, ...list.shared].map((d: Json) => <tr key={d.dataset_key} className={sel?.report?.dataset_key === d.dataset_key ? 'hl' : ''}>
+          <tbody>{[...list.mine, ...list.shared].filter((d: Json) => showHidden || !hiddenIds.includes(d.dataset_key)).map((d: Json) => <tr key={d.dataset_key} className={sel?.report?.dataset_key === d.dataset_key ? 'hl' : hiddenIds.includes(d.dataset_key) ? 'dim' : ''}>
             <td><b>{d.provider === 'rpc' ? `RPC ${d.release} · ${areas.find((a) => a.bbox.join() === d.area.bbox.map((x: number) => Number(x.toFixed(5))).join())?.name ?? d.name.split(' · ')[1]}` : d.name}</b>
               {d.provider === 'rpc' && <div className="small muted">{d.licence}</div>}</td>
             <td className="small">{d.provider === 'rpc' ? 'RPC open data · shared' : `${d.provider.toUpperCase()} upload · private`}</td><td>{d.rows_kept}</td>
             <td><div className="row gap"><button className="btn sm" onClick={() => open(d.dataset_key)}>Open</button>
+              <button className="btn icon" aria-label={hiddenIds.includes(d.dataset_key) ? `show ${d.name}` : `hide ${d.name}`} title={hiddenIds.includes(d.dataset_key) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(d.dataset_key)}>{hiddenIds.includes(d.dataset_key) ? <Eye size={12} /> : <EyeOff size={12} />}</button>
               {d.provider !== 'rpc' && <button className="btn icon" aria-label={`delete ${d.name}`} onClick={() => remove(d.dataset_key)}><Trash2 size={12} /></button>}</div></td></tr>)}</tbody></table></div>}
       {sel && <DatasetSummary sel={sel} />}
       <Rpc areas={areas} current={current} cfg={cfg} setErr={setErr} onDone={changed} />

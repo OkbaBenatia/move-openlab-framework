@@ -7,7 +7,8 @@ import { CATEGORIES, type ExpItem } from './api';
 export const ALL = '';
 export const NEW = '__new__';
 
-/** Workspace top bar: Area, Dataset and Experiment selectors (grouped by category), then the actions of the workflow. */
+/** Workspace top bar: Area, Mobility data and Experiment selectors (experiments grouped by category), then the
+ *  actions of the workflow: Generate, Run, Compare, Replay, Import, Export. */
 export function TopBar({ areas, areaId, setArea, datasets, datasetKey, setDataset, experiments, expId, setExp, onGenerate, onRun, runDisabled, runTitle,
   onCompare, canCompare, onReplay, canReplay, replaying, onImport, onExport, canExport, onTour, onPanel }: {
   areas: Area[]; areaId: string; setArea: (id: string) => void; datasets: Json[]; datasetKey: string; setDataset: (k: string) => void;
@@ -22,8 +23,8 @@ export function TopBar({ areas, areaId, setArea, datasets, datasetKey, setDatase
       <button className="btn icon only-narrow" aria-label="scenario panel" onClick={() => onPanel('left')}><PanelLeft size={15} /></button>
       <label className="sel"><span>Area</span><select aria-label="area" value={areaId} onChange={(e) => setArea(e.target.value)}>
         <option value={ALL}>All areas</option>{areas.map((a) => <option key={a.area_id} value={a.area_id}>{a.name}</option>)}</select></label>
-      <label className="sel"><span>Dataset</span><select aria-label="dataset" value={datasetKey} onChange={(e) => setDataset(e.target.value)}>
-        <option value={ALL}>All datasets</option>{datasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{d.name}</option>)}</select></label>
+      <label className="sel"><span>Mobility data</span><select aria-label="mobility data" value={datasetKey} onChange={(e) => setDataset(e.target.value)}>
+        <option value={ALL}>All data</option>{datasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{d.label ?? d.name}</option>)}</select></label>
       <label className="sel grow"><span>Experiment</span><select aria-label="experiment" value={expId} onChange={(e) => setExp(e.target.value)}>
         {!expId && <option value="">—</option>}
         {groups.map(([c, xs]) => <optgroup key={c} label={c}>{xs.map((x) => <option key={x.campaign_id} value={x.campaign_id}>{x.title}</option>)}</optgroup>)}

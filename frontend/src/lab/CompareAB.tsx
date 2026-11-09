@@ -9,13 +9,18 @@ import { VERDICT, lab, type ExpItem, type Verdict } from './api';
 import { planLayers, planPositions } from './layers';
 import { useReplay } from './ReplayBar';
 
-/** A/B comparison workspace: two experiments side by side on two maps (optionally synchronised), one replay clock,
- *  compatible metrics, and the differences between their solutions, scenario by scenario. */
+/** Comparison workspace: experiment A against one or several others (`#/compare/A|B1,B2`). Two maps side by side
+ *  (A and the selected B, optionally synchronised), one replay clock, compatible metrics for every B in one table,
+ *  and the differences between the solutions of A and the selected B, scenario by scenario. */
 export function CompareAB({ arg, go }: { arg: string; go: (a: string, b: string) => void }) {
-  const [a, b] = arg.split('|');
+  const [a, bArg] = arg.split('|');
+  const bs = useMemo(() => (bArg ?? '').split(',').filter(Boolean), [bArg]);
+  const [bi, setBi] = useState(0);
+  const b = bs[Math.min(bi, Math.max(0, bs.length - 1))] ?? '';
   const [cfg, setCfg] = useState<GeoConfig | null>(null);
   const [exps, setExps] = useState<ExpItem[]>([]);
   const [diff, setDiff] = useState<Diff | null>(null);
+  const [diffs, setDiffs] = useState<(Diff | null)[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [ma, setMa] = useState<string | undefined>(); const [mb, setMb] = useState<string | undefined>();
   const [row, setRow] = useState(0);
@@ -33,6 +38,13 @@ export function CompareAB({ arg, go }: { arg: string; go: (a: string, b: string)
     mob.diff(a, b, ma, mb).then((d) => live && setDiff(d)).catch((e) => live && setErr(errText(e)));
     return () => { live = false; };
   }, [a, b, ma, mb]);
+  // several Bs: one diff per B (A's method fixed) for the metrics table
+  useEffect(() => {
+    if (bs.length < 2) { setDiffs([]); return; }
+    let live = true;
+    Promise.all(bs.map((x) => mob.diff(a, x, ma).catch(() => null))).then((ds) => live && setDiffs(ds));
+    return () => { live = false; };
+  }, [a, bs, ma]);
   const r: DiffRow | undefined = diff?.rows[row];
   useEffect(() => {
     let live = true;
@@ -47,30 +59,39 @@ export function CompareAB({ arg, go }: { arg: string; go: (a: string, b: string)
   const replay = useReplay(merged, replaying && syncReplay);
   const la = useMemo(() => (plans.a ? planLayers(plans.a) : { points: [], lines: [] }), [plans.a]);
   const lb = useMemo(() => (plans.b ? planLayers(plans.b) : { points: [], lines: [] }), [plans.b]);
-  const pick = (side: 'a' | 'b', id: string) => { if (!id) return; go(side === 'a' ? id : a, side === 'b' ? id : b); };
+  const pick = (side: 'a' | 'b', id: string) => {
+    if (!id) return;
+    if (side === 'a') go(id, bs.join(','));
+    else { const next = [...bs]; next[Math.min(bi, bs.length - 1)] = id; go(a, next.join(',')); }
+  };
   if (!cfg) return <ErrorNote text={err} />;
   const same = diff ? sameEmissionSemantics([diff.totals.emissions.a, diff.totals.emissions.b]) : false;
   const verdict = (v: Verdict | string | null | undefined) => v && VERDICT[v as Verdict] ? <span className={`badge ${VERDICT[v as Verdict].cls}`}>{VERDICT[v as Verdict].label}</span> : null;
   const delta = (x: number | null | undefined, y: number | null | undefined, unit = '') => (x == null || y == null ? '—' : `${y - x > 0 ? '+' : ''}${num(y - x)}${unit}`);
-  const side = (s: 'a' | 'b') => <label className="sel grow"><span>Experiment {s.toUpperCase()}</span>
+  const title = (id: string) => exps.find((x) => x.campaign_id === id)?.title ?? id;
+  const bLabel = (i: number) => (bs.length > 1 ? `B${i + 1}` : 'B');
+  const side = (s: 'a' | 'b') => <label className="sel grow"><span>Experiment {s === 'a' ? 'A' : bLabel(Math.min(bi, bs.length - 1))}</span>
     <select aria-label={`experiment ${s}`} value={s === 'a' ? a : b} onChange={(e) => pick(s, e.target.value)}>{exps.filter((x) => !x.hidden || x.campaign_id === (s === 'a' ? a : b)).map((x) => <option key={x.campaign_id} value={x.campaign_id}>{x.title}</option>)}</select></label>;
   const methodSel = (s: 'a' | 'b') => diff && <select aria-label={`method ${s}`} value={(s === 'a' ? diff.a : diff.b).method_id ?? ''} onChange={(e) => (s === 'a' ? setMa : setMb)(e.target.value)} className="small">
     {(s === 'a' ? diff.a : diff.b).methods.map((m) => <option key={m} value={m}>{m}</option>)}</select>;
+  const fmt = (m: { unit: string }, v: number | null | undefined) => (v == null ? '—' : m.unit === 's' ? dur(v) : num(v));
+  const multi = bs.length > 1 && diffs.length === bs.length;
   return <div className="ab">
     <div className="labbar" role="toolbar" aria-label="comparison">
-      <div className="row gap selectors">{side('a')}{side('b')}</div>
+      <div className="row gap selectors">{side('a')}{side('b')}
+        {bs.length > 1 && <nav className="subtabs ab-tabs" aria-label="experiments compared" style={{ margin: 0 }}>{bs.map((x, i) => <button key={x} className={`btn sm ${i === bi ? 'primary' : ''}`} onClick={() => { setBi(i); setMb(undefined); }} title={title(x)}>{bLabel(i)}</button>)}</nav>}</div>
       <div className="row gap actions-bar">
         <label className="row small"><input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} /> Sync maps</label>
         <label className="row small"><input type="checkbox" checked={syncReplay} onChange={(e) => setSyncReplay(e.target.checked)} /> Sync replay</label>
         <button className={`btn ${replaying ? 'primary' : ''}`} disabled={!merged} aria-pressed={replaying} onClick={() => setReplaying(!replaying)}><Play size={14} /> Replay</button>
         <a className="btn" href={`#/workspace/${encodeURIComponent(a)}`} target="_blank" rel="noopener"><ExternalLink size={13} /> A</a>
-        <a className="btn" href={`#/workspace/${encodeURIComponent(b)}`} target="_blank" rel="noopener"><ExternalLink size={13} /> B</a>
+        <a className="btn" href={`#/workspace/${encodeURIComponent(b)}`} target="_blank" rel="noopener"><ExternalLink size={13} /> {bLabel(Math.min(bi, bs.length - 1))}</a>
       </div>
     </div>
     {err && <div className="lab-notes"><ErrorNote text={err} /></div>}
     <div className="ab-maps">
       {(['a', 'b'] as const).map((s) => <div key={s} className="ab-map">
-        <div className="row gap ab-title"><b>{s.toUpperCase()}</b><span className="grow ellipsis">{s === 'a' ? diff?.a.title : diff?.b.title}</span>{methodSel(s)}</div>
+        <div className="row gap ab-title"><b>{s === 'a' ? 'A' : bLabel(Math.min(bi, bs.length - 1))}</b><span className="grow ellipsis">{s === 'a' ? diff?.a.title : diff?.b.title}</span>{methodSel(s)}</div>
         <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} points={s === 'a' ? la.points : lb.points} lines={s === 'a' ? la.lines : lb.lines}
           dynamic={replaying && (s === 'a' ? plans.a : plans.b) ? planPositions(s === 'a' ? plans.a! : plans.b!, replay.t) : []}
           fitKey={sync ? `ab|${row}` : `${s}|${row}|${(s === 'a' ? plans.a : plans.b)?.run_id ?? ''}`} view={sync ? view : null} onView={sync ? setView : undefined} height="100%" />
@@ -92,8 +113,8 @@ export function CompareAB({ arg, go }: { arg: string; go: (a: string, b: string)
           <button className={`btn sm ${tab === 'metrics' ? 'primary' : ''}`} onClick={() => setTab('metrics')}>Metrics</button>
           <button className={`btn sm ${tab === 'diff' ? 'primary' : ''}`} onClick={() => setTab('diff')}>Diff</button></nav></div>}
       {diff && diff.comparability && diff.comparability.reasons.length > 0 && <details className="small"><summary>Why?</summary><ul>{diff.comparability.reasons.map((x) => <li key={x}>{x}</li>)}</ul></details>}
-      {diff && tab === 'metrics' && <div className="table-scroll"><table className="compact" aria-label="metrics A and B"><thead><tr><th>Metric</th><th>A · {diff.a.method_id}</th><th>B · {diff.b.method_id}</th><th>B − A</th></tr></thead><tbody>
-        {diff.metrics.map((m) => <tr key={m.id}><td>{m.label} <span className="muted small">(all matched scenarios)</span></td><td>{m.unit === 's' ? dur(diff.totals.metrics.a[m.id]) : num(diff.totals.metrics.a[m.id])}</td><td>{m.unit === 's' ? dur(diff.totals.metrics.b[m.id]) : num(diff.totals.metrics.b[m.id])}</td><td>{delta(diff.totals.metrics.a[m.id], diff.totals.metrics.b[m.id])}</td></tr>)}
+      {diff && tab === 'metrics' && !multi && <div className="table-scroll"><table className="compact" aria-label="metrics A and B"><thead><tr><th>Metric</th><th>A · {diff.a.method_id}</th><th>B · {diff.b.method_id}</th><th>B − A</th></tr></thead><tbody>
+        {diff.metrics.map((m) => <tr key={m.id}><td>{m.label} <span className="muted small">(all matched scenarios)</span></td><td>{fmt(m, diff.totals.metrics.a[m.id])}</td><td>{fmt(m, diff.totals.metrics.b[m.id])}</td><td>{delta(diff.totals.metrics.a[m.id], diff.totals.metrics.b[m.id])}</td></tr>)}
         <tr><td>Served riders</td><td>{diff.totals.served.a}</td><td>{diff.totals.served.b}</td><td>{delta(diff.totals.served.a, diff.totals.served.b)}</td></tr>
         <tr><td>Runtime (median per scenario)</td><td>{secs(diff.totals.runtime.a)}</td><td>{secs(diff.totals.runtime.b)}</td><td>{delta(diff.totals.runtime.a, diff.totals.runtime.b, ' s')}</td></tr>
         {same && <>
@@ -103,6 +124,16 @@ export function CompareAB({ arg, go }: { arg: string; go: (a: string, b: string)
           <tr><td>Avoided CO₂</td><td>{grams(diff.totals.emissions.a?.avoided_g)} · {pct(diff.totals.emissions.a?.avoided_pct)}</td><td>{grams(diff.totals.emissions.b?.avoided_g)} · {pct(diff.totals.emissions.b?.avoided_pct)}</td><td>{grams((diff.totals.emissions.b?.avoided_g ?? 0) - (diff.totals.emissions.a?.avoided_g ?? 0))}</td></tr></>}
         {!same && (diff.totals.emissions.a || diff.totals.emissions.b) && <tr><td colSpan={4} className="small muted">Emission figures are not shown side by side: {!diff.totals.emissions.a?.complete || !diff.totals.emissions.b?.complete ? 'one side has no complete emission data' : 'the two experiments use different emission scopes, baselines or units'}.</td></tr>}
       </tbody></table></div>}
+      {diff && tab === 'metrics' && multi && <div className="table-scroll"><table className="compact" aria-label="metrics of every experiment"><thead><tr><th>Metric</th><th>A · {diff.a.method_id}</th>
+        {bs.map((x, i) => <th key={x} className={i === bi ? 'hl' : ''}>{bLabel(i)} · {diffs[i]?.b.method_id ?? '—'}<div className="small muted ellipsis" style={{ maxWidth: 160 }}>{title(x)}</div></th>)}</tr></thead><tbody>
+        {diff.metrics.map((m) => <tr key={m.id}><td>{m.label}</td><td>{fmt(m, diff.totals.metrics.a[m.id])}</td>
+          {bs.map((x, i) => { const d = diffs[i]; return <td key={x}>{d ? <>{fmt(m, d.totals.metrics.b[m.id])} <span className="small muted">({delta(d.totals.metrics.a[m.id], d.totals.metrics.b[m.id])})</span></> : <span className="muted">not comparable</span>}</td>; })}</tr>)}
+        <tr><td>Served riders</td><td>{diff.totals.served.a}</td>{bs.map((x, i) => <td key={x}>{diffs[i] ? <>{diffs[i]!.totals.served.b} <span className="small muted">({delta(diffs[i]!.totals.served.a, diffs[i]!.totals.served.b)})</span></> : '—'}</td>)}</tr>
+        <tr><td>Runtime (median per scenario)</td><td>{secs(diff.totals.runtime.a)}</td>{bs.map((x, i) => <td key={x}>{diffs[i] ? secs(diffs[i]!.totals.runtime.b) : '—'}</td>)}</tr>
+        <tr><td>CO₂ <span className="muted small">(where the calculation is the same as A's)</span></td><td>{grams(diff.totals.emissions.a?.solution_g)}</td>
+          {bs.map((x, i) => { const d = diffs[i]; const ok = d && sameEmissionSemantics([d.totals.emissions.a, d.totals.emissions.b]); return <td key={x}>{ok ? grams(d!.totals.emissions.b?.solution_g) : <span className="muted">—</span>}</td>; })}</tr>
+        <tr><td>Comparability</td><td /> {bs.map((x, i) => <td key={x}>{diffs[i]?.comparability ? <>{verdict(diffs[i]!.comparability!.quality)}</> : <span className="muted">—</span>}</td>)}</tr>
+      </tbody></table><p className="small muted">Deltas are B − A. Click a B above to show it on the right map and in the Diff view.</p></div>}
       {diff && tab === 'diff' && r && <div className="ab-diff">
         <p className="small"><b>{r.instance_id}</b>{!r.same_instance && <span className="muted"> ↔ {r.instance_id_b} (same problem, other vehicle or emission data)</span>}</p>
         {r.assignments ? <>

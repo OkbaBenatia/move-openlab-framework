@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Database, Map as MapIcon, MapPinned, Pencil, Plus, Shuffle } from 'lucide-react';
+import { Database, Eye, EyeOff, Map as MapIcon, MapPinned, Pencil, Plus, Shuffle } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import type { DatasetItem } from '../lab/useLabData';
+import { lab } from '../lab/api';
 import { RIDE, useMethods } from '../lab/useLabData';
 import { Wizard } from '../mobility/Wizard';
 import { COLORS, LeafletMap, type MapLine, type MapPoint } from './LeafletMap';
@@ -26,17 +27,27 @@ export function GeoWorkbench({ setErr, onUseInCampaign, onRun, initialView, onVi
   const [currentId, setCurrentId] = useState<string>(() => { try { return localStorage.getItem(CURRENT_KEY) ?? ''; } catch { return ''; } });
   const [editing, setEditing] = useState<{ scenario: Scenario; parent?: string } | null>(null);
   const methods = useMethods(RIDE, setErr);
+  // hidden records (areas, datasets, scenarios) stay out of the lists unless "Show hidden" is on; nothing is deleted
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
+  useEffect(() => { lab.state().then((s) => setHiddenIds(s.preferences.hidden_ids ?? [])).catch(() => { /* preference only */ }); }, []);
+  const toggleHidden = (id: string) => {
+    const next = hiddenIds.includes(id) ? hiddenIds.filter((x) => x !== id) : [...hiddenIds, id];
+    setHiddenIds(next); lab.prefs({ hidden_ids: next }).then((s) => setHiddenIds(s.preferences.hidden_ids ?? next)).catch((e) => setErr(errText(e)));
+  };
+  const hide = { hiddenIds, showHidden, onToggleHidden: toggleHidden };
   useEffect(() => { if (VIEWS.includes(initialView as View)) setView(initialView as View); }, [initialView]);
   const load = useCallback(() => {
     geo.config().then(setCfg).catch((e) => setErr(errText(e)));
     geo.scenarios().then((r) => setLib(r.scenarios)).catch((e) => setErr(errText(e)));
     geo.areas().then((r) => setAreas(r.areas)).catch((e) => setErr(errText(e)));
     geo.datasets().then((r) => setDatasets([
-      ...r.shared.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.area?.bbox ?? null })),
-      ...r.mine.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.coverage?.extent ?? null }))])).catch((e) => setErr(errText(e)));
+      ...r.shared.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.area?.bbox ?? null, provider: d.provider ?? 'rpc', release: d.release ?? null })),
+      ...r.mine.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.coverage?.extent ?? null, provider: d.provider ?? 'upload', release: null }))])).catch((e) => setErr(errText(e)));
   }, [setErr]);
   useEffect(load, [load]);
-  const current = areas.find((a) => a.area_id === currentId) ?? areas.find((a) => a.network_id) ?? areas[0] ?? null;
+  const shownAreas = showHidden ? areas : areas.filter((a) => !hiddenIds.includes(a.area_id) || a.area_id === currentId);
+  const current = areas.find((a) => a.area_id === currentId) ?? shownAreas.find((a) => a.network_id) ?? shownAreas[0] ?? null;
   const setCurrent = (id: string) => { setCurrentId(id); try { localStorage.setItem(CURRENT_KEY, id); } catch { /* storage unavailable */ } };
   if (!cfg) return null;
   const tabs: [View, string, typeof MapIcon][] = [['areas', 'Areas', MapPinned], ['datasets', 'Datasets', Database], ['library', 'Library', MapIcon], ['generate', 'Generate', Shuffle]];
@@ -46,15 +57,17 @@ export function GeoWorkbench({ setErr, onUseInCampaign, onRun, initialView, onVi
       <label className="row gap"><span className="small muted">Area</span>
         <select value={current?.area_id ?? ''} onChange={(e) => setCurrent(e.target.value)} aria-label="current area" disabled={!areas.length}>
           {!areas.length && <option value="">no area yet</option>}
-          {areas.map((a) => <option key={a.area_id} value={a.area_id}>{a.name}{a.network_id ? '' : ' (no network)'}</option>)}</select></label>
+          {shownAreas.map((a) => <option key={a.area_id} value={a.area_id}>{a.name}{a.network_id ? '' : ' (no network)'}</option>)}</select></label>
       {current && <span className="small muted">{current.profile} · {num(current.km2, 0)} km²</span>}
+      <span className="grow" />
+      {hiddenIds.length > 0 && <button className="btn sm" aria-pressed={showHidden} onClick={() => setShowHidden(!showHidden)}>{showHidden ? <><EyeOff size={12} /> Hide hidden</> : <><Eye size={12} /> Show hidden ({hiddenIds.length})</>}</button>}
     </div>
     <nav className="subtabs" aria-label="geographic sections">{tabs.map(([v, label, Icon]) =>
       <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setView(v); onView?.(v); }}><Icon size={13} /> {label}</button>)}</nav>
-    {view === 'areas' && <Areas cfg={cfg} areas={areas} current={current} setCurrent={setCurrent} setErr={setErr} onChanged={load} />}
-    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} />}
-    {(view === 'library' || view === 'generate') && <Library cfg={cfg} lib={lib} setErr={setErr} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('generate'); onView?.('generate'); }} onUse={onUseInCampaign} />}
-    {view === 'generate' && <Wizard cfg={cfg} areas={areas} datasets={datasets} methods={methods} areaId={current?.area_id} initial={editing} setErr={setErr} reloadAreas={load}
+    {view === 'areas' && <Areas cfg={cfg} areas={shownAreas} current={current} setCurrent={setCurrent} setErr={setErr} onChanged={load} {...hide} />}
+    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} {...hide} />}
+    {(view === 'library' || view === 'generate') && <Library cfg={cfg} lib={showHidden ? lib : lib.filter((s) => !hiddenIds.includes(s.scenario_id))} setErr={setErr} {...hide} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('generate'); onView?.('generate'); }} onUse={onUseInCampaign} />}
+    {view === 'generate' && <Wizard cfg={cfg} areas={shownAreas} datasets={datasets.filter((d) => showHidden || !hiddenIds.includes(d.dataset_key))} methods={methods} areaId={current?.area_id} initial={editing} setErr={setErr} reloadAreas={load}
       onClose={closeWizard} onSaved={() => { load(); closeWizard(); }} onRun={(r) => { closeWizard(); onRun(r.campaign_id); }} />}
     <p className="small muted attribution">Road data {cfg.osm_licence}. Map tiles: {cfg.tile_attribution.replace(/<[^>]+>/g, '').replace(/&copy;/g, '©').replace(/&amp;/g, '&')}.</p>
   </div>;
@@ -85,7 +98,9 @@ function provText(p?: Json): string {
   return p.derived_from ? `${own} · edited from ${p.parent} · original: ${provText(p.derived_from)}` : own;
 }
 
-function Library({ cfg, lib, setErr, onEdit, onUse }: { cfg: GeoConfig; lib: Json[]; setErr: (s: string | null) => void; onEdit: (s: Scenario, parent: string) => void; onUse: (h: string[]) => void }) {
+export interface HideProps { hiddenIds: string[]; showHidden: boolean; onToggleHidden: (id: string) => void }
+
+function Library({ cfg, lib, setErr, onEdit, onUse, hiddenIds, onToggleHidden }: { cfg: GeoConfig; lib: Json[]; setErr: (s: string | null) => void; onEdit: (s: Scenario, parent: string) => void; onUse: (h: string[]) => void } & HideProps) {
   const [sel, setSel] = useState<Json | null>(null);
   const [pairs, setPairs] = useState(true);
   const [chosen, setChosen] = useState<string[]>([]);
@@ -96,10 +111,11 @@ function Library({ cfg, lib, setErr, onEdit, onUse }: { cfg: GeoConfig; lib: Jso
     <div>
       {lib.length === 0 ? <p className="muted">The library is empty. Generate a scenario.</p> :
         <div className="table-scroll"><table aria-label="scenario library"><thead><tr><th /><th>Scenario</th><th>Category</th><th>Drivers</th><th>Riders</th><th>Created</th><th /></tr></thead>
-          <tbody>{lib.map((s) => <tr key={s.scenario_id} className={sel?.scenario_id === s.scenario_id ? 'hl' : ''}>
+          <tbody>{lib.map((s) => <tr key={s.scenario_id} className={sel?.scenario_id === s.scenario_id ? 'hl' : hiddenIds.includes(s.scenario_id) ? 'dim' : ''}>
             <td><input type="checkbox" aria-label={`select ${s.name}`} checked={chosen.includes(s.instance_hash)} onChange={(e) => setChosen(e.target.checked ? [...chosen, s.instance_hash] : chosen.filter((x) => x !== s.instance_hash))} /></td>
             <td><b>{s.name}</b>{s.parent && <div className="small muted">edited from {s.parent}</div>}</td><td><span className="badge">{s.category ?? s.source}</span></td><td>{s.drivers}</td><td>{s.riders}</td>
-            <td className="small">{s.created_at.slice(0, 16).replace('T', ' ')}</td><td><button className="btn sm" onClick={() => open(s.scenario_id)}>Open</button></td></tr>)}</tbody></table></div>}
+            <td className="small">{s.created_at.slice(0, 16).replace('T', ' ')}</td><td><div className="row gap"><button className="btn sm" onClick={() => open(s.scenario_id)}>Open</button>
+              <button className="btn icon" aria-label={hiddenIds.includes(s.scenario_id) ? `show ${s.name}` : `hide ${s.name}`} title={hiddenIds.includes(s.scenario_id) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(s.scenario_id)}>{hiddenIds.includes(s.scenario_id) ? <Eye size={12} /> : <EyeOff size={12} />}</button></div></td></tr>)}</tbody></table></div>}
       <button className="btn primary" disabled={chosen.length === 0} onClick={() => onUse(chosen)}><Plus size={13} /> New campaign with {chosen.length} scenario(s)</button>
       {sel && <><h3>{sel.name}</h3>
         <table className="kv"><tbody>
