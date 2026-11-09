@@ -67,7 +67,7 @@ def geo_client(tmp_path):
     s = make_settings(tmp_path, "geo")
     auth = Auth(s, UserStore(None))
     for u, role in (("alice", "researcher"), ("root", "admin")):
-        pw = PW.get(u, "root-password-123")
+        pw = PW.get(u, "Operator-Key-2026-xyz")
         auth.create_user(u, u.title(), role=role, password=pw)
         auth.store.set_password(u, hash_password(pw), must_change=False)
     prov = NetworkStore(s.data_dir).save(grid_overpass(), dict(name="grid", bbox=BBOX), "fixture://")
@@ -120,14 +120,14 @@ def test_geo_api(tmp_path):
     assert pb["geometry"] == "road" and pb["vehicles"]
     assert c.get(f"/api/geo/instances/{h}").json()["instance_hash"] == h
     # another user cannot read this user's scenario or instance
-    other = TestClient(c.app); other.post("/api/auth/login", json=dict(username="root", password="root-password-123"))
+    other = TestClient(c.app); other.post("/api/auth/login", json=dict(username="root", password="Operator-Key-2026-xyz"))
     assert other.get(f"/api/geo/scenarios/{sid}").status_code == 404
     assert other.get(f"/api/geo/instances/{h}").status_code == 404
 
 
 def test_rpc_ingest_job_as_admin(tmp_path, monkeypatch):
     c, s, prov = geo_client(tmp_path)
-    c.post("/api/auth/login", json=dict(username="root", password="root-password-123"))
+    c.post("/api/auth/login", json=dict(username="root", password="Operator-Key-2026-xyz"))
     f = tmp_path / "2026-08.csv"
     rel = dict(rpc_csv(f), url="https://static.data.gouv.fr/resources/fixture/2026-08.csv")
     from move_openlab.api import datasets as D

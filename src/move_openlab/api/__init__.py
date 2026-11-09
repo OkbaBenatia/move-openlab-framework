@@ -19,6 +19,7 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     from .experiments import router as experiments_router
     from .geo import router as geo_router
     from .lab import router as lab_router
+    from .supervision import router as supervision_router
     from ..datasets import MAX_UPLOAD_BYTES
     from ..store import MAX_BUNDLE_BYTES
     from .web import AuthGuard, BodyLimit, mount_frontend, router as web_router
@@ -36,7 +37,7 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     app.state.jobs = Jobs(settings.data_dir / "jobs")
     app.state.jobs.recover()                                  # jobs left running by a stopped server -> interrupted
     app.state.installation.recover_interrupted()             # their campaigns -> draft
-    app.state.geocoder = Geocoder(settings.geocoder_url, settings.data_dir / "cache" / "geocode")
+    app.state.geocoder = Geocoder(settings.geocoder_url, settings.data_dir / "cache" / "geocode", provider=settings.geocoder_provider)
     app.state.quotas = dict(networks=DailyQuota(settings.daily_networks, "road-network downloads"),
                             rpc=DailyQuota(settings.daily_rpc, "RPC ingestions"),
                             geocode=DailyQuota(settings.daily_searches, "place searches"))
@@ -47,6 +48,7 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     app.include_router(web_router)
     app.include_router(experiments_router)
     app.include_router(admin_router)
+    app.include_router(supervision_router)
     app.include_router(geo_router)
     app.include_router(areas_router)
     app.include_router(datasets_router)

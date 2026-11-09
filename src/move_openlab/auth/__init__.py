@@ -23,14 +23,41 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ..settings import Settings
-from .store import ROLES, User, UserStore
+from .store import ROLE_LABELS, ROLES, User, UserStore
 
 COOKIE_NAME = "move_openlab_session"
 SCRYPT_N, SCRYPT_R, SCRYPT_P, DKLEN = 2 ** 15, 8, 1, 32
 MAX_FAILURES, FAILURE_WINDOW_S = 10, 15 * 60
 MIN_SECRET_LEN = 32
 MIN_PASSWORD_LEN = 12
+STRONG_PASSWORD_LEN = 16
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+_CLASSES = (re.compile(r"[a-z]"), re.compile(r"[A-Z]"), re.compile(r"[0-9]"), re.compile(r"[^A-Za-z0-9]"))
+
+
+def password_policy(password: str, username: str = "", display_name: str = "") -> dict:
+    """The server's password policy (authoritative; the sign-in pages mirror it for live feedback).
+
+    ``level``: ``weak`` (refused), ``acceptable`` (meets the policy) or ``strong``. Refused when shorter than
+    ``MIN_PASSWORD_LEN``, when it uses fewer than three of the four character classes (lower, upper, digit, other),
+    when it is a single repeated character, or when it contains the username or a word of the display name."""
+    pw = password or ""
+    problems = []
+    if len(pw) < MIN_PASSWORD_LEN:
+        problems.append(f"at least {MIN_PASSWORD_LEN} characters")
+    classes = sum(1 for c in _CLASSES if c.search(pw))
+    if classes < 3:
+        problems.append("three kinds of characters among lower case, upper case, digits and symbols")
+    if pw and len(set(pw)) < 4:
+        problems.append("more varied characters")
+    low = pw.casefold()
+    words = [w for w in [username.casefold()] + display_name.casefold().split() if len(w) >= 3]
+    if any(w in low for w in words):
+        problems.append("nothing taken from your username or name")
+    if problems:
+        return dict(level="weak", ok=False, problems=problems)
+    strong = len(pw) >= STRONG_PASSWORD_LEN and classes == 4
+    return dict(level="strong" if strong else "acceptable", ok=True, problems=[])
 
 
 def _b64e(b: bytes) -> str:
@@ -75,10 +102,15 @@ class Session:
     version: int
     must_change_password: bool
     role: str = "researcher"
+    can_supervise: bool = False
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def is_supervisor(self) -> bool:
+        return self.role == "researcher" and self.can_supervise
 
 
 class Auth:
@@ -105,7 +137,7 @@ class Auth:
             raise RuntimeError("SESSION_SECRET not configured")
         now = time.time() if now is None else now
         ses = Session(user.username, user.display_name, secrets.token_urlsafe(12), now + self.settings.session_ttl_s,
-                      user.session_version, user.must_change_password, user.role)
+                      user.session_version, user.must_change_password, user.role, user.can_supervise)
         payload = _b64e(json.dumps(dict(u=ses.username, sid=ses.sid, v=ses.version, iat=int(now), exp=int(ses.exp)),
                                    separators=(",", ":")).encode())
         sig = _b64e(hmac.new(self._secret, payload.encode(), hashlib.sha256).digest())
@@ -133,7 +165,7 @@ class Auth:
         if user is None or not user.active or int(d.get("v", -1)) != user.session_version:
             return None
         return Session(user.username, user.display_name, d["sid"], float(d["exp"]), user.session_version,
-                       user.must_change_password, user.role)
+                       user.must_change_password, user.role, user.can_supervise)
 
     def revoke(self, ses: Session) -> None:
         with self._lock:
@@ -171,8 +203,9 @@ class Auth:
         acc, why = self.authenticate(ses.username, current, client)
         if acc is None:
             return None, "Too many attempts. Try again later." if why == "throttled" else "The current password is incorrect."
-        if len(new or "") < MIN_PASSWORD_LEN:
-            return None, f"The new password must contain at least {MIN_PASSWORD_LEN} characters."
+        pol = password_policy(new or "", acc.username, acc.display_name)
+        if not pol["ok"]:
+            return None, "The new password needs " + "; ".join(pol["problems"]) + "."
         if new != confirm:
             return None, "The new password and its confirmation do not match."
         if hmac.compare_digest(new.encode(), (current or "").encode()):
@@ -184,9 +217,10 @@ class Auth:
     @staticmethod
     def public_user(u: User) -> dict:
         """What an administrator may see about an account: never a hash or a password."""
-        return dict(username=u.username, display=u.display_name, role=u.role, active=u.active,
-                    must_change_password=u.must_change_password, created_at=int(u.created_at),
-                    last_login_at=int(u.last_login_at) if u.last_login_at else None, created_by=u.created_by or None)
+        return dict(username=u.username, display=u.display_name, role=u.role, role_label=ROLE_LABELS.get(u.role, u.role),
+                    active=u.active, must_change_password=u.must_change_password, created_at=int(u.created_at),
+                    last_login_at=int(u.last_login_at) if u.last_login_at else None, created_by=u.created_by or None,
+                    supervisor=u.supervisor, can_supervise=u.can_supervise)
 
     def reset_password(self, username: str) -> tuple[User, str]:
         """New temporary password (returned once), forced change at next sign-in, every older session invalidated."""
@@ -211,9 +245,9 @@ class Auth:
         return self.store.get(u.username)
 
     def create_user(self, username: str, display_name: str, role: str = "researcher", created_by: str = "operator",
-                    password: Optional[str] = None) -> tuple[User, str]:
-        """Operator command: creates an account with a temporary password (returned once) or the given password;
-        the user must change it at first sign-in either way."""
+                    password: Optional[str] = None, supervisor: Optional[str] = None) -> tuple[User, str]:
+        """Creates an account with a temporary password (returned once) or the given password; the user must change
+        it at first sign-in either way. A student carries the username of the researcher who owns the account."""
         username = (username or "").strip().lower()
         display_name = " ".join((display_name or "").split())
         if not USERNAME_RE.match(username):
@@ -222,9 +256,49 @@ class Auth:
             raise ValueError("display name: 2 to 80 characters")
         if role not in ROLES:
             raise ValueError(f"role must be one of {ROLES}")
+        if role == "student":
+            sup = self.store.get(supervisor or "")
+            if sup is None or not (sup.is_supervisor or sup.is_admin) or not sup.active:
+                raise ValueError("a student needs an active supervising researcher (or an administrator) as supervisor")
+            supervisor = sup.username
+        elif supervisor:
+            raise ValueError("only students have a supervisor")
         temp = password or new_temporary_password()
-        if password is not None and len(password) < MIN_PASSWORD_LEN:
-            raise ValueError(f"password must contain at least {MIN_PASSWORD_LEN} characters")
-        if not self.store.create(username, display_name, hash_password(temp), role, must_change=True, created_by=created_by):
+        if password is not None and not password_policy(password, username, display_name)["ok"]:
+            raise ValueError("password: " + "; ".join(password_policy(password, username, display_name)["problems"]))
+        if not self.store.create(username, display_name, hash_password(temp), role, must_change=True, created_by=created_by,
+                                 supervisor=supervisor):
             raise ValueError("this username already exists")
         return self.store.get(username), temp
+
+    # ------------------------------------------------------------------ supervision
+    def set_supervision(self, username: str, can_supervise: bool) -> User:
+        u = self.store.get(username)
+        if u is None:
+            raise KeyError("unknown user")
+        if u.role != "researcher":
+            raise ValueError("only researchers can supervise students")
+        self.store.set_supervision(u.username, can_supervise)
+        return self.store.get(u.username)
+
+    def set_supervisor(self, username: str, supervisor: Optional[str]) -> User:
+        u = self.store.get(username)
+        if u is None:
+            raise KeyError("unknown user")
+        if u.role != "student":
+            raise ValueError("only students have a supervisor")
+        if supervisor:
+            sup = self.store.get(supervisor)
+            if sup is None or not (sup.is_supervisor or sup.is_admin):
+                raise ValueError("the supervisor must be a supervising researcher or an administrator")
+            supervisor = sup.username
+        self.store.set_supervisor(u.username, supervisor)
+        return self.store.get(u.username)
+
+    def own_student(self, supervisor: str, username: str) -> User:
+        """The student ``username`` if, and only if, it belongs to ``supervisor`` (KeyError otherwise: the existence
+        of other accounts is not revealed)."""
+        u = self.store.get(username)
+        if u is None or u.role != "student" or u.supervisor != supervisor:
+            raise KeyError("unknown student")
+        return u

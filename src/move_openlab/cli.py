@@ -16,7 +16,8 @@ def _users_add(args) -> int:
     if args.set_password:
         pw = getpass.getpass("Initial password (min. 12 characters; must be changed at first sign-in): ")
     try:
-        user, temp = auth.create_user(args.username, args.display_name or args.username, args.role, password=pw)
+        user, temp = auth.create_user(args.username, args.display_name or args.username, args.role, password=pw,
+                                      supervisor=args.supervisor)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -103,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     add = us_sub.add_parser("add", help="create an account (temporary password, forced change at first sign-in)")
     add.add_argument("username")
     add.add_argument("--display-name")
-    add.add_argument("--role", choices=["researcher", "admin"], default="researcher")
+    add.add_argument("--role", choices=["researcher", "admin", "student"], default="researcher")
+    add.add_argument("--supervisor", help="students: username of the supervising researcher (or an administrator)")
     add.add_argument("--set-password", action="store_true", help="prompt for the initial password instead of generating one")
     add.set_defaults(fn=_users_add)
     rs = us_sub.add_parser("reset-password", help="operator recovery: new temporary password (forced change at next sign-in)")

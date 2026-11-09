@@ -18,11 +18,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .. import auth as A
-from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, app_version
+from ..auth import password_policy
+from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, display_version
 
-PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/auth.js"}
+PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js"}
 PASSWORD_CHANGE_PATHS = {"/change-password", "/api/auth/change-password", "/api/auth/me", "/api/auth/logout",
-                         "/favicon.svg", "/auth.js"}
+                         "/api/auth/password-policy", "/favicon.svg", "/favicon.ico", "/auth.js"}
+BRAND_PREFIX = "/brand/"                     # approved logo assets, needed by the sign-in pages
 CSP_TEMPLATE = ("default-src 'self'; img-src 'self' data: {tiles}; style-src 'self' 'unsafe-inline'; script-src 'self'; "
                 "connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 CSP = CSP_TEMPLATE.format(tiles="").replace(" ;", ";")
@@ -77,7 +79,7 @@ async def _body(request: Request) -> dict:
 
 @router.get("/api/health")
 def health():
-    return {"status": "ok", "app": APP_NAME, "version": app_version()}
+    return {"status": "ok", "app": APP_NAME, "version": display_version()}
 
 
 @router.post("/api/auth/login")
@@ -114,8 +116,18 @@ async def logout(request: Request):
 @router.get("/api/auth/me")
 def me(request: Request):
     ses = request.state.session
-    return {"user": dict(username=ses.username, display=ses.display, role=ses.role, expires_at=int(ses.exp),
-                         must_change_password=ses.must_change_password) if ses else None}
+    return {"user": dict(username=ses.username, display=ses.display, role=ses.role, can_supervise=ses.can_supervise,
+                         expires_at=int(ses.exp), must_change_password=ses.must_change_password) if ses else None}
+
+
+@router.post("/api/auth/password-policy")
+async def check_password_policy(request: Request):
+    """Live feedback for the password form: level (weak / acceptable / strong) and what is missing. The same rule
+    is applied when the password is saved; nothing is stored or logged here."""
+    data = await _body(request)
+    ses = request.state.session
+    return JSONResponse(password_policy(str(data.get("password", "")), ses.username if ses else "", ses.display if ses else ""),
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/auth/change-password")
@@ -146,24 +158,29 @@ input{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px 
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
 button{width:100%;font:inherit;font-weight:700;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:11px;cursor:pointer;margin-top:4px}
 .err{color:var(--bad);font-size:13px;margin:-6px 0 14px}.alt{display:block;text-align:center;margin-top:12px;font-size:13px;color:var(--accent)}
-.linkbtn{background:none;color:var(--muted);font-weight:500;padding:6px}footer{margin-top:18px;color:var(--muted);font-size:11.5px;text-align:center}"""
+.linkbtn{background:none;color:var(--muted);font-weight:500;padding:6px}footer{margin-top:18px;color:var(--muted);font-size:11.5px;text-align:center}
+.logo{display:block;max-width:100%;height:auto;margin:0 auto 14px}.meter{height:6px;background:var(--bg);border:1px solid var(--border);border-radius:3px;overflow:hidden;margin:-8px 0 6px}
+.meter span{display:block;height:100%;width:0;background:var(--bad);transition:width .2s}.hint{font-size:12px;color:var(--muted);margin:0 0 12px}
+.hint.weak{color:var(--bad)}.hint.acceptable{color:#9a6700}.hint.strong{color:#1a7f37}.hint.ok{color:#1a7f37}"""
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>{style}</style></head>
-<body><main>{body}<footer>{app} · developed by {dev} · v{version}</footer></main><script src="/auth.js" defer></script></body></html>"""
+<body><main>{body}<footer>{app} · developed by {dev} · {version}</footer></main><script src="/auth.js" defer></script></body></html>"""
 
-LOGIN_BODY = """<h1>{app}</h1><p class="sub">{subtitle}</p>
+LOGIN_BODY = """<img class="logo" src="/brand/move-openlab-logo-512w-transparent.png" alt="" width="220"><h1>{app}</h1><p class="sub">{subtitle}</p>
 <form method="post" action="/api/auth/login" autocomplete="on">{error}
 <input type="hidden" name="next" value="{next}">
 <label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
 <button type="submit">Sign in</button></form>"""
 
-CHANGE_BODY = """<h1>Change password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
+CHANGE_BODY = """<img class="logo" src="/brand/move-openlab-logo-512w-transparent.png" alt="" width="180"><h1>Change password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
 <form method="post" action="/api/auth/change-password" autocomplete="off">{error}
 <label for="c">Current password</label><input id="c" name="current_password" type="password" autocomplete="current-password" required autofocus>
-<label for="n">New password (at least 12 characters)</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required>
-<label for="r">Confirm new password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required>
+<label for="n">New password</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="strength">
+<div class="meter" aria-hidden="true"><span id="bar"></span></div><p id="strength" class="hint" role="status">At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).</p>
+<label for="r">Repeat password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="match">
+<p id="match" class="hint" role="status"></p>
 <button type="submit">Save new password</button></form>{cancel}
 <form method="post" action="/api/auth/logout"><button class="linkbtn" type="submit">Log out</button></form>"""
 
@@ -194,6 +211,30 @@ AUTH_JS = """(function () {
   if (change) intercept(change, '/api/auth/change-password', function () {
     return { current_password: change.current_password.value, new_password: change.new_password.value, confirm_password: change.confirm_password.value };
   }, function () { go('/'); });
+  if (change) {
+    var n = change.new_password, r = change.confirm_password, bar = document.getElementById('bar'),
+        st = document.getElementById('strength'), mt = document.getElementById('match'), timer = null;
+    var LEVEL = { weak: ['Weak: needs ', 33, 'var(--bad)'], acceptable: ['Acceptable', 66, '#d4a72c'], strong: ['Strong', 100, '#1a7f37'] };
+    function paint(pol) {
+      var l = LEVEL[pol.level] || LEVEL.weak;
+      bar.style.width = n.value ? l[1] + '%' : '0'; bar.style.background = l[2];
+      st.className = 'hint ' + pol.level; st.textContent = n.value ? (pol.level === 'weak' ? l[0] + pol.problems.join('; ') + '.' : l[0] + '.') : st.getAttribute('data-default');
+    }
+    function match() {
+      if (!r.value) { mt.textContent = ''; mt.className = 'hint'; return; }
+      var ok = r.value === n.value; mt.textContent = ok ? 'Passwords match.' : 'Passwords do not match.'; mt.className = 'hint ' + (ok ? 'ok' : 'weak');
+    }
+    st.setAttribute('data-default', st.textContent);
+    function check() {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        fetch('/api/auth/password-policy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: n.value }) })
+          .then(function (x) { return x.json(); }).then(paint).catch(function () { /* the server decides on submit */ });
+      }, 150);
+      match();
+    }
+    n.addEventListener('input', check); r.addEventListener('input', match);
+  }
 })();
 """
 
@@ -204,7 +245,7 @@ LOGIN_ERRORS = {"invalid": "Invalid username or password.", "throttled": "Too ma
 
 def _page(title: str, body: str) -> str:
     return PAGE.format(title=html.escape(title), app=html.escape(APP_NAME), style=STYLE, body=body,
-                       dev=html.escape(DEVELOPER), version=html.escape(app_version()))
+                       dev=html.escape(DEVELOPER), version=html.escape(display_version()))
 
 
 @router.get("/auth.js", include_in_schema=False)
@@ -285,7 +326,7 @@ class AuthGuard(BaseHTTPMiddleware):
         path = request.url.path
         auth: A.Auth = request.app.state.auth
         request.state.session = None
-        if path not in PUBLIC_PATHS:
+        if path not in PUBLIC_PATHS and not path.startswith(BRAND_PREFIX):
             ses = auth.read(request.cookies.get(A.COOKIE_NAME))
             if ses is None:
                 had_cookie = A.COOKIE_NAME in request.cookies

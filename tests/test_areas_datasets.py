@@ -22,7 +22,7 @@ from move_openlab.geo.osm import NetworkStore, SourceUnavailable, build_network,
 from move_openlab.integrations import rpc
 from test_api import make_settings
 
-USERS = {"alice": "alice-password-123", "bob": "bob-password-1234", "root": "root-password-123"}
+USERS = {"alice": "Correct-Horse-Battery-9!", "bob": "Staple-Mountain-Rain-7!", "root": "Operator-Key-2026-xyz"}
 
 
 def client(tmp_path, **settings):
