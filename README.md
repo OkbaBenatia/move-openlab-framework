@@ -15,9 +15,25 @@ their own algorithm.
 
 ![The map-first workspace: the demonstration experiment on Montbéliard, its participants, routes and results](docs/assets/screenshots/workspace.jpg)
 
-*The workspace with the built-in demonstration: Experiment, Area, Road network, Mobility data and Scenario on the left,
-routes of the exact method on the map, Method, results and comparability on the right. Map tiles © OpenStreetMap
-contributors.*
+*The workspace on first sign-in: the Montbéliard demonstration with its provenance (area, road network, mobility data,
+sampled scenario) on the left, shared rides on the map, methods, results with their measurement basis, CO₂ and the
+evidence (independent validation, semantic comparability) on the right. Map tiles © OpenStreetMap contributors.*
+
+## Start it on your computer
+
+```bash
+./start-local.sh
+```
+
+One command starts the complete application — server and interface in one process — at **http://127.0.0.1:8765**,
+reachable from this computer only. The first run prepares what is missing (Python environment, interface build;
+network access needed once) and, on an empty installation, creates a first administrator `admin` whose temporary
+password is written to `.openlab-data/dev/dev-credentials.json` (never printed; you choose your own at the first
+sign-in). Later runs start in seconds, rebuild the interface only when its sources changed, and keep every account,
+experiment and result of the local data directory. A second start while it runs only reports the address; a port
+used by another program is reported with a fix. **Ctrl+C** stops it cleanly. `./start-local.sh --check` prepares and
+checks without starting. Requirements: Python ≥ 3.11 and Node.js 20.19+ or 22.12+; for your own methods (sandboxed
+plug-ins), Linux with bubblewrap — without it, everything else works and plug-ins stay off.
 
 ## Why MOVE OpenLab
 
@@ -31,24 +47,25 @@ results may be compared.
 | | |
 |---|---|
 | Map-first workspace | Choose an area, mobility data and experiment; see participants, vehicles and routes on the map; run, compare, replay, export — on one screen |
-| Generate wizard | Area & Data → Participants & Vehicles → Constraints → Experiment → Review, over the map; *Save Scenario* or *Save & Run* |
-| Built-in demonstration | Two experiments on Montbéliard (RPC open carpooling data, OpenStreetMap routing, documented vehicle parameters) open on first sign-in |
+| Generate wizard | Area & Data → Participants & Vehicles → Constraints → Methods & Experiment → Review & Save, over the map; *Save & Run* or *Save Scenario*; nothing is stored before you confirm |
+| Built-in demonstration | Two experiments on Montbéliard (participants sampled from RPC open carpooling data, OpenStreetMap routing, documented vehicle parameters) open on first sign-in, ready to compare and replay |
+| Sample bundle | A real exported experiment shipped with the platform: download it, verify it, import it, reproduce it, add your method and compare — the whole cycle in *Import → Try an imported experiment* |
 | Methods | Exact MILP (HiGHS) and heuristics built in; *+ Add method* next to the method list registers your own sandboxed plugin or creates one from the template |
-| Independent validation | Every solution re-checked by the problem's validator; self-reported values are only compared |
+| Independent validation | Every solution re-checked by the problem's validator; self-reported values are only compared. Validation, reproducibility and semantic comparability are shown as three separate pieces of evidence |
 | Vehicles and emissions | Vehicle profiles per driver (ICE, HEV, PHEV, BEV, custom); every emission parameter editable and sourced; explicit scope and baseline; CO₂, baseline and avoided CO₂ from validated decisions |
 | Comparison | Concise table, charts of any supported metric (CSV, SVG, PNG export), what each result proves; *Compare with…* lists the directly comparable and conditionally comparable experiments first (incompatible ones under a fold, with the reasons); comparison workspace with synchronised maps, one replay clock, several experiments in one table and a solution diff |
 | Reproducibility | Verified bundles without code; re-execution compared cell by cell; lineage of every experiment |
 | Semantic comparability | *Directly comparable*, *comparable with conditions* or *not comparable* — for results, runtimes and emissions — with the reasons |
 | Replay and trace | Vehicles, pickups, drop-offs, served and unserved riders over time; the execution timeline of every run |
 | Geography and data | Any area OpenStreetMap covers; RPC open data (France), CSV, GeoJSON, synthetic demand, provider plug-ins |
-| Operations | Background jobs with progress in plain words (Queued → Downloading → Building network → Ready) and cancellation; audit log |
+| Operations | Background jobs with progress in plain words — runs: Queued → Preparing → Running methods → Validating → Results; road networks: Queued → Downloading → Building → Ready — with cancellation and the execution trace; audit log |
 | Accounts | Administrator, Researcher and Student roles; a researcher may be allowed to supervise their own students (create, reset, deactivate); temporary passwords, forced change at first sign-in, server-side password policy with live strength and match indicators |
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-  A[Area & data] --> S[Participants & vehicles] --> K[Constraints] --> M[Experiment] --> W[Review · Save & Run]
+  A[Area & data] --> S[Participants & vehicles] --> K[Constraints] --> M[Methods & experiment] --> W[Review · Save & Run]
   W --> V{{Independent validator}} --> C[Results · Compare · Replay]
   C --> E[Export bundle]
   E --> I[Import elsewhere] --> X[Verify · Reproduce] --> N[Add my method · Compare] --> E
@@ -69,16 +86,30 @@ experiment and semantic fingerprints, travels in the bundle, and the comparabili
 figures are *directly comparable*, *comparable with conditions* (other factor values or assignments) or *not
 comparable* (other scope, baseline, units or no data) — objective results and runtimes keep their own verdicts.
 
-## Import → Reproduce → Extend
+## Import → Validate → Reproduce → Extend → Compare
 
-1. **Import** — a colleague's bundle is verified completely (every hash, checksum, fingerprint and the lineage)
-   before anything is stored; it never contains code. The experiment opens marked *Imported from …*.
-2. **Reproduce** — *Run* with the same methods re-executes it on your installation; the experiment reads
-   *Reproduced ✓* when every result is identical.
-3. **Extend** — tick your own method and *Run*: it runs on exactly the same instances and appears in *Compare* next to
-   the original methods; the comparability badge tells you which claims hold.
+1. **Import** — a colleague's bundle (a `.zip` of records, never code) is checked completely before anything is
+   stored: every file checksum, the instance and experiment fingerprints, the problem specification and the
+   validator version. The experiment opens marked *Imported*.
+2. **Validate** — every stored solution was accepted by the independent validator; the experiment shows
+   *n of n runs accepted* and *Integrity verified*.
+3. **Reproduce** — *Reproduce* re-executes the same methods on the same frozen scenarios on your installation; it
+   reads *Reproduced* when every validated metric is identical (runtimes are reported, never required to match).
+4. **Extend** — *Add method* registers your plug-in (run in the verified sandbox), or *Extend* adds registered
+   methods to a copy of the experiment: same scenarios, constraints, objective, validator and CO₂ calculation.
+5. **Compare** — *Compare* lists the experiments that may be compared (directly, or with conditions such as
+   different hardware for runtimes) with the reasons; the comparison shows one table, charts (CSV, PNG, SVG),
+   synchronised maps, one replay clock and a solution diff.
 
-![Comparison of an imported experiment extended with a researcher's own method](docs/assets/screenshots/compare-own-method.jpg)
+**Try it with the sample bundle.** *Import → Try an imported experiment* walks through these steps with a real
+bundle exported from this platform (three Montbéliard scenarios, two methods, three repetitions, 18 validated runs),
+independently re-checked in a second installation before it was shipped. The bundle can also be downloaded from
+that screen; where it lives in the repository and how it is rebuilt: [examples/README.md](examples/README.md).
+
+![The comparison workspace: the imported sample experiment next to its extension with a researcher's own method](docs/assets/screenshots/compare-own-method.jpg)
+
+*The imported sample experiment (A) and its extension with the example method *Nearest Pickup First* (B): same
+scenarios, every run accepted by the validator, results, runtimes and CO₂ directly comparable.*
 
 ## Geographic and data flexibility
 
@@ -91,9 +122,9 @@ comparable* (other scope, baseline, units or no data) — objective results and 
 
 Details: [docs/DATASETS.md](docs/DATASETS.md).
 
-| Areas and routing (València) | Threshold study | Route playback |
+| Generate wizard | Guided import of the sample bundle | Comparison charts |
 |---|---|---|
-| ![Area and road-network coverage of the demonstration area](docs/assets/screenshots/areas-route.jpg) | ![Threshold study chart and summary](docs/assets/screenshots/threshold-study.jpg) | ![Route playback of an exact solution](docs/assets/screenshots/route-playback.jpg) |
+| ![The Generate wizard over the map: participants sampled from observed trips](docs/assets/screenshots/wizard.jpg) | ![Import, verify, reproduce, extend and compare the sample bundle](docs/assets/screenshots/import-guide.jpg) | ![Charts of the compared methods with CSV, PNG and SVG export](docs/assets/screenshots/compare-charts.jpg) |
 
 ## Add your own algorithm
 
@@ -111,9 +142,9 @@ experiment's methods, with clear errors at each step. Register it in the web int
 press *Run*. The experiment keeps ownership of the scenario, objective, validator and metrics. Guide:
 [docs/EXTENDING.md](docs/EXTENDING.md); result and run-record schemas: [`schemas/`](schemas/).
 
-## Quick start
+## Manual installation
 
-Requirements: Python ≥ 3.11, Node.js ≥ 20; for sandboxed plugins, Linux with bubblewrap.
+`./start-local.sh` does all of this for you. To install and run the parts yourself (requirements as above):
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
@@ -165,8 +196,10 @@ flowchart LR
   UI[Map-first web interface] --> API[FastAPI + accounts] --> S
 ```
 
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). A fully synthetic benchmark (capacitated assignment, certified
-against brute force and an independent min-cost-flow oracle) is included for methodological tests.
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). A fully synthetic problem (capacitated assignment, certified
+against brute force and an independent min-cost-flow oracle) is included for methodological tests. A separate
+synthetic scientific benchmark is planned: it will appear under *Library → Benchmarks* once a reproducible,
+publishable version is integrated, and is never mixed with the geographic demonstration.
 
 ## Documentation
 
@@ -177,7 +210,8 @@ against brute force and an independent min-cost-flow oracle) is included for met
 | [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Bundles, fingerprints, determinism, semantic comparability |
 | [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, problem packages, dataset providers |
 | [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts and roles, password policy, bundles, uploads, external services |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Installation, configuration, tests |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | `start-local.sh`, installation, configuration, tests |
+| [examples/README.md](examples/README.md) | The sample bundle: where it is, how to download, check and rebuild it |
 | [docs/GITFLOW.md](docs/GITFLOW.md) · [docs/RELEASING.md](docs/RELEASING.md) | Branching model, release checklist |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 

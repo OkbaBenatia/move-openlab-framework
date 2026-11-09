@@ -87,7 +87,9 @@ departures in a time window and a seed. Same network, parameters and seed give t
 
 *Generate → Resample a trip dataset* draws drivers and riders (with replacement, seeded) from the dataset's trips
 inside the current area and time window; when roles are present, drivers come from driver or unlabelled trips and
-riders from rider or unlabelled trips. Each agent takes one record's origin and destination. RPC departure times are
+riders from rider or unlabelled trips. Each agent takes one record's origin and destination. The observed trips are
+a pool to sample from, never replayed one-to-one: the interface says so (*Sampled from observed trips*, *sample k of
+n (seed s)*) and states the pool (*RPC 2026-10 · 404 observed trips in this area* for the demonstration). RPC departure times are
 re-drawn inside the publisher's 10-minute rounding. The scenario records the dataset key, provider, licence,
 attribution and source hash.
 

@@ -66,6 +66,22 @@ The shipped demonstration (`src/move_openlab/demo/`) is such a bundle: two exper
 data and OpenStreetMap routing with fixed seeds. Re-running it on any installation reproduces every result exactly
 (`tests/test_lab.py`).
 
+The shipped **sample bundle** (`src/move_openlab/samples/montbeliard/`, see [examples/README.md](../examples/README.md))
+is a bundle exported by one installation and checked in a second, isolated one — import, integrity, reproduction,
+extension with a sandboxed method, comparison — before the application offers it (*Import → Try an imported
+experiment*).
+
+## Three separate pieces of evidence
+
+The interface never merges these into one badge; each answers a different question.
+
+| Evidence | Question | Labels |
+|---|---|---|
+| Integrity | Is this bundle exactly what was exported? | *Integrity verified* (checksums, fingerprints, specification and validator match, no code) |
+| Independent validation | Is every stored solution feasible, with the metrics recomputed by the problem's validator? | *Validated* · *n of n runs accepted* |
+| Reproducibility | Did a re-execution give the same validated results? Applies only to a reproduction and its original. | *Reproduced* · *Not reproduced* · *Not applicable* |
+| Semantic comparability | May these numbers be put side by side? Separately for results, runtimes and CO₂. | *Directly comparable* · *Comparable with conditions* · *Not comparable*, with the reasons (*Why?*) |
+
 ## What a reproduction verifies
 
 A reproduction campaign re-executes the parent's methods on the parent's instance hashes in another workspace or

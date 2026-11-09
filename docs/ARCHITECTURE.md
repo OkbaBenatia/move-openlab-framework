@@ -52,16 +52,34 @@ claim and carried by bundles), `aggregate_domain` and `domain_metric_definitions
 
 ## Web interface
 
-The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Mobility data, Experiment grouped
-by category; Generate, Run, Compare, Replay, Import, Export, Quick Tour), the experiment with its Area, Road network,
-Mobility data and Scenario on the left, the map in the centre (charts for problems without geography), the Method
+The header (`frontend/src/shell`) holds the logo lockup, **Workspace**, a compact **Library** menu (geographic areas,
+road networks, mobility data, scenarios, experiments, benchmarks, jobs and traces, hidden records), the jobs indicator,
+help (Quick Tour) and the profile menu (My account, My students for a supervising researcher, Administration for
+administrators, Appearance light/dark, Change password, Sign out). Light is the default whatever the system setting;
+the choice is a per-user preference. Interface strings live in one catalogue (`frontend/src/i18n/en.ts`) so that a
+French version can be added without touching the components. The main screen is a map-first **workspace**
+(`frontend/src/lab`): a bar with the grouped experiment picker (Public mobility demonstration, My experiments,
+Imported, Reproductions, Benchmarks — each with area, data, scenarios, problem, methods and status), the evidence
+chips (*Validated n/n*, *Locked*) and Generate, Import, Run, Compare, Export; the experiment with its Area, Road
+network, Mobility data (source and sampling stated) and Scenario on the left, the map in the centre (charts for problems without geography), the Method
 list with *+ Add method* (built-ins, plugin registration, template and bundle check without leaving the workflow),
-live progress, results (objective, runtime, CO₂ of the selected method), comparability and Trace on the right.
+live progress (Queued → Preparing → Running methods → Validating → Results, runs done/total, cancel, trace), results
+with their measurement basis (one sample or all scenarios, repetitions, aggregation, gap to the exact reference when
+meaningful, runtimes in ms below one second), CO₂ of the selected method, and three separate pieces of evidence —
+independent validation, reproducibility (only for re-executions) and semantic comparability with *Why?* — on the
+right. On first use the demonstration's area is added to the workspace (once; never recreated after removal) and
+the baseline opens with a start card (*Compare with the variant*, *Generate your own*, *Try an imported experiment*,
+*Quick tour*). *Import → Try an imported experiment* is a guided cycle on the shipped sample bundle (download,
+integrity report, import, reproduce, add a method, extend, compare; `GET /api/lab/sample/bundle`, `POST
+/api/lab/sample/verify`, `POST /api/lab/sample`).
 Areas, datasets, scenarios and experiments can be hidden from every list (a per-user preference; nothing is deleted)
 and shown again with *Show hidden*. **Generate** opens a five-step wizard
-over the map (`frontend/src/mobility/Wizard.tsx`): Area & Data, Participants & Vehicles (generated or placed on the
-map with a route preview), Constraints, Experiment, Review — nothing is stored before *Save Scenario* or *Save &
-Run* (`POST /api/lab/run`: scenario, experiment and execution in one call). *Run* on an existing experiment
+over the map (`frontend/src/mobility/Wizard.tsx`): Area & Data (choose an area, search a place, pick a point or draw
+a box, resize it, choose the road-network profile, then *Create area and prepare road network*; mobility data
+sampled from observed trips, synthetic, or placed on the map), Participants & Vehicles (generated or placed on the
+map with a route preview; ICE, HEV, PHEV, BEV or custom profiles), Constraints, Methods & Experiment (methods with
+*+ Add method*, repetitions, seed, CO₂ calculation and baseline), Review & Save — nothing is stored before *Save
+Scenario* or *Save & Run* (`POST /api/lab/run`: scenario, experiment and execution in one call). *Run* on an existing experiment
 executes a draft, or derives from a locked experiment: a re-execution with the same methods, an extension when
 methods were added. **Compare** opens the table and charts of one experiment; *Compare with…* lists the candidates (`GET
 /api/lab/compatible?a=`): every executed experiment of the same problem with its relation to A (reproduction,
@@ -88,7 +106,8 @@ first official release (`display_version()`).
 | `move_openlab.sandbox` | Plugin modes, bubblewrap sandbox, isolation verification (fail closed), server hardening |
 | `move_openlab.store` | Installations, per-user workspaces, campaigns, derivations, lock |
 | `move_openlab.bundles` | Bundle export, complete verification and import (formats 1 and 2), experiment and semantic fingerprints |
-| `move_openlab.demo` | The shipped demonstration bundle, imported once per workspace |
+| `move_openlab.demo` | The shipped demonstration bundle, imported once per workspace (with the demonstration's area) |
+| `move_openlab.samples` | The shipped sample bundle (kept unpacked, packed deterministically on demand), offered only when its recorded cross-installation check passed |
 | `move_openlab.method_tools` | `method new` (template) and `method check` (metadata, sandboxed self-test, run on a bundle) |
 | `move_openlab.analysis` | Comparison, reproducibility, semantic comparability, threshold studies, reports |
 | `move_openlab.comparability` | Fingerprints and the claim-dependent comparability contract |
@@ -100,7 +119,7 @@ first official release (`display_version()`).
 | `move_openlab.mobility` | `vehicles` (profiles, documented parameter records, versioned presets with sources, per-workspace store), `emissions` (scopes, baselines, formulas, descriptor and fingerprint, aggregation) |
 | `move_openlab.limits` | Daily quotas and one-at-a-time locks for external services; bounded upload parsing |
 | `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`, `lab` (workspace preferences, demonstration, experiment summaries); request-size limits; single-origin web application |
-| `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment benchmark |
+| `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment problem (methodological tests; the separate synthetic scientific benchmark is planned) |
 | `move_openlab.benchmarks.ride_matching` | Ride matching on road networks (exact MILP, greedy, variants, relative-detour scorer) |
 
 ## Experimentation pipeline
@@ -163,7 +182,9 @@ that each external service receives one request at a time. A job records its own
 state (`running`, `done`, `error`, `cancelled`, `interrupted`), progress and timestamped events, persisted as JSON so
 the history survives restarts; jobs that were running when the server stopped are marked `interrupted`, and campaigns
 left mid-execution return to draft. Cancelling stops the worker process group; runs completed before the
-cancellation are discarded so a campaign is never partially executed. Every run carries a per-stage trace (prepare,
+cancellation are discarded so a campaign is never partially executed. An execution reports the stages `prepare`,
+`run` (one event per method run), `validate` (how many solutions the independent validator accepted) and `complete`,
+which the interface shows as Queued → Preparing → Running methods → Validating → Results. Every run carries a per-stage trace (prepare,
 execute, validate, domain when domain figures exist); the web interface turns the event log into an execution
 timeline (created, queued, preparing, every method run with its stage durations, persistence, completion,
 cancellation, errors) with the raw events under *Technical details*.

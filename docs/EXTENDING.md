@@ -7,7 +7,9 @@ and dataset providers.
 
 ### Add your own method in five steps
 
-Researcher B received an experiment bundle (`experiment.zip`) and wants to test a new method on it.
+Researcher B received an experiment bundle (`experiment.zip`) and wants to test a new method on it. To try this
+without a colleague, use the shipped sample bundle (`move-openlab-sample-montbeliard.zip`, see
+[examples/README.md](../examples/README.md)).
 
 ```bash
 move-openlab method new nearest_pickup --problem public-ride-matching --dir plugins
@@ -29,8 +31,8 @@ move-openlab method new nearest_pickup --problem public-ride-matching --dir plug
    experiment's methods. Each step stops with an actionable message (`[FAILED] metadata: version 'v1' is not a
    semantic version MAJOR.MINOR.PATCH`, `[FAILED] self-test: contract self-test failed: …`, invalid decisions with
    the validator's errors). Add `--json` for a machine-readable report.
-4. **Register** it in the web interface (*Experiments → Methods & extensions → Register*), once the operator has
-   placed it in the approved plugin directory.
+4. **Register** it in the web interface (*+ Add method → Register my method* next to the Method list, or *Library →
+   Experiments → Methods & extensions*), once the operator has placed it in the approved plugin directory.
 5. **Run and compare** — in the workspace, open the imported experiment, tick the method and press **Run**: an
    extension campaign runs it on the same instances; **Compare** shows it beside the original methods.
 

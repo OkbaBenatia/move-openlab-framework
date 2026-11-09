@@ -5,6 +5,60 @@ interfaces.
 
 ## Unreleased
 
+### Added — final UX implementation, one-command start, sample bundle
+- **`./start-local.sh`**: one command starts the complete application at http://127.0.0.1:8765 (loopback only):
+  prepares `.venv` and the interface build when missing or outdated, keeps the local data directory as it is,
+  detects an already-running instance and ports taken by other programs, holds a per-data-directory lock, creates a
+  first administrator with a temporary password (stored, never printed) on an empty installation, stops cleanly
+  with Ctrl+C; `--check` prepares without starting.
+- **Header**: Workspace, a compact *Library* menu (areas, road networks, mobility data, scenarios, experiments,
+  benchmarks, jobs and traces, hidden records), jobs indicator, help, and a profile menu (My account, My students,
+  Administration, Appearance, Change password, Sign out); Administration is no longer a top-level tab.
+- **Appearance**: light by default whatever the system setting, dark on request, kept per user
+  (`PUT /api/lab/preferences` → `theme`); self-hosted **Inter** (SIL Open Font Licence, `frontend/public/fonts/inter/`).
+- **Experiment picker** grouped as Public mobility demonstration, My experiments, Imported, Reproductions,
+  Benchmarks, with area, mobility data, scenarios, problem, methods and status (no hashes); `GET /api/lab/experiments`
+  returns `group`, `area`, `data`, `sampled`, `methods`, `validation`.
+- **First use**: the demonstration's area is added to the workspace once (never recreated after removal), the
+  baseline opens with a start card (*Compare with the variant*, *Generate your own*, *Try an imported experiment*,
+  *Quick tour*); the Quick Tour no longer opens by itself.
+- **Provenance**: mobility data shows its source and that participants are *sampled* from the observed trips (pool
+  size, sample k of n, seed); `GET /api/lab/experiments/{id}` → `provenance`.
+- **Results**: explicit measurement basis (one sample or all scenarios, repetitions and their agreement, aggregation),
+  per-scenario rows (`per_scenario` in comparison rows), gap only when meaningful, runtimes in ms below one second.
+- **Evidence** shown separately: independent validation (*n of n runs accepted*), reproducibility (only for a
+  reproduction and its original) and semantic comparability (*Why?*); the comparison picker shows all three per
+  candidate and does not count hidden experiments.
+- **Execution stages**: Queued → Preparing → Running methods → Validating → Results, with a `validate` job event.
+- **Comparison workspace**: tabs Results, Charts (CSV, PNG, SVG export), Maps (synchronised), Replay (one clock) and
+  Diff (scenario parameters, assignments, served riders, routes, vehicles and CO₂ when comparable, runtimes).
+- **Sample bundle** *Montbéliard sample — Baseline* (`src/move_openlab/samples/`, [examples/README.md](examples/README.md)):
+  built by `scripts/build_sample_bundle.py` in one installation, checked by `scripts/check_sample_bundle.py` in a
+  second one (integrity, reproduction, sandboxed extension, comparison); offered by *Import → Try an imported
+  experiment* (`GET /api/lab/sample/bundle`, `POST /api/lab/sample/verify`, `POST /api/lab/sample`) only when that
+  recorded check passed.
+- **Add method** with three choices (built-in, register my method, create from the template), the evaluation chain
+  and the commands under *Developer details*.
+- **Generate wizard**: steps renamed *Methods & Experiment* and *Review & Save*; a new area is a draft box (search,
+  pick on the map or draw, resize) created only with *Create area and prepare road network*.
+- **Administration** redesigned: accounts table with role, supervision, status and last sign-in, *New account*
+  drawer with role cards, temporary password shown once (masked, show/copy), reset / deactivate / reactivate with
+  confirmation, audit log tab.
+- Benchmarks page: the synthetic scientific benchmark is shown as *Planned* until a reproducible, publishable
+  version is integrated.
+- Browser end-to-end tooling without dependencies (`scripts/e2e/`, Chrome DevTools Protocol over Node's WebSocket).
+
+### Changed
+- Sign-in and password pages: logo lockup, light by default with the user's dark choice, Inter, legend of the
+  strength indicator; the sign-in card is centred.
+- CO₂ calculation label *Fuel and electricity use* (was *Fuel + electricity use*).
+- Interface strings gathered in `frontend/src/i18n/en.ts` for a later French version.
+
+### Removed
+- The square icon files and `favicon.ico` derived from the logo pack (every square icon in the pack carries a
+  cropped fragment of the tagline). A neutral letter-mark `favicon.svg` is used until a clean square icon is
+  supplied; it is not presented as the logo.
+
 ### Added — UX consolidation, Montbéliard demonstration, comparison picker, accounts
 - **Montbéliard** is the default demonstration: *Montbéliard Demo — Baseline* and *— Controlled Variant*, built from
   one frozen RPC release (2026-10, 404 trips inside the 47.42, 6.66 – 47.60, 6.96 box) on the OpenStreetMap network of
