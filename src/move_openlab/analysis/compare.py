@@ -107,10 +107,19 @@ def compare(ws, cid: str) -> dict:
                    median_total_time_s=median_or_none(med(rs, "total_time_s") for rs in cells.values()),
                    reproduction_status=None)
         scopes: dict[str, int] = {}
+        per: dict[str, dict] = {}
         for h, rs in cells.items():
             lab = optimality_scope(rs[0], ws.inst.get_instance(h), m.get("kind"))
             scopes[lab] = scopes.get(lab, 0) + 1
+            # one scenario on its own: values of repetition 1 (``consistent`` says whether every repetition agreed),
+            # times as the median over this scenario's repetitions — never mixed with the all-scenario totals
+            per[h] = dict(metrics=rs[0]["validation"]["metrics"], repetitions=len(rs), consistent=consistent(rs),
+                          feasible=all(r["accepted"] and r["validation"]["feasible"] for r in rs),
+                          accepted=sum(1 for r in rs if r["accepted"]), optimality=lab,
+                          median_solver_time_s=med(rs, "solver_time_s"), median_total_time_s=med(rs, "total_time_s"),
+                          domain=rs[0].get("domain"), gap_pct=None)
         row["optimality_scope"] = scopes
+        row["per_scenario"] = per
         row["domain"] = problem.aggregate_domain([rs[0].get("domain") for rs in cells.values()])
         if ref is not None:
             matches, shortfall, gaps, optimal = [0] * len(levels), 0.0, [], 0
@@ -126,7 +135,11 @@ def compare(ws, cid: str) -> dict:
                 if k >= len(levels) - 1:                                 # all previous levels equal the reference
                     last = levels[-1]
                     if r0[last.metric]:
-                        gaps.append(100.0 * _worse_by(last.sense, v[last.metric], r0[last.metric]) / abs(r0[last.metric]))
+                        g = 100.0 * _worse_by(last.sense, v[last.metric], r0[last.metric]) / abs(r0[last.metric])
+                        gaps.append(g)
+                        per[h]["gap_pct"] = round(g, 6)
+                    else:
+                        per[h]["gap_pct"] = 0.0 if v[last.metric] == r0[last.metric] else None
             row.update(reference_matches=matches, optimal=optimal, shortfall=round(shortfall, 6),
                        final_level_gap_pct=summary_stats(gaps))
         by_group: dict[str, dict] = {}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, Square, Trash2, X } from 'lucide-react';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { errText, num } from '../components/common';
@@ -12,7 +12,7 @@ import { VehicleEditor } from './VehicleEditor';
 
 type Source = 'synthetic' | 'dataset' | 'manual';
 type Role = 'drivers' | 'riders';
-const STEPS = ['Area & Data', 'Participants & Vehicles', 'Constraints', 'Experiment', 'Review'];
+const STEPS = ['Area & Data', 'Participants & Vehicles', 'Constraints', 'Methods & Experiment', 'Review & Save'];
 const around = (lat: number, lon: number, halfKm = 2.5): BBox => {
   const dl = halfKm / 111.2, dn = halfKm / (111.2 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
   return [lat - dl, lon - dn, lat + dl, lon + dn].map((x) => Number(x.toFixed(5))) as BBox;
@@ -28,6 +28,10 @@ export interface WizardProps {
 }
 
 /** Scenario creation in five steps over the map. Nothing is stored before the Review step's Save buttons. */
+/** A mobility dataset as people read it: source, release and how many observed trips fall in the area (no coordinates). */
+const dsLabel = (d?: DatasetItem) => !d ? '' : d.provider === 'rpc'
+  ? `RPC ${d.release ?? ''} · ${d.rows_kept != null ? `${d.rows_kept} observed trips in this area` : d.name}` : d.name;
+
 export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial, onClose, onSaved, onRun, reloadAreas, setErr, onAddMethod }: WizardProps) {
   const [step, setStep] = useState(1);
   const [areaId, setAreaId] = useState(() => initial ? (areas.find((a) => a.network_id === initial.scenario.network_id)?.area_id ?? '') : (areaId0 && areas.some((a) => a.area_id === areaId0) ? areaId0 : areas.find((a) => a.network_id)?.area_id ?? ''));
@@ -50,7 +54,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Json[] | null>(null);
-  const [mapMode, setMapMode] = useState<'none' | 'point'>('none');
+  const [mapMode, setMapMode] = useState<'none' | 'point' | 'draw'>('none');
+  const [draft, setDraft] = useState<{ name: string; bbox: BBox; profile: string; origin?: Json } | null>(null);
+  const [corner, setCorner] = useState<[number, number] | null>(null);
   const [job, setJob] = useState<Json | null>(null);
   const [focus, setFocus] = useState<{ key: string; bbox: BBox } | null>(null);
   const [boxKm, setBoxKm] = useState(5);
@@ -115,9 +121,16 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
     } catch (e) { setRoutes((x) => ({ ...x, [a.id]: { text: errText(e), error: true } })); }
   };
   const onMap = async (lat: number, lon: number) => {
-    if (step === 1 && mapMode === 'point') {
+    if (step === 1 && mapMode === 'point') {                 // a draft box: nothing is saved until "Create area"
       setMapMode('none');
-      await act(async () => { const a = await geo.createArea({ name: `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}`, bbox: around(lat, lon, boxKm / 2), profile: 'car' }); reloadAreas(); setAreaId(a.area_id); await download(a.area_id); });
+      setDraft({ name: `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}`, bbox: around(lat, lon, boxKm / 2), profile: draft?.profile ?? 'car' });
+      return;
+    }
+    if (step === 1 && mapMode === 'draw') {
+      if (!corner) { setCorner([lat, lon]); return; }
+      const b: BBox = [Math.min(corner[0], lat), Math.min(corner[1], lon), Math.max(corner[0], lat), Math.max(corner[1], lon)].map((x) => Number(x.toFixed(5))) as BBox;
+      setCorner(null); setMapMode('none');
+      setDraft({ name: draft?.name ?? `Area ${lat.toFixed(3)}, ${lon.toFixed(3)}`, bbox: b, profile: draft?.profile ?? 'car' });
       return;
     }
     if (!pick) return;
@@ -132,12 +145,19 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
   const sTimer = useRef<number | null>(null);
   const search = (text = q) => act(async () => { try { const r = await geo.geocode(text); setResults(r.results); if (!r.results.length && !auto) setErr(`no place found for “${text}”`); } catch (e) { if (!auto) throw e; setResults(null); } });
   const download = async (id: string) => { const r = await geo.areaNetwork(id); if (r.cached) reloadAreas(); else setJob(r.job); };
-  const choose = (r: Json) => act(async () => {
+  const choose = (r: Json) => {                                 // a search result becomes a draft box to adjust
     let b = r.bbox as BBox;
-    const prof = cfg.profiles.find((p) => p.id === 'car') ?? cfg.profiles[0];
+    const prof = cfg.profiles.find((p) => p.id === (draft?.profile ?? 'car')) ?? cfg.profiles[0];
     if ((b[2] - b[0]) * (b[3] - b[1]) > prof.max_bbox_deg2) b = around(r.lat, r.lon, 4);
-    const a = await geo.createArea({ name: String(r.name).split(',')[0].slice(0, 80), bbox: b, profile: prof.id, origin: { search: q, name: r.name, kind: r.kind } });
-    setResults(null); setQ(''); reloadAreas(); setAreaId(a.area_id);
+    setResults(null); setDraft({ name: String(r.name).split(',')[0].slice(0, 80), bbox: b, profile: prof.id, origin: { search: q, name: r.name, kind: r.kind } });
+    setFocus({ key: `d${Date.now()}`, bbox: b });
+  };
+  const draftProfile = cfg.profiles.find((p) => p.id === draft?.profile) ?? cfg.profiles[0];
+  const draftKm = draft ? [(draft.bbox[2] - draft.bbox[0]) * 111.2, (draft.bbox[3] - draft.bbox[1]) * 111.2 * Math.cos(((draft.bbox[0] + draft.bbox[2]) / 2) * Math.PI / 180)] : null;
+  const draftTooBig = !!draft && !!draftProfile && (draft.bbox[2] - draft.bbox[0]) * (draft.bbox[3] - draft.bbox[1]) > draftProfile.max_bbox_deg2;
+  const createDraft = () => draft && act(async () => {
+    const a = await geo.createArea({ name: draft.name.trim() || 'New area', bbox: draft.bbox, profile: draft.profile, origin: draft.origin });
+    setDraft(null); setQ(''); reloadAreas(); setAreaId(a.area_id);
     await download(a.area_id);
   });
 
@@ -182,9 +202,10 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
     <td><button type="button" className="btn icon" aria-label={`remove ${a.id}`} onClick={() => remove(role, a.id)}><Trash2 size={12} /></button></td></tr>; };
 
   return <div className="wizard" role="dialog" aria-label="generate scenario" data-tour="wizard">
+    <div className="row gap wizard-top"><div className="wiz-title"><h2>Generate</h2><span className="muted small">New scenario and experiment</span></div>
+      <ol className="steps" aria-label="steps">{STEPS.map((s, i) => <li key={s} className={i + 1 === step ? 'current' : i + 1 < step ? 'done' : ''}><span className="dotnum">{i + 1 < step ? <Check size={13} /> : i + 1}</span>{s}</li>)}</ol>
+      <button className="btn icon ghost" aria-label="close" onClick={onClose}><X size={16} /></button></div>
     <div className="wizard-side">
-      <div className="row gap wizard-head"><h2>Generate</h2><span className="muted small">{step} / 5 · {STEPS[step - 1]}</span><span className="grow" /><button className="btn icon" aria-label="close" onClick={onClose}><X size={15} /></button></div>
-      <ol className="steps" aria-label="steps">{STEPS.map((s, i) => <li key={s} className={i + 1 === step ? 'current' : i + 1 < step ? 'done' : ''}>{s}</li>)}</ol>
       <div className="wizard-body form">
         {step === 1 && <>
           <label>Area <select aria-label="area" value={areaId} onChange={(e) => setAreaId(e.target.value)}>
@@ -194,19 +215,29 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
           <fieldset><legend>New area</legend>
             <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= minChars) search(); }}>
               <input value={q} onChange={(e) => { setQ(e.target.value); if (auto) { if (sTimer.current) window.clearTimeout(sTimer.current); if (e.target.value.trim().length >= minChars) sTimer.current = window.setTimeout(() => search(e.target.value), 450); } }}
-                placeholder={cfg.geocoder ? 'City or region' : 'Place search is off'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
-              <button className="btn sm" disabled={!cfg.geocoder || busy || q.trim().length < minChars}><Search size={12} /> Search</button>
-              <button type="button" className={`btn sm ${mapMode === 'point' ? 'primary' : ''}`} onClick={() => setMapMode(mapMode === 'point' ? 'none' : 'point')}>Pick on map</button>
-              {mapMode === 'point' && <select aria-label="box size" value={boxKm} onChange={(e) => setBoxKm(Number(e.target.value))} className="small">{[3, 5, 8, 12].map((k) => <option key={k} value={k}>{k} km</option>)}</select>}</form>
+                placeholder={cfg.geocoder ? 'Find a city or region' : 'Place search is off'} aria-label="place search" disabled={!cfg.geocoder} className="grow" />
+              <button className="btn sm" disabled={!cfg.geocoder || busy || q.trim().length < minChars}><Search size={12} /> Search</button></form>
+            <div className="row gap"><button type="button" className={`btn sm ${mapMode === 'point' ? 'primary' : ''}`} onClick={() => { setCorner(null); setMapMode(mapMode === 'point' ? 'none' : 'point'); }}>Pick on map</button>
+              {mapMode === 'point' && <select aria-label="box size" value={boxKm} onChange={(e) => setBoxKm(Number(e.target.value))} className="small">{[3, 5, 8, 12].map((k) => <option key={k} value={k}>{k} km</option>)}</select>}
+              <button type="button" className={`btn sm ${mapMode === 'draw' ? 'primary' : ''}`} onClick={() => { setCorner(null); setMapMode(mapMode === 'draw' ? 'none' : 'draw'); }}><Square size={12} /> Draw a box</button></div>
             {results && results.length > 0 && <ul className="results" aria-label="search results">{results.map((r, i) => <li key={i} tabIndex={0} onClick={() => choose(r)} onKeyDown={(e) => e.key === 'Enter' && choose(r)}>{r.name}<span className="muted small"> · {r.kind}</span></li>)}</ul>}
-            {mapMode === 'point' && <p className="small muted">Click the map: a {boxKm} × {boxKm} km area is centred on the point.</p>}
+            {mapMode === 'point' && <p className="small muted">Click the map: a {boxKm} × {boxKm} km box is centred on the point.</p>}
+            {mapMode === 'draw' && <p className="small muted">{corner ? 'Click the opposite corner.' : 'Click a first corner on the map.'}</p>}
+            {draft && <div className="draft">
+              <label>Name <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} aria-label="area name" /></label>
+              <label>Road-network profile <select aria-label="road network profile" value={draft.profile} onChange={(e) => setDraft({ ...draft, profile: e.target.value })}>{cfg.profiles.map((p) => <option key={p.id} value={p.id}>{p.label ?? p.id}</option>)}</select></label>
+              <p className={`small ${draftTooBig ? 'bad-text' : 'muted'}`}>{draftKm ? `${num(draftKm[1], 1)} × ${num(draftKm[0], 1)} km` : ''}{draftTooBig ? ' · too large for this profile — drag a corner to shrink it' : ' · drag the corners to resize, the centre to move'}</p>
+              <div className="row gap"><button type="button" className="btn primary sm" disabled={busy || draftTooBig || !cfg.can_fetch} onClick={createDraft}><Download size={12} /> Create area and prepare road network</button>
+                <button type="button" className="btn sm" onClick={() => setDraft(null)}>Discard</button></div>
+              {!cfg.can_fetch && <p className="small muted">Downloading road networks is not allowed on this installation.</p>}</div>}
           </fieldset>
-          <fieldset><legend>Data</legend>
-            <label className="row"><input type="radio" name="src" checked={source === 'synthetic'} onChange={() => setSource('synthetic')} /> Synthetic demand on the road network</label>
-            <label className="row"><input type="radio" name="src" checked={source === 'dataset'} disabled={!shownDatasets.length} onChange={() => setSource('dataset')} /> Trip dataset{shownDatasets.length ? '' : ' (none for this area)'}</label>
-            {source === 'dataset' && <select aria-label="dataset" value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)}>{shownDatasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{d.name}</option>)}</select>}
-            <label className="row"><input type="radio" name="src" checked={source === 'manual'} onChange={() => setSource('manual')} /> Place participants on the map</label>
-            <a className="small" href="#/data/datasets" target="_blank" rel="noopener">Upload CSV or GeoJSON…</a>
+          <fieldset><legend>Mobility data</legend>
+            <label className="row top"><input type="radio" name="src" checked={source === 'dataset'} disabled={!shownDatasets.length} onChange={() => setSource('dataset')} />
+              <span><b>Sampled from observed trips</b>{!shownDatasets.length ? <span className="muted"> (none for this area)</span> : null}<span className="small muted block">Participants are drawn from the start points, end points and departure times of observed trips (RPC open data or your file) — the observed trips are not replayed one-to-one.</span></span></label>
+            {source === 'dataset' && <select aria-label="dataset" value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)}>{shownDatasets.map((d) => <option key={d.dataset_key} value={d.dataset_key}>{dsLabel(d)}</option>)}</select>}
+            <label className="row top"><input type="radio" name="src" checked={source === 'synthetic'} onChange={() => setSource('synthetic')} /><span><b>Synthetic demand</b><span className="small muted block">Random trips on the road network, seeded</span></span></label>
+            <label className="row top"><input type="radio" name="src" checked={source === 'manual'} onChange={() => setSource('manual')} /><span><b>Place participants on the map</b><span className="small muted block">Set each start point and end point yourself</span></span></label>
+            <a className="small" href="#/data/datasets" target="_blank" rel="noopener">Upload a CSV or GeoJSON file…</a>
           </fieldset>
         </>}
         {step === 2 && <>
@@ -247,7 +278,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
           <label>Experiment name <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="experiment name" /></label>
           <fieldset><legend className="row gap">Method{onAddMethod && <button type="button" className="btn sm" onClick={onAddMethod}><Plus size={12} /> Add method</button>}</legend><ul className="methods">{methods.map((m) => { const k = methodKey(m); return <li key={k}><label className="row"><input type="checkbox" checked={checked.includes(k)} onChange={() => setChecked(checked.includes(k) ? checked.filter((x) => x !== k) : [...checked, k])} /> <span className="grow">{m.name}<span className="muted small"> · {m.kind}{m.source === 'plugin' ? ' · your method' : ''}</span></span></label></li>; })}</ul></fieldset>
           <div className="row gap"><label>Repetitions <input type="number" min={1} max={20} value={reps} onChange={(e) => setReps(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} aria-label="repetitions" style={{ width: '5em' }} /></label>
-            <span className="small muted">Seed {source === 'manual' ? '—' : f.seed}</span></div>
+            <span className="small muted" style={{ alignSelf: 'flex-end', paddingBottom: 9 }}>Seed {source === 'manual' ? '— (participants placed by hand)' : `${f.seed} (set in step 2)`} · each repetition runs every method on the same scenarios</span></div>
           {profile && veh && <fieldset><legend>CO₂ calculation</legend>
             <label>Method <select aria-label="emission scope" value={emis.scope} onChange={(e) => setEmis({ ...emis, scope: e.target.value })}>{veh.scopes.map((s) => <option key={s.id} value={s.id}>{SCOPE_LABEL[s.id] ?? s.id}</option>)}</select></label>
             <label>Baseline <select aria-label="emission baseline" value={emis.baseline} onChange={(e) => setEmis({ ...emis, baseline: e.target.value })}>{veh.baselines.map((b) => <option key={b.id} value={b.id}>{BASELINE_LABEL[b.id] ?? b.id}</option>)}</select></label>
@@ -255,30 +286,32 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
         </>}
         {step === 5 && <dl className="facts review" aria-label="review">
           <dt>Area</dt><dd>{area?.name}</dd>
-          <dt>Mobility data</dt><dd>{source === 'synthetic' ? 'synthetic demand' : source === 'manual' ? 'placed on the map' : shownDatasets.find((d) => d.dataset_key === datasetKey)?.name}</dd>
+          <dt>Road network</dt><dd>OpenStreetMap · {cfg.profiles.find((p) => p.id === area?.profile)?.label ?? area?.profile ?? 'car'} profile</dd>
+          <dt>Mobility data</dt><dd>{source === 'synthetic' ? 'synthetic demand (seeded)' : source === 'manual' ? 'placed on the map' : `${dsLabel(shownDatasets.find((d) => d.dataset_key === datasetKey))} — participants sampled from the observed trips, not replayed one-to-one`}</dd>
           <dt>Scenario</dt><dd>{f.name}</dd>
           <dt>Drivers</dt><dd>{drivers.length}</dd>
           <dt>Riders</dt><dd>{(source === 'manual' ? manual.riders : preview?.scenario.riders ?? []).length}{summary ? ` · ${summary.pairs} compatible pairs` : ''}</dd>
           <dt>Vehicles</dt><dd>{profile ? fleet(drivers, profile, assign, allProfiles) : 'none'}</dd>
           <dt>Time horizon</dt><dd>{f.start}–{f.end}</dd>
           <dt>Constraints</dt><dd>detour ≤ {f.detour} min and ≤ {Math.round(f.ratio * 100)} % of the direct trip · one rider per driver</dd>
-          <dt>Seed</dt><dd>{source === 'manual' ? '—' : f.seed}</dd>
+          <dt>Repetitions and seed</dt><dd>{reps} repetition{reps === 1 ? '' : 's'} · seed {source === 'manual' ? '—' : f.seed}</dd>
           <dt>Methods</dt><dd>{checked.map((k) => methods.find((m) => methodKey(m) === k)?.name ?? k).join(', ')} · {reps} repetition{reps === 1 ? '' : 's'}</dd>
           <dt>CO₂ calculation</dt><dd>{profile ? `${SCOPE_LABEL[emis.scope]} · baseline: ${BASELINE_LABEL[emis.baseline]}` : 'not computed (no vehicle)'}</dd>
-          <dt>Provenance</dt><dd>{source === 'synthetic' ? `seeded generator on ${area?.name} road network` : source === 'dataset' ? `seeded resampling of ${shownDatasets.find((d) => d.dataset_key === datasetKey)?.name}` : initial?.parent ? 'edited from a library scenario' : 'map editor'}</dd>
+          <dt>Provenance</dt><dd>{source === 'synthetic' ? `seeded generator on ${area?.name} road network` : source === 'dataset' ? `seeded sampling (seed ${f.seed}) of ${dsLabel(shownDatasets.find((d) => d.dataset_key === datasetKey))}` : initial?.parent ? 'edited from a library scenario' : 'map editor'}</dd>
         </dl>}
       </div>
       <div className="row gap wizard-foot">
-        {step > 1 && <button className="btn" onClick={() => setStep(step - 1)}><ChevronLeft size={14} /> Back</button>}
-        <span className="grow" />
+        {step > 1 ? <button className="btn" onClick={() => setStep(step - 1)}><ChevronLeft size={14} /> Back</button> : <button className="btn" onClick={onClose}>Cancel</button>}
+        <span className="grow" /><span className="small muted">Step {step} of 5</span>
         {step < 5 && <button className="btn primary" disabled={!ready} onClick={() => setStep(step + 1)}>Next <ChevronRight size={14} /></button>}
         {step === 5 && <><button className="btn" disabled={busy} onClick={save}><Save size={14} /> Save Scenario</button>
           <button className="btn primary" disabled={busy} onClick={run}><Play size={14} /> Save &amp; Run</button></>}
       </div>
     </div>
     <div className="wizard-map">
-      <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} points={layers.points} lines={layers.lines} rects={area ? [{ bbox: area.bbox, color: COLORS.area }] : []}
-        fitKey={`${areaId}|${source}|${source === 'manual' ? 'm' : preview?.summary.instance_hash ?? ''}`} focus={focus} onClick={pick || mapMode === 'point' ? onMap : undefined} cursor={pick || mapMode === 'point' ? 'crosshair' : undefined} height="100%" />
+      <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} points={layers.points} lines={layers.lines} rects={area && !draft ? [{ bbox: area.bbox, color: COLORS.area }] : []}
+        box={draft ? { bbox: draft.bbox, color: COLORS.area, onChange: (b) => setDraft({ ...draft, bbox: b }) } : null}
+        fitKey={`${areaId}|${source}|${source === 'manual' ? 'm' : preview?.summary.instance_hash ?? ''}`} focus={focus} onClick={pick || mapMode !== 'none' ? onMap : undefined} cursor={pick || mapMode !== 'none' ? 'crosshair' : undefined} height="100%" />
     </div>
     {editor && veh && <VehicleEditor info={veh} onChange={loadVehicles} onClose={() => setEditor(false)} setErr={setErr} />}
   </div>;

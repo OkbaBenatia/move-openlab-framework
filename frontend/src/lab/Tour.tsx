@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 
 export const TOUR_STEPS: { anchor: string; title: string; text: string }[] = [
-  { anchor: 'scenario', title: 'Demo', text: 'The public demonstration opens first: participants, vehicles, methods and results on real road data.' },
-  { anchor: 'context', title: 'Area and data', text: 'Choose the area, the trip data and the experiment. Generate creates a scenario in five steps.' },
-  { anchor: 'scenario', title: 'Participants and vehicles', text: 'Drivers, riders and their vehicles; click a participant to find it on the map.' },
-  { anchor: 'run', title: 'Run', text: 'Runs the ticked methods in the background; every solution is checked independently.' },
-  { anchor: 'results', title: 'Results', text: 'Objective, runtime and CO₂ per method, with the comparability of this experiment.' },
-  { anchor: 'compare', title: 'Compare', text: 'Table and charts of the methods, or two experiments side by side.' },
+  { anchor: 'scenario', title: 'Public demonstration', text: 'Opens first: demand sampled from RPC observed trips on the Montbéliard road network, with validated results.' },
+  { anchor: 'context', title: 'Experiments', text: 'The demonstration, your experiments, imports and reproductions, grouped, with an area filter.' },
+  { anchor: 'generate', title: 'Generate', text: 'Creates a scenario in five steps over the workspace. Nothing is saved before the last step.' },
+  { anchor: 'methods', title: 'Methods', text: 'Tick the methods to run. Add method registers your own; it runs on the same frozen experiment.' },
+  { anchor: 'run', title: 'Run', text: 'Runs in the background. Every solution is checked by the independent validator, not by the method.' },
+  { anchor: 'results', title: 'Results', text: 'One scenario or all scenarios, each value with its basis; CO₂ against the stated baseline.' },
+  { anchor: 'compare', title: 'Compare', text: 'Finds the experiments that may be compared, says why, and opens tables, charts, maps and differences.' },
   { anchor: 'replay', title: 'Replay', text: 'Plays the routes over time on the map.' },
-  { anchor: 'share', title: 'Export, reproduce, extend', text: 'Export a verified bundle; import one to reproduce it or extend it with your method.' },
 ];
 
 /** Optional guided tour: highlights one interface element per step. Skip closes it; "Don't show again" is saved for

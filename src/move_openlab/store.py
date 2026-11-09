@@ -464,7 +464,8 @@ class Workspace:
             c = json.loads((self._cdir(cid) / "campaign.json").read_text())
             c.update(runs=runs, environment=env, status="completed", completed_at=now())
             self._save(c)
-        if event:
+        if event:   # every run was checked by the independent validator as it finished; this is the summary
+            event("validate", f"independent validation: {sum(r['accepted'] for r in runs)} of {len(runs)} solutions accepted")
             event("complete", f"{sum(r['accepted'] for r in runs)}/{len(runs)} runs accepted")
         return c
 

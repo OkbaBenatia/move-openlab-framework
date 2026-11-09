@@ -113,13 +113,25 @@ def test_lab_api_demo_preferences_and_isolation(tmp_path):
     c = make_client(tmp_path, "lab")
     login(c, "alice")
     st = c.get("/api/lab/state").json()
-    assert st["demo"] == dict(available=True, installed=False, campaigns=[])
+    assert st["demo"] == dict(available=True, installed=False, campaigns=[], area=None)
     r = c.post("/api/lab/demo").json()
     assert len(r["campaigns"]) == 2
-    assert c.post("/api/lab/demo").status_code == 200                    # idempotent
-    assert len(c.get("/api/campaigns").json()["campaigns"]) == 2
+    # the demonstration's area is added once, so that Generate starts on it (box and profile of the shipped network)
+    areas = c.get("/api/geo/areas").json()["areas"]
+    net = demo.manifest()["networks"][0]
+    assert [(a["area_id"], a["name"], a["bbox"], a["profile"]) for a in areas] == [(r["area_id"], "Montbéliard", net["bbox"], net["profile"])]
+    assert c.post("/api/lab/demo").json()["area_id"] == r["area_id"]     # idempotent
+    assert len(c.get("/api/campaigns").json()["campaigns"]) == 2 and len(c.get("/api/geo/areas").json()["areas"]) == 1
     st = c.get("/api/lab/state").json()
-    assert st["demo"]["installed"] and st["preferences"]["last_experiment"] == r["root_campaign_id"]
+    assert st["demo"]["installed"] and st["demo"]["area"] == r["area_id"]
+    base = next(x["campaign_id"] for x in demo.manifest()["lineage"] if x["kind"] == "baseline")
+    assert r["baseline_id"] == base != r["root_campaign_id"] and st["preferences"]["last_experiment"] == base   # opens the baseline
+    c.put("/api/lab/preferences", json=dict(last_experiment=r["campaigns"][-1]))
+    c.delete(f"/api/geo/areas/{r['area_id']}")                          # removed by the user: never recreated
+    again = c.post("/api/lab/demo").json()
+    assert again["area_id"] == r["area_id"] and c.get("/api/geo/areas").json()["areas"] == []
+    assert c.get("/api/lab/state").json()["preferences"]["last_experiment"] == r["campaigns"][-1]   # kept
+    c.put("/api/lab/preferences", json=dict(last_experiment=r["root_campaign_id"]))
     exps = c.get("/api/lab/experiments").json()["experiments"]
     assert all(e["demo"] and e["imported"] and e["locked"] for e in exps)
     e = c.get(f"/api/lab/experiments/{r['root_campaign_id']}").json()

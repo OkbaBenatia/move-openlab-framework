@@ -16,6 +16,10 @@ from ..bundles import ZIP_TIME
 ROOT = Path(__file__).resolve().parent / "bundle"
 DEMO_ID = "public-mobility-demo"
 AREA_LABEL = "Montbéliard"                          # label of the demo's road network (the bundle itself carries no area name)
+# Observed trips of the source release kept inside the demonstration area when the bundle was built (the ingest report's
+# ``rows_kept``; see README.md). Shown as the size of the *source* data: the scenarios' participants are sampled from
+# these trips, they are not the observed trips themselves.
+OBSERVED_TRIPS = {"2026-10_c3c5185c01ce": 404}
 
 
 def available() -> bool:

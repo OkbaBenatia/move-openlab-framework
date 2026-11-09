@@ -19,9 +19,10 @@ import re
 import threading
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import demo
+from .. import demo, samples
 from ..analysis.common import SCOPE_FULL, by_cell, med
 from ..analysis.compare import compare
 from ..analysis.reproducibility import reproducibility
@@ -35,6 +36,7 @@ from ..mobility import vehicles as V
 from ..store import BenchError, _write, problem_for
 from .experiments import _call, ws
 from .geo import RIDE, ComposeBody, ScenarioBody
+from .geo import store as network_store
 from .geo import save_scenario as geo_save_scenario
 
 router = APIRouter(prefix="/api/lab")
@@ -49,6 +51,25 @@ def category_of(kind: str, imported: bool, is_demo: bool) -> str:
     return "Demo" if is_demo else "Imported" if imported else CATEGORY.get(kind, "Generated")
 
 
+GROUP = {"Demo": "demo", "Imported": "imported", "Reproduced": "reproduction"}
+
+
+def group_of(category: str, synthetic: bool) -> str:
+    """Experiment-picker group: the public demonstration, benchmarks (problems without geography), reproductions,
+    imported experiments, the researcher's own experiments."""
+    if category == "Demo":
+        return "demo"
+    if synthetic:
+        return "benchmark"
+    return GROUP.get(category, "mine")
+
+
+def validation_of(c: dict) -> dict:
+    """Independent validation of one record: how many runs the validator accepted (not a reproduction claim)."""
+    return dict(runs=len(c["runs"]), accepted=sum(1 for r in c["runs"] if r.get("accepted")),
+                validator_version=(c.get("spec") or {}).get("validator_version"))
+
+
 def _prefs(w) -> dict:
     f = w.root / PREFS
     try:
@@ -59,6 +80,8 @@ def _prefs(w) -> dict:
 
 class PrefsBody(BaseModel):
     tour_dismissed: bool | None = None
+    start_dismissed: bool | None = None                              # the first-use "start here" card
+    theme: str | None = Field(None, pattern=r"^(light|dark)$")       # appearance; light unless the user chooses dark
     last_experiment: str | None = Field(None, max_length=128)
     area_id: str | None = Field(None, max_length=64)
     hidden_ids: list[str] | None = Field(None, max_length=1000)     # records hidden from lists (never deleted)
@@ -71,9 +94,54 @@ def state(request: Request):
     # "installed" means *this* demonstration (by bundle digest): a newer shipped demonstration is imported next to the
     # previous one, which stays in the workspace (nothing is ever deleted)
     installed = demo.available() and p.get("demo_installed") == sha256_bytes(demo.bundle_bytes())
-    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "last_experiment", "area_id")}
+    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "theme", "last_experiment", "area_id")}
                 | dict(hidden_ids=p.get("hidden_ids") or []),
-                demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or []))
+                demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or [],
+                          area=p.get("demo_area")),
+                sample=_sample_state(p))
+
+
+def _sample_state(p: dict) -> dict:
+    """The public sample bundle is offered only when it ships with a successful cross-installation check."""
+    if not samples.available():
+        return dict(available=False)
+    i = samples.info()
+    return dict(available=True, title=i.get("title"), filename=samples.FILENAME, bytes=i.get("packed_bytes"),
+                sha256=i.get("packed_sha256"), format=i.get("format"), runs=i.get("runs"), scenarios=i.get("scenarios"),
+                check=dict(checked_at=i["check"]["checked_at"], reproduction=i["check"]["reproduction"]),
+                imported=p.get("sample_imported") == i.get("packed_sha256"), campaign_id=i.get("campaign_id"))
+
+
+@router.get("/sample/bundle")
+def sample_bundle(request: Request):
+    """Download the public sample bundle (the exact bytes that "Try an imported experiment" imports)."""
+    ws(request)
+    if not samples.available():
+        raise HTTPException(404, "the sample bundle is not available in this installation")
+    return Response(samples.bundle_bytes(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{samples.FILENAME}"'})
+
+
+@router.post("/sample/verify")
+def verify_sample(request: Request):
+    """Verify the sample bundle without importing it (the report of the import's integrity checks)."""
+    if not samples.available():
+        raise HTTPException(404, "the sample bundle is not available in this installation")
+    return _call(ws(request).verify_bundle, samples.bundle_bytes())[0]
+
+
+@router.post("/sample")
+def import_sample(request: Request):
+    """Import the public sample bundle through the normal, fully verified import path; returns the verification report."""
+    if not samples.available():
+        raise HTTPException(404, "the sample bundle is not available in this installation")
+    w = ws(request)
+    rep = _call(w.import_bundle, samples.bundle_bytes())
+    with _prefs_lock:
+        p = _prefs(w)
+        p["sample_imported"] = rep["bundle_sha256"]
+        _write(w.root / PREFS, p)
+    return rep
 
 
 @router.put("/preferences")
@@ -99,13 +167,38 @@ def install_demo(request: Request):
     w = ws(request)
     rep = _call(w.import_bundle, demo.bundle_bytes())
     camps = [c["campaign_id"] for c in rep["campaigns_verified"]]
+    # first use opens the baseline (the start of the lineage); its controlled variant is one click away (Compare)
+    first = next((x["campaign_id"] for x in demo.manifest().get("lineage") or [] if not x.get("parent") and x["campaign_id"] in camps),
+                 rep["root_campaign_id"])
     with _prefs_lock:
         p = _prefs(w)
-        p.update(demo_installed=rep["bundle_sha256"], demo_campaigns=sorted(set(p.get("demo_campaigns") or []) | set(camps)))
-        if p.get("last_experiment") not in camps:
-            p["last_experiment"] = rep["root_campaign_id"]
+        area = p.get("demo_area") or _demo_area(request, w)
+        p.update(demo_installed=rep["bundle_sha256"], demo_campaigns=sorted(set(p.get("demo_campaigns") or []) | set(camps)),
+                 demo_area=area or "")          # "" = tried, no area (never retried on every visit)
+        if not p.get("last_experiment"):                 # a returning user keeps the experiment they had open
+            p["last_experiment"] = first
         _write(w.root / PREFS, p)
-    return dict(installed=True, campaigns=camps, root_campaign_id=rep["root_campaign_id"])
+    return dict(installed=True, campaigns=camps, root_campaign_id=rep["root_campaign_id"], baseline_id=first, area_id=area)
+
+
+def _demo_area(request: Request, w) -> str | None:
+    """The demonstration's area in this workspace, so that Generate starts there: an existing area on the same box and
+    profile is reused, otherwise one is added once with the shipped box (its road network is attached when this
+    installation already stores it; otherwise the wizard offers to prepare it). Never recreated after the user removes it."""
+    net = next(iter(demo.manifest().get("networks") or []), None)
+    if not net or not net.get("bbox"):
+        return None
+    areas, prof = AreaStore(w.root), net.get("profile") or "car"
+    box = [round(x, 5) for x in net["bbox"]]
+    for a in areas.list():
+        if a.get("network_id") == net["network_id"] or (a["bbox"] == box and a["profile"] == prof):
+            return a["area_id"]
+    try:
+        hit = network_store(request).find(box, prof)
+        return areas.create(demo.AREA_LABEL, box, prof, dict(name=demo.AREA_LABEL, kind="demonstration"),
+                            hit["network_id"] if hit else None)["area_id"]
+    except ValueError:                                 # area limit reached: the demonstration still works without it
+        return None
 
 
 def _refs(w, c: dict) -> tuple[list[str], list[str]]:
@@ -124,22 +217,36 @@ def _refs(w, c: dict) -> tuple[list[str], list[str]]:
 
 @router.get("/experiments")
 def experiments(request: Request):
+    """Every experiment of the workspace with the short context the experiment picker shows (area, mobility data,
+    scenarios, problem, methods, status, validation) — no hashes."""
     w = ws(request)
     p = _prefs(w)
     demo_ids = set(p.get("demo_campaigns") or [])
     hidden = set(p.get("hidden_ids") or [])
+    areas = {a.get("network_id"): a["name"] for a in AreaStore(w.root).list() if a.get("network_id")}
+    areas.update({k: v for k, v in demo.network_labels().items() if k not in areas})
     out = []
     for e in w.list():
         try:
-            nids, keys = _refs(w, w.get(e["campaign_id"]))
-        except (BenchError, KeyError, OSError, ValueError):     # an unreadable record never hides the others
+            c = w.get(e["campaign_id"])
+            nids, keys = _refs(w, c)
+            problem = problem_for(c)
+            first = w.inst.get_instance(c["scenario_set"]["instance_hashes"][0]) if c["scenario_set"]["instance_hashes"] else {}
+        except (BenchError, KeyError, OSError, ValueError, IndexError):   # an unreadable record never hides the others
             continue
+        cat = category_of(e["kind"], e["imported"], e["campaign_id"] in demo_ids)
+        prov = first.get("provenance") or {}
+        n = len(c["scenario_set"]["instance_hashes"])
         out.append(dict(campaign_id=e["campaign_id"], title=e["title"], kind=e["kind"], status=e["status"],
                         problem_id=e["problem_id"], imported=e["imported"], locked=bool(e["checksum"]),
                         created_at=e["created_at"], owner_display=e["owner_display"],
                         parent=(e.get("parent") or {}).get("campaign_id"), demo=e["campaign_id"] in demo_ids,
-                        category=category_of(e["kind"], e["imported"], e["campaign_id"] in demo_ids),
-                        hidden=e["campaign_id"] in hidden, network_ids=nids, dataset_keys=keys))
+                        category=cat, group=group_of(cat, problem.synthetic),
+                        hidden=e["campaign_id"] in hidden, network_ids=nids, dataset_keys=keys,
+                        area=next((areas[x] for x in nids if x in areas), None),
+                        data=_dataset_label(request, w, prov), sampled=prov.get("source") in ("open-data", "dataset"),
+                        scenarios=n, problem=problem.title, synthetic=problem.synthetic,
+                        methods=[m.get("name") or m["method_id"] for m in c["methods"]], validation=validation_of(c)))
     return dict(experiments=out)
 
 
@@ -197,11 +304,14 @@ def experiment(cid: str, request: Request):
         problem=dict(title=problem.title, synthetic=problem.synthetic, metrics=[m.to_dict() for m in problem.metrics],
                      objective=[o.to_dict() for o in problem.objective], domain_metrics=problem.domain_metric_definitions()),
         scenarios=[dict(instance_hash=i["instance_hash"], instance_id=i["instance_id"], name=i.get("name"),
+                        seed=(i.get("provenance") or {}).get("seed"),
+                        edited=list((i.get("provenance") or {}).get("edited_agents") or []),
                         vehicles=_vehicle_summary(i), emissions=E.config_of(i, c["config"]),
                         **{k: len(i[k]) for k in ("drivers", "riders", "pairs") if isinstance(i.get(k), list)})
                    for i in insts],
         methods=[dict(method_id=m["method_id"], version=m["version"], name=m.get("name"), kind=m.get("kind"),
                       source=m["source"]) for m in c["methods"]],
+        validation=validation_of(c), provenance=_provenance(request, w, insts),
         runs=[], job_id=next((j["job_id"] for j in request.app.state.jobs.history(w.user, 1, subject=f"{w.user}/{cid}")), None),
         results=None, comparability=None, reproduction=None)
     if c["runs"]:
@@ -225,6 +335,31 @@ def experiment(cid: str, request: Request):
     return out
 
 
+def _observed_trips(request: Request, key: str | None) -> int | None:
+    """Observed trips of the source release inside the area (the ingest report), else the demonstration's record."""
+    if not key:
+        return None
+    try:
+        from .datasets import rpc_root
+        return rpc.load_trips(rpc_root(request), key)[1].get("rows_kept")
+    except (KeyError, OSError, ValueError, ImportError):
+        return demo.OBSERVED_TRIPS.get(key)
+
+
+def _provenance(request: Request, w, insts: list[dict]) -> dict:
+    """Where the scenarios come from, kept apart from the scenarios themselves: the *source* (observed trips of an open
+    data release, an uploaded file, a generator, the map editor) and how the participants were *derived* from it."""
+    prov = (insts[0].get("provenance") or {}) if insts else {}
+    src = prov.get("source")
+    out = dict(source=src, sampled=src in ("open-data", "dataset"), release=prov.get("release"),
+               attribution=prov.get("attribution"), licence=(prov.get("licence") or {}).get("name"),
+               method=prov.get("method"), generator=prov.get("generator"), window=prov.get("window"),
+               pool_size=prov.get("pool_size"), seeds=[(i.get("provenance") or {}).get("seed") for i in insts],
+               observed_trips=_observed_trips(request, prov.get("dataset_key")) if src == "open-data" else None,
+               edited=sorted({a for i in insts for a in ((i.get("provenance") or {}).get("edited_agents") or [])}))
+    return out
+
+
 def _row(problem, insts, r: dict) -> dict:
     sc = r.get("optimality_scope") or {}
     proven = sc.get(SCOPE_FULL, 0)
@@ -235,7 +370,9 @@ def _row(problem, insts, r: dict) -> dict:
                 descriptive=problem.descriptive_metrics(insts, r["totals"]), domain=r.get("domain"),
                 gap_pct=(r.get("final_level_gap_pct") or {}).get("mean"),
                 solver_time_s=r["median_solver_time_s"], total_time_s=r["median_total_time_s"],
-                mean_rank=r.get("mean_rank"), reproduction=r.get("reproduction_status"))
+                mean_rank=r.get("mean_rank"), reproduction=r.get("reproduction_status"),
+                repetitions=r.get("repetitions"), repetitions_consistent=r.get("repetitions_consistent"),
+                per_scenario=r.get("per_scenario") or {})
 
 
 def _comparability(sem: dict) -> dict:
@@ -405,6 +542,7 @@ def compatible(a: str, request: Request):
         worst = "incompatible" if verdict["quality"] == "incompatible" and verdict["runtime"] == "incompatible" else \
             "conditional" if "conditional" in (verdict["quality"], verdict["runtime"]) or verdict["quality"] == "incompatible" else "direct"
         out.append(dict(campaign_id=cb["campaign_id"], title=cb["title"], kind=cb["kind"], owner_display=cb["owner_display"],
+                        validation=validation_of(cb), reproducibility=_repro_between(w, ca, cb),
                         imported=bool(w.import_record(cb["campaign_id"])), hidden=cb["campaign_id"] in hidden,
                         category=category_of(cb["kind"], bool(w.import_record(cb["campaign_id"])), cb["campaign_id"] in demo_ids),
                         relation=_relation(ca, cb, fp_a, fps(cb)), methods=[m["method_id"] for m in cb["methods"]],
@@ -413,8 +551,26 @@ def compatible(a: str, request: Request):
                         overall=worst, reasons=verdict["reasons"]))
     order = {"direct": 0, "conditional": 1, "incompatible": 2}
     out.sort(key=lambda x: (order[x["overall"]], x["hidden"], x["created_at"]), reverse=False)
-    return dict(a=dict(campaign_id=a, title=ca["title"], kind=ca["kind"]), candidates=out,
-                counts={k: sum(1 for x in out if x["overall"] == k) for k in order})
+    # hidden records are never counted: the counts describe what the picker shows
+    return dict(a=dict(campaign_id=a, title=ca["title"], kind=ca["kind"], validation=validation_of(ca)), candidates=out,
+                counts={k: sum(1 for x in out if x["overall"] == k and not x["hidden"]) for k in order},
+                hidden=sum(1 for x in out if x["hidden"]))
+
+
+def _repro_between(w, ca: dict, cb: dict) -> dict:
+    """Reproducibility applies only when one record is the re-execution of the other; it is then measured by the
+    reproducibility analysis (identical validated results per cell), never inferred from comparability."""
+    pa, pb = (ca.get("parent") or {}), (cb.get("parent") or {})
+    repro = cb if (cb["kind"] == "reproduction" and pb.get("campaign_id") == ca["campaign_id"]) else \
+        ca if (ca["kind"] == "reproduction" and pa.get("campaign_id") == cb["campaign_id"]) else None
+    if repro is None:
+        return dict(applicable=False)
+    try:
+        rr = reproducibility(w, repro["campaign_id"])
+    except (BenchError, HTTPException):
+        return dict(applicable=True, reproduced=None)
+    return dict(applicable=True, reproduced=bool(rr["numerically_reproduced"]), cells=rr["cells"],
+                different=(rr.get("agreement") or {}).get("different"))
 
 
 # ---------------------------------------------------------------- A/B comparison

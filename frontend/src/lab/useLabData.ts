@@ -7,7 +7,7 @@ import { lab, type ExpItem } from './api';
 export const RIDE = 'public-ride-matching';
 type BBox = [number, number, number, number];
 
-export interface DatasetItem { dataset_key: string; name: string; bbox: BBox | null; provider: string; release: string | null }
+export interface DatasetItem { dataset_key: string; name: string; bbox: BBox | null; provider: string; release: string | null; rows_kept?: number | null }
 
 /** Display label of a dataset: "RPC <release> · <area name>" for open-data subsets, the file name otherwise. */
 export const datasetLabel = (d: DatasetItem, areas: Area[]) => d.provider === 'rpc'
@@ -31,8 +31,8 @@ export function useLabData(setErr: (s: string | null) => void) {
     geo.areas().then((r) => setAreas(r.areas)).catch(fail);
     geo.scenarios().then((r) => setLib(r.scenarios)).catch(fail);
     geo.datasets().then((r) => setDatasets([
-      ...r.shared.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.area?.bbox ?? null, provider: d.provider ?? 'rpc', release: d.release ?? null })),
-      ...r.mine.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.coverage?.extent ?? null, provider: d.provider ?? 'upload', release: null }))])).catch(fail);
+      ...r.shared.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.area?.bbox ?? null, provider: d.provider ?? 'rpc', release: d.release ?? null, rows_kept: d.rows_kept ?? null })),
+      ...r.mine.map((d: Json) => ({ dataset_key: d.dataset_key, name: d.name, bbox: d.coverage?.extent ?? null, provider: d.provider ?? 'upload', release: null, rows_kept: d.rows_kept ?? null }))])).catch(fail);
   }, [fail]);
   useEffect(() => {
     geo.config().then(setCfg).catch(fail);

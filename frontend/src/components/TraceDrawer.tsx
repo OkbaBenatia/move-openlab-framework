@@ -6,7 +6,7 @@ import { errText, secs } from './common';
 interface Phase { name: string; detail: string; start: number; duration: number | null; state: 'done' | 'error' | 'cancelled' | 'interrupted' | 'running'; sub?: [string, number][] }
 
 const FINAL: Record<string, Phase['state']> = { done: 'done', error: 'error', cancelled: 'cancelled', interrupted: 'interrupted' };
-const LABEL: Record<string, string> = { started: 'Created', queued: 'Queued', prepare: 'Preparing', run: 'Method run', complete: 'Persisting results', done: 'Completed', error: 'Error', cancelled: 'Cancelled', cancel: 'Cancellation requested', interrupted: 'Interrupted' };
+const LABEL: Record<string, string> = { started: 'Created', queued: 'Queued', prepare: 'Preparing', run: 'Method run', validate: 'Validating', complete: 'Persisting results', done: 'Completed', error: 'Error', cancelled: 'Cancelled', cancel: 'Cancellation requested', interrupted: 'Interrupted' };
 
 /** The execution timeline of a job, built from its event log: one phase per stage change (runs are listed one by
  *  one with their prepare / method / validation durations), each with its start time and duration. */
@@ -60,6 +60,11 @@ export function TraceDrawer({ jobId, onClose }: { jobId: string; onClose: () => 
     tick();
     return () => { live = false; };
   }, [jobId]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onClose]);
   return <div className="overlay" role="dialog" aria-label="execution trace" onClick={onClose}>
     <div className="drawer wide" onClick={(e) => e.stopPropagation()}>
       <div className="row gap drawer-head"><h2>Trace</h2>{job && <span className="muted small">{job.title || job.kind}</span>}<span className="grow" />

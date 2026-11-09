@@ -21,10 +21,11 @@ from .. import auth as A
 from ..auth import password_policy
 from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, display_version
 
-PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js"}
+PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
 PASSWORD_CHANGE_PATHS = {"/change-password", "/api/auth/change-password", "/api/auth/me", "/api/auth/logout",
-                         "/api/auth/password-policy", "/favicon.svg", "/favicon.ico", "/auth.js"}
+                         "/api/auth/password-policy", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
 BRAND_PREFIX = "/brand/"                     # approved logo assets, needed by the sign-in pages
+FONT_PREFIX = "/fonts/"                      # the self-hosted Inter typeface (SIL Open Font Licence), same reason
 CSP_TEMPLATE = ("default-src 'self'; img-src 'self' data: {tiles}; style-src 'self' 'unsafe-inline'; script-src 'self'; "
                 "connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 CSP = CSP_TEMPLATE.format(tiles="").replace(" ;", ";")
@@ -147,41 +148,49 @@ async def change_password(request: Request):
 
 
 # ------------------------------------------------------------------ server-rendered pages
-STYLE = """:root{--bg:#f6f7f9;--panel:#fff;--border:#dde2e8;--text:#161a20;--muted:#5b6573;--accent:#1f5fd1;--bad:#c62828;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--panel:#171c23;--border:#2b3440;--text:#e7ebf0;--muted:#a0aab6;--accent:#6ea2ff;--bad:#f0554f;color-scheme:dark}}
-*{box-sizing:border-box}html,body{height:100%;margin:0}
-body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;padding:16px}
-main{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px 24px}
-h1{font-size:21px;margin:0}.sub{margin:4px 0 20px;color:var(--muted);font-size:13px}
-label{display:block;font-size:13px;font-weight:600;margin:0 0 5px}
-input{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0 0 14px}
+STYLE = """@font-face{font-family:Inter;font-style:normal;font-weight:400 700;font-display:swap;src:url(/fonts/inter/inter-latin.woff2) format('woff2')}
+:root{--bg:#f4f6f9;--panel:#fff;--border:#e3e8ef;--strong:#cdd5df;--text:#0f1b2d;--muted:#66758a;--accent:#0a6cc2;--bad:#b42318;--warn:#9a5b00;--ok:#157a3c;color-scheme:light}
+:root[data-theme=dark]{--bg:#0c1118;--panel:#141a23;--border:#273140;--strong:#344052;--text:#e8edf3;--muted:#8e9aab;--accent:#4d9ef0;--bad:#f0625a;--warn:#e2a93b;--ok:#4cc27a;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}body{min-height:100vh}
+body{font:14.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:var(--text);display:flex;align-items:center;justify-content:center;padding:24px 16px;
+background:radial-gradient(1100px 600px at 18% 8%,rgba(0,136,216,.10),transparent 60%),radial-gradient(900px 600px at 88% 92%,rgba(0,136,127,.10),transparent 60%),var(--bg)}
+main{width:100%;max-width:460px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:32px 36px 26px;box-shadow:0 2px 6px rgba(15,27,45,.08),0 18px 48px rgba(15,27,45,.14)}
+h1{font-size:19px;margin:0}.sub{margin:3px 0 18px;color:var(--muted);font-size:13px}
+label{display:block;font-size:12.5px;font-weight:600;margin:0 0 5px}
+input{width:100%;font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--strong);border-radius:8px;padding:10px 12px;margin:0 0 14px}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
-button{width:100%;font:inherit;font-weight:700;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:11px;cursor:pointer;margin-top:4px}
+button{width:100%;font:inherit;font-weight:650;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:11px;cursor:pointer;margin-top:4px}
+:root[data-theme=dark] button{color:#06111d}
 .err{color:var(--bad);font-size:13px;margin:-6px 0 14px}.alt{display:block;text-align:center;margin-top:12px;font-size:13px;color:var(--accent)}
 .linkbtn{background:none;color:var(--muted);font-weight:500;padding:6px}footer{margin-top:18px;color:var(--muted);font-size:11.5px;text-align:center}
-.logo{display:block;max-width:100%;height:auto;margin:0 auto 14px}.meter{height:6px;background:var(--bg);border:1px solid var(--border);border-radius:3px;overflow:hidden;margin:-8px 0 6px}
+.plate{display:grid;place-items:center;margin:0 0 22px;border-radius:14px}
+:root[data-theme=dark] .plate{background:#fff;padding:16px 14px 12px}
+.logo{display:block;width:100%;max-width:340px;height:auto}
+.meter{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:-8px 0 6px}
 .meter span{display:block;height:100%;width:0;background:var(--bad);transition:width .2s}.hint{font-size:12px;color:var(--muted);margin:0 0 12px}
-.hint.weak{color:var(--bad)}.hint.acceptable{color:#9a6700}.hint.strong{color:#1a7f37}.hint.ok{color:#1a7f37}"""
+.hint.weak{color:var(--bad)}.hint.acceptable{color:var(--warn)}.hint.strong{color:var(--ok)}.hint.ok{color:var(--ok)}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin:10px 0 0}.legend i{display:inline-block;width:10px;height:5px;border-radius:2px;margin-right:5px;vertical-align:2px}"""
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>{style}</style></head>
+<title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><script src="/theme.js"></script><style>{style}</style></head>
 <body><main>{body}<footer>{app} · developed by {dev} · {version}</footer></main><script src="/auth.js" defer></script></body></html>"""
 
-LOGIN_BODY = """<img class="logo" src="/brand/move-openlab-logo-512w-transparent.png" alt="" width="220"><h1>{app}</h1><p class="sub">{subtitle}</p>
+LOGIN_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-logo-1024w-transparent.png" alt="{app}" width="340" height="98"></div><h1>Sign in</h1><p class="sub">Use the account your administrator created for you.</p>
 <form method="post" action="/api/auth/login" autocomplete="on">{error}
 <input type="hidden" name="next" value="{next}">
 <label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
 <button type="submit">Sign in</button></form>"""
 
-CHANGE_BODY = """<img class="logo" src="/brand/move-openlab-logo-512w-transparent.png" alt="" width="180"><h1>Change password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
+CHANGE_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-logo-1024w-transparent.png" alt="MOVE OpenLab" width="260" height="75" style="max-width:260px"></div><h1>Choose your password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
 <form method="post" action="/api/auth/change-password" autocomplete="off">{error}
 <label for="c">Current password</label><input id="c" name="current_password" type="password" autocomplete="current-password" required autofocus>
 <label for="n">New password</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="strength">
 <div class="meter" aria-hidden="true"><span id="bar"></span></div><p id="strength" class="hint" role="status">At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).</p>
 <label for="r">Repeat password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="match">
 <p id="match" class="hint" role="status"></p>
-<button type="submit">Save new password</button></form>{cancel}
+<button type="submit">Save and continue</button></form>
+<p class="legend"><span><i style="background:var(--bad)"></i>Weak</span><span><i style="background:#d4a72c"></i>Acceptable</span><span><i style="background:var(--ok)"></i>Strong</span><span style="margin-left:auto">Checked again by the server</span></p>{cancel}
 <form method="post" action="/api/auth/logout"><button class="linkbtn" type="submit">Log out</button></form>"""
 
 AUTH_JS = """(function () {
@@ -326,7 +335,7 @@ class AuthGuard(BaseHTTPMiddleware):
         path = request.url.path
         auth: A.Auth = request.app.state.auth
         request.state.session = None
-        if path not in PUBLIC_PATHS and not path.startswith(BRAND_PREFIX):
+        if path not in PUBLIC_PATHS and not path.startswith((BRAND_PREFIX, FONT_PREFIX)):
             ses = auth.read(request.cookies.get(A.COOKIE_NAME))
             if ses is None:
                 had_cookie = A.COOKIE_NAME in request.cookies

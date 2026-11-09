@@ -179,6 +179,39 @@ def test_compatible_candidates(tmp_path):
     assert by[other]["relation"] == "Different scenario" and by[other]["overall"] == "incompatible"
     assert d["counts"]["incompatible"] == 1 and [x["campaign_id"] for x in d["candidates"]][-1] == other
     assert c.get(f"/api/lab/compatible?a={a}").json() == d                                                     # cached, stable
+    # evidence kept apart: validation per record, reproducibility only for a re-execution, never inferred
+    rp = by[rep["campaign_id"]]["reproducibility"]
+    assert rp["applicable"] and rp["reproduced"] is True and rp["different"] == 0
+    assert by[b]["reproducibility"] == {"applicable": False}
+    assert by[b]["validation"]["accepted"] == by[b]["validation"]["runs"] > 0 and d["a"]["validation"]["runs"] > 0
+    # hidden records never count in what the picker shows
+    c.put("/api/lab/preferences", json=dict(hidden_ids=[other]))
+    h = c.get(f"/api/lab/compatible?a={a}").json()
+    assert h["counts"]["incompatible"] == 0 and h["hidden"] == 1
+    # results per scenario next to the all-scenario totals, with validation and provenance
+    e = c.get(f"/api/lab/experiments/{a}").json()
+    assert e["validation"]["accepted"] == e["validation"]["runs"] and e["provenance"]["source"] == "generator"
+    assert e["provenance"]["sampled"] is False
+    row = e["results"]["rows"][0]
+    sc = e["scenarios"][0]["instance_hash"]
+    cell = row["per_scenario"][sc]
+    assert cell["repetitions"] == 1 and cell["consistent"] and cell["metrics"]["served"] == row["totals"]["served"]
+    assert cell["median_total_time_s"] is not None and row["repetitions_consistent"] is True
+    listed = {x["campaign_id"]: x for x in c.get("/api/lab/experiments").json()["experiments"]}
+    assert listed[a]["group"] == "mine" and listed[rep["campaign_id"]]["group"] == "reproduction"
+    assert listed[a]["scenarios"] == 1 and listed[a]["methods"] and listed[a]["validation"]["runs"] > 0
+    # appearance is a per-user preference, light unless the user chooses dark
+    assert c.put("/api/lab/preferences", json=dict(theme="dark")).json()["preferences"]["theme"] == "dark"
+    assert c.put("/api/lab/preferences", json=dict(theme="purple")).status_code == 422
+    # the public sample bundle: offered (recorded check), downloadable byte for byte, importable with full verification
+    from move_openlab import samples
+    st = c.get("/api/lab/state").json()["sample"]
+    assert st["available"] and not st["imported"] and st["check"]["reproduction"]["reproduced"]
+    zipped = c.get("/api/lab/sample/bundle")
+    assert zipped.status_code == 200 and zipped.content == samples.bundle_bytes()
+    imp = c.post("/api/lab/sample").json()
+    assert imp["ok"] and imp["bundle_sha256"] == st["sha256"] and not imp["executable_code_in_bundle"]
+    assert c.get("/api/lab/state").json()["sample"]["imported"] is True
     draft = c.post("/api/campaigns", json=dict(problem_id="public-ride-matching", title="never run", scenario_params=dict(instance_hashes=[]),
                                                methods=[list(METHODS[0])]))
     assert draft.status_code in (400, 422)

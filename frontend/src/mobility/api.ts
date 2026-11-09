@@ -51,7 +51,7 @@ export const mob = {
   diff: (a: string, b: string, ma?: string, mb?: string) => call<Diff>(`/lab/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}${ma ? `&method_a=${encodeURIComponent(ma)}` : ''}${mb ? `&method_b=${encodeURIComponent(mb)}` : ''}`),
 };
 
-export const SCOPE_LABEL: Record<string, string> = { tailpipe: 'Tailpipe only', 'operational-energy': 'Fuel + electricity use', 'direct-intensity': 'Direct CO₂/km' };
+export const SCOPE_LABEL: Record<string, string> = { tailpipe: 'Tailpipe only', 'operational-energy': 'Fuel and electricity use', 'direct-intensity': 'Direct CO₂/km' };
 export const BASELINE_LABEL: Record<string, string> = { 'everyone-drives-alone': 'Everyone drives alone', 'drivers-only': 'Drivers only' };
 export const POWERTRAIN_LABEL: Record<string, string> = { ICE: 'Combustion (ICE)', HEV: 'Hybrid (HEV)', PHEV: 'Plug-in hybrid (PHEV)', BEV: 'Battery-electric (BEV)', custom: 'Custom' };
 
