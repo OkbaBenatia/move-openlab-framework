@@ -10,8 +10,8 @@ Steps, all seeded and recorded in provenance:
      profiles (the platform's petrol preset for most drivers, a clearly labelled demonstration electric car for the
      first five) and an explicit emission configuration (operational energy, baseline "everyone drives alone");
   2. instances built on the road network (travel times, distances and vehicles embedded);
-  3. baseline campaign "Public Mobility Demo — Baseline": exact MILP (HiGHS) and greedy, executed and locked;
-  4. controlled variant "Public Mobility Demo — Controlled Variant" (``detour-nonbinding``: the detour limit is lowered
+  3. baseline campaign "Montbéliard Demo — Baseline": exact MILP (HiGHS) and greedy, executed and locked;
+  4. controlled variant "Montbéliard Demo — Controlled Variant" (``detour-nonbinding``: the detour limit is lowered
      to the largest existing detour, no pair is removed), executed and locked;
   5. export of the variant with its lineage (bundle format 2, with replay geometry), unpacked into the package.
 
@@ -47,8 +47,8 @@ SEEDS = (1, 2, 3)
 DRIVERS, RIDERS = 20, 30
 WINDOW = (7 * 3600, 9 * 3600)                     # 07:00-09:00, every day of the release
 PARAMS = dict(max_detour_s=900, max_detour_ratio=0.5)
-BASE_TITLE = "Public Mobility Demo — Baseline"
-VARIANT_TITLE = "Public Mobility Demo — Controlled Variant"
+BASE_TITLE = "Montbéliard Demo — Baseline"
+VARIANT_TITLE = "Montbéliard Demo — Controlled Variant"
 EMISSIONS = dict(scope="operational-energy", baseline="everyone-drives-alone")
 ELECTRIC_DRIVERS = ("D1", "D2", "D3", "D4", "D5")
 DEMO_ASSUMPTION = "demonstration assumption — not a measured or published value; edit before any study"
@@ -87,7 +87,7 @@ def build(data: Path, network_id: str, dataset_key: str, work: Path) -> Path:
               and s <= t["end_lat"] <= n and w <= t["end_lon"] <= e]
     hashes = []
     for seed in SEEDS:
-        sc = SC.generate_empirical(inside, report, network_id, f"Public mobility demo, sample {seed}", DRIVERS, RIDERS,
+        sc = SC.generate_empirical(inside, report, network_id, f"Montbéliard demo, sample {seed}", DRIVERS, RIDERS,
                                    seed, *WINDOW, PARAMS)
         sc.update(vehicles=demo_vehicles(), emissions=EMISSIONS)
         sc = SC.validate_scenario(sc)

@@ -37,8 +37,8 @@ def test_demo_bundle_verifies_and_carries_format_2_metadata(tmp_path):
     man = demo.manifest()
     assert rep["format"] == FORMAT_V2 and rep["executable_code_in_bundle"] is False
     assert rep["geometry_verified"] == len(insts) == 6 and len(camps) == 2
-    assert {c["title"] for c in camps.values()} == {"Public Mobility Demo — Baseline",
-                                                     "Public Mobility Demo — Controlled Variant"}
+    assert {c["title"] for c in camps.values()} == {"Montbéliard Demo — Baseline",
+                                                     "Montbéliard Demo — Controlled Variant"}
     assert man["networks"][0]["licence"]["id"] == "ODbL-1.0" and man["networks"][0]["raw_sha256"]
     assert man["datasets"][0]["licence"]["id"] == "fr-lo" and man["datasets"][0]["release"]
     assert set(man["fingerprints"]) == {"experiment", "semantic"}
@@ -123,7 +123,7 @@ def test_lab_api_demo_preferences_and_isolation(tmp_path):
     exps = c.get("/api/lab/experiments").json()["experiments"]
     assert all(e["demo"] and e["imported"] and e["locked"] for e in exps)
     e = c.get(f"/api/lab/experiments/{r['root_campaign_id']}").json()
-    assert e["context"]["area"]["label"] == "Paris" and e["context"]["dataset"].startswith("RPC open data")
+    assert e["context"]["area"]["label"] == "Montbéliard" and e["context"]["dataset"].startswith("RPC open data")
     assert e["comparability"]["quality"] == "direct"                    # non-binding variant: same problem
     rows = e["results"]["rows"]
     assert {x["method_id"] for x in rows} == {"exact-matching-highs", "greedy-min-detour"}

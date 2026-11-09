@@ -15,7 +15,7 @@ from ..bundles import ZIP_TIME
 
 ROOT = Path(__file__).resolve().parent / "bundle"
 DEMO_ID = "public-mobility-demo"
-AREA_LABEL = "Paris"                          # label of the demo's road network (the bundle itself carries no area name)
+AREA_LABEL = "Montbéliard"                          # label of the demo's road network (the bundle itself carries no area name)
 
 
 def available() -> bool:
