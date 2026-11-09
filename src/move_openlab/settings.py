@@ -15,7 +15,10 @@
                                   light development use only — a public deployment needs its own tile service]
 ``MOVE_OPENLAB_TILE_ATTRIBUTION`` attribution shown on maps             [default © OpenStreetMap contributors]
 ``MOVE_OPENLAB_OVERPASS_URL``     Overpass API endpoint for road networks         [default overpass-api.de]
-``MOVE_OPENLAB_GEOCODER_URL``     place-search endpoint (Nominatim API); ``off`` disables search  [default nominatim.openstreetmap.org]
+``MOVE_OPENLAB_GEOCODER_URL``     place-search endpoint; ``off`` disables search      [default nominatim.openstreetmap.org/search]
+``MOVE_OPENLAB_GEOCODER_PROVIDER`` ``nominatim`` (default: explicit searches only, one request per second, as its
+                                  policy requires) or ``photon`` (a Photon/Komoot-compatible service, self-hosted or
+                                  one whose terms permit it: search-as-you-type is then offered)
 ``MOVE_OPENLAB_EXTERNAL_FETCH``   who may start downloads from public services (road networks, RPC releases):
                                   ``researcher`` (default; per-user daily quotas) or ``admin``
 ``MOVE_OPENLAB_DAILY_NETWORKS``   road-network downloads per user per day                          [default 10]
@@ -55,6 +58,7 @@ class Settings:
     tile_attribution: str = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     overpass_url: str = "https://overpass-api.de/api/interpreter"
     geocoder_url: str = "https://nominatim.openstreetmap.org/search"
+    geocoder_provider: str = "nominatim"
     external_fetch: str = "researcher"
     daily_networks: int = 10
     daily_rpc: int = 3
@@ -85,6 +89,7 @@ class Settings:
                    frontend_dist=_path("MOVE_OPENLAB_FRONTEND_DIST", "frontend/dist"),
                    plugin_mode=os.environ.get("MOVE_OPENLAB_PLUGIN_MODE", "disabled").strip().lower() or "disabled",
                    external_fetch="admin" if fetch == "admin" else "researcher",
+                   geocoder_provider=(os.environ.get("MOVE_OPENLAB_GEOCODER_PROVIDER", "nominatim").strip().lower() or "nominatim"),
                    daily_networks=_int("MOVE_OPENLAB_DAILY_NETWORKS", 10), daily_rpc=_int("MOVE_OPENLAB_DAILY_RPC", 3),
                    daily_searches=_int("MOVE_OPENLAB_DAILY_SEARCHES", 200),
                    **({"tile_url": ""} if _tile_env() == "" and os.environ.get("MOVE_OPENLAB_TILE_URL", "").strip() else {}),

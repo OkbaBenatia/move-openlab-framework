@@ -18,7 +18,7 @@ from ..hashing import canonical
 from ..datasets import catalogue as dataset_catalogue
 from ..methods import ContractError
 from ..store import MAX_BUNDLE_BYTES, BenchError, Workspace, builtin_refs, problem_for
-from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, app_version
+from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, app_version, display_version
 
 router = APIRouter(prefix="/api")
 MethodPair = tuple[str, str]
@@ -82,7 +82,7 @@ class RegisterBody(BaseModel):
 def info(request: Request):
     inst = request.app.state.installation
     st = inst.plugin_status()
-    return dict(app=APP_NAME, subtitle=APP_SUBTITLE, developer=DEVELOPER, version=app_version(),
+    return dict(app=APP_NAME, subtitle=APP_SUBTITLE, developer=DEVELOPER, version=display_version(), release=app_version(),
                 installation_id=inst.id, plugins_enabled=st["enabled"], plugin_mode=st["mode"],
                 problems=[dict(problem_id=p.problem_id, title=p.title, synthetic=p.synthetic)
                           for p in registry.all_problems()],

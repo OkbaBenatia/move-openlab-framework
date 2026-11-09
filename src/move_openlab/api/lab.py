@@ -173,11 +173,6 @@ def _dataset_label(request: Request, w, prov: dict) -> str | None:
     return {"editor": "map editor"}.get(prov.get("source"), prov.get("source"))
 
 
-def _verdict(sem: dict, claim: str) -> str:
-    s = sem["summary"][claim]
-    return "incompatible" if s["INCOMPATIBLE"] else "conditional" if s["CONDITIONAL"] else "direct"
-
-
 @router.get("/experiments/{cid}")
 def experiment(cid: str, request: Request):
     w = ws(request)
@@ -244,12 +239,23 @@ def _row(problem, insts, r: dict) -> dict:
 
 
 def _comparability(sem: dict) -> dict:
-    """Verdict per claim plus the reasons shown under "Why?". The emissions claim is reported only when at least one
-    side carries emission data."""
-    claims = ("quality", "runtime") + (("emissions",) if any(r.get("emissions_applicable") for r in sem["rows"]) else ())
-    reasons = sorted({q for r in sem["rows"] for cl in claims for q in r[cl]["incompatible"] + r[cl]["qualifications"]})
-    return dict(reference=sem["reference"]["campaign_id"], quality=_verdict(sem, "quality"), runtime=_verdict(sem, "runtime"),
-                emissions=_verdict(sem, "emissions") if "emissions" in claims else None, reasons=reasons[:10])
+    """Verdict per claim plus the reasons shown under "Why?". Only the candidate's own rows count (the reference's
+    other methods are listed by the engine for the report but say nothing about the candidate); when no scenario of the
+    candidate maps to the reference, every claim is incompatible. The emissions claim is reported only when at least
+    one side carries emission data."""
+    ref = sem["reference"]["campaign_id"]
+    rows = [r for r in sem["rows"] if r["side"] == "candidate campaign"]
+    if not rows:
+        return dict(reference=ref, quality="incompatible", runtime="incompatible", emissions=None,
+                    reasons=["no scenario of this experiment corresponds to a scenario of the reference"])
+    claims = ("quality", "runtime") + (("emissions",) if any(r.get("emissions_applicable") for r in rows) else ())
+
+    def verdict(claim: str) -> str:
+        statuses = {r[claim]["status"] for r in rows}
+        return "incompatible" if "INCOMPATIBLE" in statuses else "conditional" if "CONDITIONAL" in statuses else "direct"
+    reasons = sorted({q for r in rows for cl in claims for q in r[cl]["incompatible"] + r[cl]["qualifications"]})
+    return dict(reference=ref, quality=verdict("quality"), runtime=verdict("runtime"),
+                emissions=verdict("emissions") if "emissions" in claims else None, reasons=reasons[:10])
 
 
 def _vehicle_summary(inst: dict) -> dict | None:
@@ -334,6 +340,81 @@ def duplicate_vehicle(pid: str, request: Request):
         raise HTTPException(404, str(e).strip("'")) from None
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+
+
+# ---------------------------------------------------------------- comparison candidates
+RELATION = {"reproduces": "Reproduction", "perturbs": "Controlled variant", "extends": "Extension"}
+_compat_cache: dict[tuple, dict] = {}
+_compat_lock = threading.Lock()
+
+
+def _relation(a: dict, b: dict, fp_a: set[str], fp_b: set[str]) -> str:
+    pa, pb = a.get("parent") or {}, b.get("parent") or {}
+    if pb.get("campaign_id") == a["campaign_id"]:
+        return RELATION.get(pb.get("relation"), "Derived")
+    if pa.get("campaign_id") == b["campaign_id"]:
+        return RELATION.get(pa.get("relation"), "Derived") + " (parent)"
+    if a["scenario_set"]["instance_hashes"] == b["scenario_set"]["instance_hashes"]:
+        return "Same scenario"
+    if fp_a & fp_b:
+        return "Same problem, other file"
+    return "Different scenario"
+
+
+@router.get("/compatible")
+def compatible(a: str, request: Request):
+    """Candidates for comparing with experiment ``a``: every other executed experiment of the same problem, with its
+    relation to ``a`` and the verdicts of the three claims (quality, runtime, emissions) from the semantic engine.
+    Directly and conditionally comparable candidates are meant to be shown first; incompatible ones under a fold.
+    Verdicts are cached per pair of records (checksums or run counts), so the picker stays instant."""
+    from ..comparability.model import problem_fingerprint
+    w = ws(request)
+    ca = _call(w.get, a)
+    problem = _call(problem_for, ca)
+    if not ca["runs"]:
+        raise HTTPException(400, "run the experiment before comparing it")
+    fps = lambda c: {problem_fingerprint(problem, w.inst.get_instance(h), problem.objective_spec_id)["problem"]   # noqa: E731
+                     for h in c["scenario_set"]["instance_hashes"]}
+    fp_a = fps(ca)
+    p = _prefs(w)
+    hidden, demo_ids = set(p.get("hidden_ids") or []), set(p.get("demo_campaigns") or [])
+    stamp = lambda c: c.get("checksum") or f"runs:{len(c['runs'])}:{c.get('completed_at')}"               # noqa: E731
+    out = []
+    for e in w.list(problem.problem_id):
+        if e["campaign_id"] == a:
+            continue
+        try:
+            cb = w.get(e["campaign_id"])
+        except (BenchError, KeyError, OSError, ValueError):
+            continue
+        if not cb["runs"]:
+            continue
+        key = (w.user, a, stamp(ca), cb["campaign_id"], stamp(cb))
+        with _compat_lock:
+            verdict = _compat_cache.get(key)
+        if verdict is None:
+            try:
+                verdict = _comparability(semantic_compare(w, a, cb["campaign_id"]))
+            except (BenchError, HTTPException, RuntimeError) as x:
+                verdict = dict(reference=a, quality="incompatible", runtime="incompatible", emissions=None,
+                               reasons=[str(x)[:200]])
+            with _compat_lock:
+                if len(_compat_cache) > 5000:
+                    _compat_cache.clear()
+                _compat_cache[key] = verdict
+        worst = "incompatible" if verdict["quality"] == "incompatible" and verdict["runtime"] == "incompatible" else \
+            "conditional" if "conditional" in (verdict["quality"], verdict["runtime"]) or verdict["quality"] == "incompatible" else "direct"
+        out.append(dict(campaign_id=cb["campaign_id"], title=cb["title"], kind=cb["kind"], owner_display=cb["owner_display"],
+                        imported=bool(w.import_record(cb["campaign_id"])), hidden=cb["campaign_id"] in hidden,
+                        category=category_of(cb["kind"], bool(w.import_record(cb["campaign_id"])), cb["campaign_id"] in demo_ids),
+                        relation=_relation(ca, cb, fp_a, fps(cb)), methods=[m["method_id"] for m in cb["methods"]],
+                        created_at=cb["created_at"], emissions_config=cb["config"].get("emissions"),
+                        quality=verdict["quality"], runtime=verdict["runtime"], emissions=verdict["emissions"],
+                        overall=worst, reasons=verdict["reasons"]))
+    order = {"direct": 0, "conditional": 1, "incompatible": 2}
+    out.sort(key=lambda x: (order[x["overall"]], x["hidden"], x["created_at"]), reverse=False)
+    return dict(a=dict(campaign_id=a, title=ca["title"], kind=ca["kind"]), candidates=out,
+                counts={k: sum(1 for x in out if x["overall"] == k) for k in order})
 
 
 # ---------------------------------------------------------------- A/B comparison

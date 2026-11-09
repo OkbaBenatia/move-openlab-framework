@@ -25,6 +25,13 @@ def _worse_by(sense: str, value: float, ref: float) -> float:
     return (ref - value) if sense == "max" else (value - ref)
 
 
+def _problem_spec(c: dict) -> dict:
+    """The part of a campaign's spec that defines the problem and its validator. The framework version is provenance:
+    a record made by an earlier release of the framework stays comparable as long as the problem specification and the
+    validator did not change (the semantic engine checks everything else)."""
+    return {k: v for k, v in c["spec"].items() if k != "framework_version"}
+
+
 def compare(ws, cid: str) -> dict:
     """Rows of the campaign and its ancestors back to the campaign that defined its scenario set: the baseline, or a
     controlled variant (whose derived scenarios start a new comparison; it is compared with its parent separately,
@@ -45,7 +52,7 @@ def compare(ws, cid: str) -> dict:
         if c["scenario_set"]["instance_hashes"] != ref_set:
             warnings.append(f"campaign {c['campaign_id']} uses a different scenario set — excluded")
             continue
-        if c["spec"] != chain[-1]["spec"]:
+        if _problem_spec(c) != _problem_spec(chain[-1]):
             warnings.append(f"campaign {c['campaign_id']} uses another specification or validator version — excluded")
             continue
         for m in c["methods"]:

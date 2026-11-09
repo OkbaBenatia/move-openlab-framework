@@ -75,7 +75,7 @@ def config(request: Request):
     s = request.app.state.settings
     return dict(tile_url=s.tile_url, tile_attribution=s.tile_attribution, can_manage=request.state.session.is_admin,
                 can_fetch=s.external_fetch == "researcher" or request.state.session.is_admin,
-                geocoder=request.app.state.geocoder.enabled,
+                geocoder=request.app.state.geocoder.enabled, geocoding=request.app.state.geocoder.describe(),
                 profiles=[dict(id=k, label=v["label"], max_bbox_deg2=v["max_bbox_deg2"]) for k, v in PROFILES.items()],
                 networks=store(request).list(), datasets=rpc.list_datasets(rpc_root(request)),
                 osm_licence="© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)")
