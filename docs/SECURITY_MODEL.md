@@ -74,12 +74,33 @@ session version, so a password change or deactivation invalidates every older se
 throttled per username and per client. Production mode (`MOVE_OPENLAB_ENV=production`) refuses to start without a
 `SESSION_SECRET` of at least 32 characters or with trusted-process plugins, and adds HSTS. State-changing requests
 with a foreign `Origin` are refused. Each user works in a private workspace; campaigns of other users are not visible.
-The credential store's schema is versioned (`PRAGMA user_version`); a store written by a newer version is refused.
+The credential store's schema is versioned (`PRAGMA user_version`); a store written by a newer version is refused,
+and an older store is migrated in place (schema 2 adds the supervision columns, guarded so that a partially migrated
+store is completed rather than broken).
+
+### Roles and supervision
+
+Three roles: **Administrator**, **Researcher** and **Student**. Every account works in its own isolated workspace;
+roles only govern account management. An administrator may grant a researcher *Can supervise students*; such a
+researcher creates student accounts (the student's supervisor is recorded on the account), resets their passwords and
+deactivates or reactivates them — **only for their own students** (`/api/supervision/*`, every route checks the
+supervisor column). Students have no account-management rights. Removing the flag ends the researcher's supervision
+rights but keeps the students and their work; an administrator can reassign a student to another supervisor.
+
+### Password policy
+
+The policy is enforced on the server (`password_policy()`), and the sign-in pages only mirror it for live feedback:
+at least 12 characters, three of the four character classes (lower case, upper case, digits, symbols), varied
+characters, and nothing taken from the username or the display name. *Strong* means at least 16 characters with all
+four classes. Accounts start with a temporary password shown once to the creator (`Cache-Control: no-store`) and must
+change it at first sign-in: *New password* with a red / yellow / green strength indicator (`POST
+/api/auth/password-policy`, which never stores what it checks) and *Repeat password* with a match indicator.
 
 ## Administration
 
-Administrators create accounts (a temporary password shown once, change forced at first sign-in), reset passwords,
-deactivate and reactivate accounts. They cannot deactivate themselves or the last active administrator, and cannot
+Administrators create accounts of any role (a temporary password shown once, change forced at first sign-in), set
+roles' supervision rights and students' supervisors, reset passwords, deactivate and reactivate accounts, and read
+the audit log (`GET /api/admin/audit`). They cannot deactivate themselves or the last active administrator, and cannot
 reset their own password from the web interface (they use *Change password*). Deactivation and resets end every open
 session of the account. Administrators have no access to other researchers' workspaces. Every action is appended to
 `<data>/audit.log` (actor, action, target, time; never a password). Responses carrying a temporary password are sent

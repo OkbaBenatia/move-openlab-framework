@@ -1,4 +1,4 @@
-<!-- LOGO: reserved for the authentic MOVE OpenLab logo (docs/assets/logo.*), to be supplied by the maintainer. -->
+![MOVE OpenLab](docs/assets/brand/github-readme-banner-1600x500.png)
 
 # MOVE OpenLab
 
@@ -8,15 +8,16 @@ Run optimization methods on real or synthetic scenarios, validate every solution
 fairly, and hand the whole experiment to a colleague who can reproduce it on their own machine and extend it with
 their own algorithm.
 
-> **Status: pre-release.** Functional and tested locally; licence, logo and demonstration video are being prepared
-> for the first public release.
+> **Status: development build.** Functional and tested locally; the first official release will be **MOVE OpenLab 1.0.0**
+> once the licence, the demonstration video and the release checklist in [docs/RELEASING.md](docs/RELEASING.md) are complete.
 
 <!-- VIDEO: reserved for the 60–75 s demonstration video of the released version, to be supplied by the maintainer. -->
 
-![The map-first workspace: the demonstration experiment on Paris, its participants, routes and results](docs/assets/screenshots/workspace.jpg)
+![The map-first workspace: the demonstration experiment on Montbéliard, its participants, routes and results](docs/assets/screenshots/workspace.jpg)
 
-*The workspace with the built-in demonstration: Area · Dataset · Scenario on the left, routes of the exact method on
-the map, results and comparability on the right. Map tiles © OpenStreetMap contributors.*
+*The workspace with the built-in demonstration: Experiment, Area, Road network, Mobility data and Scenario on the left,
+routes of the exact method on the map, Method, results and comparability on the right. Map tiles © OpenStreetMap
+contributors.*
 
 ## Why MOVE OpenLab
 
@@ -29,18 +30,19 @@ results may be compared.
 
 | | |
 |---|---|
-| Map-first workspace | Choose an area, dataset and experiment; see participants, vehicles and routes on the map; run, compare, replay, export — on one screen |
+| Map-first workspace | Choose an area, mobility data and experiment; see participants, vehicles and routes on the map; run, compare, replay, export — on one screen |
 | Generate wizard | Area & Data → Participants & Vehicles → Constraints → Experiment → Review, over the map; *Save Scenario* or *Save & Run* |
-| Built-in demonstration | Two experiments on Paris (open carpooling data, OpenStreetMap routing, documented vehicle parameters) open on first sign-in |
-| Methods | Exact MILP (HiGHS) and heuristics built in; your own methods as sandboxed plugins |
+| Built-in demonstration | Two experiments on Montbéliard (RPC open carpooling data, OpenStreetMap routing, documented vehicle parameters) open on first sign-in |
+| Methods | Exact MILP (HiGHS) and heuristics built in; *+ Add method* next to the method list registers your own sandboxed plugin or creates one from the template |
 | Independent validation | Every solution re-checked by the problem's validator; self-reported values are only compared |
 | Vehicles and emissions | Vehicle profiles per driver (ICE, HEV, PHEV, BEV, custom); every emission parameter editable and sourced; explicit scope and baseline; CO₂, baseline and avoided CO₂ from validated decisions |
-| Comparison | Concise table, charts of any supported metric (CSV, SVG, PNG export), what each result proves; A/B workspace with two synchronised maps, one replay clock and a solution diff |
+| Comparison | Concise table, charts of any supported metric (CSV, SVG, PNG export), what each result proves; *Compare with…* lists the directly comparable and conditionally comparable experiments first (incompatible ones under a fold, with the reasons); comparison workspace with synchronised maps, one replay clock, several experiments in one table and a solution diff |
 | Reproducibility | Verified bundles without code; re-execution compared cell by cell; lineage of every experiment |
 | Semantic comparability | *Directly comparable*, *comparable with conditions* or *not comparable* — for results, runtimes and emissions — with the reasons |
 | Replay and trace | Vehicles, pickups, drop-offs, served and unserved riders over time; the execution timeline of every run |
 | Geography and data | Any area OpenStreetMap covers; RPC open data (France), CSV, GeoJSON, synthetic demand, provider plug-ins |
-| Operations | Background jobs with progress and cancellation; accounts, administration, audit log |
+| Operations | Background jobs with progress in plain words (Queued → Downloading → Building network → Ready) and cancellation; audit log |
+| Accounts | Administrator, Researcher and Student roles; a researcher may be allowed to supervise their own students (create, reset, deactivate); temporary passwords, forced change at first sign-in, server-side password policy with live strength and match indicators |
 
 ## Pipeline
 
@@ -91,7 +93,7 @@ Details: [docs/DATASETS.md](docs/DATASETS.md).
 
 | Areas and routing (València) | Threshold study | Route playback |
 |---|---|---|
-| ![Area, coverage and measured route](docs/assets/screenshots/areas-route.jpg) | ![Threshold study chart and summary](docs/assets/screenshots/threshold-study.jpg) | ![Route playback of an exact solution](docs/assets/screenshots/route-playback.jpg) |
+| ![Area and road-network coverage of the demonstration area](docs/assets/screenshots/areas-route.jpg) | ![Threshold study chart and summary](docs/assets/screenshots/threshold-study.jpg) | ![Route playback of an exact solution](docs/assets/screenshots/route-playback.jpg) |
 
 ## Add your own algorithm
 
@@ -129,14 +131,16 @@ cd frontend && npm ci && npm run build && cd ..
 .venv/bin/move-openlab serve
 ```
 
-Open http://127.0.0.1:8765, sign in with the temporary password printed by `users add` and choose your own. The
-demonstration opens automatically; the optional Quick Tour explains the screen in eight steps.
+Open http://127.0.0.1:8765, sign in with the temporary password printed by `users add` and choose your own (the
+password policy is checked on the server and shown live). The demonstration opens automatically; the optional Quick
+Tour explains the screen in eight steps. Roles: `--role admin`, `researcher` (default) or `student --supervisor <researcher>`.
 
 ## Demo
 
-*Public Mobility Demo — Baseline* and *Public Mobility Demo — Controlled Variant*: three scenarios of 20 drivers and
-30 riders resampled with fixed seeds from RPC open data (release 2026-08) inside Paris, travel times and distances on
-the OpenStreetMap road network, an exact MILP and a greedy heuristic. Fifteen drivers per scenario drive the petrol
+*Montbéliard Demo — Baseline* and *Montbéliard Demo — Controlled Variant*: three scenarios of 20 drivers and 30 riders
+resampled with fixed seeds from one frozen release of RPC open data (2026-10; 404 trips inside the area) in the
+Pays de Montbéliard (France), travel times and distances on the OpenStreetMap road network, an exact MILP and a
+greedy heuristic. Fifteen drivers per scenario drive the petrol
 preset (EU real-world consumption, UK government fuel factor) and five a *demonstration* electric car whose
 consumption is an explicitly labelled assumption and whose grid factor is the EEA figure for France; emissions use
 the operational-energy scope and the *everyone drives alone* baseline, all editable. The variant lowers the detour
@@ -172,7 +176,7 @@ against brute force and an independent min-cost-flow oracle) is included for met
 | [docs/DATASETS.md](docs/DATASETS.md) | Areas, road networks, datasets, external services and their rules |
 | [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Bundles, fingerprints, determinism, semantic comparability |
 | [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, problem packages, dataset providers |
-| [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts, bundles, uploads, external services |
+| [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts and roles, password policy, bundles, uploads, external services |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Installation, configuration, tests |
 | [docs/GITFLOW.md](docs/GITFLOW.md) · [docs/RELEASING.md](docs/RELEASING.md) | Branching model, release checklist |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |

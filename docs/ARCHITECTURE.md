@@ -52,20 +52,29 @@ claim and carried by bundles), `aggregate_domain` and `domain_metric_definitions
 
 ## Web interface
 
-The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Dataset, Experiment grouped by
-category; Generate, Run, Compare, Replay, Import, Export, Quick Tour), the experiment, its participants and vehicles
-on the left, the map in the centre (charts for problems without geography), methods, live progress, results (objective,
-runtime, CO₂ of the selected method), comparability and Trace on the right. **Generate** opens a five-step wizard
+The main screen is a map-first **workspace** (`frontend/src/lab`): a top bar (Area, Mobility data, Experiment grouped
+by category; Generate, Run, Compare, Replay, Import, Export, Quick Tour), the experiment with its Area, Road network,
+Mobility data and Scenario on the left, the map in the centre (charts for problems without geography), the Method
+list with *+ Add method* (built-ins, plugin registration, template and bundle check without leaving the workflow),
+live progress, results (objective, runtime, CO₂ of the selected method), comparability and Trace on the right.
+Areas, datasets, scenarios and experiments can be hidden from every list (a per-user preference; nothing is deleted)
+and shown again with *Show hidden*. **Generate** opens a five-step wizard
 over the map (`frontend/src/mobility/Wizard.tsx`): Area & Data, Participants & Vehicles (generated or placed on the
 map with a route preview), Constraints, Experiment, Review — nothing is stored before *Save Scenario* or *Save &
 Run* (`POST /api/lab/run`: scenario, experiment and execution in one call). *Run* on an existing experiment
 executes a draft, or derives from a locked experiment: a re-execution with the same methods, an extension when
-methods were added. **Compare** opens the table and charts of one experiment or the **A/B workspace**
-(`#/compare/<A>|<B>`, `GET /api/lab/diff`): two maps with synchronised view, one replay clock, compatible metrics and
-the differences between the two solutions. Secondary sections hold the data tools (areas, datasets, scenario
-library, the same wizard), the full experiment records and reports, jobs with their execution timeline, and
-administration. Every view has a URL (`#/workspace/<id>`, `#/compare/<A>|<B>`, `#/data/<view>`,
-`#/experiments/<view>`, `#/jobs`, `#/admin`).
+methods were added. **Compare** opens the table and charts of one experiment; *Compare with…* lists the candidates (`GET
+/api/lab/compatible?a=`): every executed experiment of the same problem with its relation to A (reproduction,
+controlled variant, extension, same scenario, same problem in another file, different scenario) and the verdicts of
+the semantic engine, directly and conditionally comparable ones first, incompatible ones under *Show incompatible (n)*
+with their reasons; verdicts are cached per pair of record checksums. *Compare selected* opens the **comparison
+workspace** (`#/compare/<A>|<B1>,<B2>…`, `GET /api/lab/diff`): two maps with synchronised view (A and the selected B),
+one replay clock, compatible metrics of every B in one table, and the differences between the two solutions. Secondary sections hold the data tools (areas, datasets, scenario
+library, the same wizard — advanced management views, not a second Generate workflow), the full experiment records
+and reports, jobs with their execution timeline, the students of a supervising researcher, and administration. Every
+view has a URL (`#/workspace/<id>`, `#/compare/<A>|<B…>`, `#/data/<view>`, `#/experiments/<view>`, `#/jobs`,
+`#/students`, `#/admin`). The header carries the MOVE OpenLab logo; the footer shows *Development build* until the
+first official release (`display_version()`).
 
 ## Package layout
 

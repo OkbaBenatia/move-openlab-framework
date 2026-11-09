@@ -62,7 +62,7 @@ Changing an emission parameter (for example the electricity emission factor) is 
 instance hash, the experiment fingerprint and the semantic fingerprint all change, the bundle records the new value
 with its provenance, and the comparability check reports the difference (below).
 
-The shipped demonstration (`src/move_openlab/demo/`) is such a bundle: two experiments on Paris built from RPC open
+The shipped demonstration (`src/move_openlab/demo/`) is such a bundle: two experiments on Montbéliard built from RPC open
 data and OpenStreetMap routing with fixed seeds. Re-running it on any installation reproduces every result exactly
 (`tests/test_lab.py`).
 

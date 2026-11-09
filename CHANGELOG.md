@@ -5,6 +5,45 @@ interfaces.
 
 ## Unreleased
 
+### Added — UX consolidation, Montbéliard demonstration, comparison picker, accounts
+- **Montbéliard** is the default demonstration: *Montbéliard Demo — Baseline* and *— Controlled Variant*, built from
+  one frozen RPC release (2026-10, 404 trips inside the 47.42, 6.66 – 47.60, 6.96 box) on the OpenStreetMap network of
+  2026-11-09; provenance (release, dataset key, network, raw hashes) in the bundle manifest and in
+  `src/move_openlab/demo/README.md`.
+- **Comparison picker** (`GET /api/lab/compatible?a=`): *Compare with…* lists every executed experiment of the same
+  problem with its relation to A and the verdicts of the semantic engine; directly and conditionally comparable
+  candidates first, incompatible ones under *Show incompatible (n)* with their reasons; checkboxes and *Compare
+  selected*. The comparison workspace accepts several experiments (`#/compare/A|B1,B2`) and shows their compatible
+  metrics in one table.
+- **+ Add method** next to the Method list (workspace and wizard): built-in methods, plugin registration from the
+  approved directory, template and bundle-check commands with *Copy*.
+- **Accounts**: roles Administrator / Researcher / Student; *Can supervise students* for researchers, who manage only
+  their own students (`/api/supervision/*`, *Students* section); students' supervisor recorded on the account;
+  `move-openlab users add --role student --supervisor <researcher>`; credential store schema 2 with guarded in-place
+  migration; administrators read the audit log in the interface.
+- **Password workflow**: server-side policy (`password_policy()`, `POST /api/auth/password-policy`) — 12 characters,
+  three character classes, nothing from the username or name, *strong* at 16 characters with four classes; *New
+  password* with a red / yellow / green strength indicator and *Repeat password* with a match indicator on the
+  forced-change page.
+- **Place search providers** (`MOVE_OPENLAB_GEOCODER_PROVIDER`): Nominatim stays explicit-search only; Photon offers
+  search-as-you-type; the interface enables auto-complete only when the configured provider declares it
+  (`GET /api/geo/config` → `geocoding`).
+- **Hide / Show hidden** for areas, datasets and scenarios (Data section) in addition to experiments — the same
+  per-user preference, nothing deleted.
+- Approved **visual identity**: logo in the header, sign-in and password pages, favicon and touch icon, README banner.
+
+### Changed — terminology and context
+- *Dataset* → **Mobility data** in the top bar; the experiment panel shows **Experiment**, Area, Road network, Mobility
+  data and Scenario on separate lines; *Save & Run* is the main action of a new experiment; *Start point* / *End
+  point* in the wizard (academic terms stay in the records); **CO₂ calculation** with *Tailpipe only*, *Fuel +
+  electricity use* and *Direct CO₂/km* (the scientific identifiers in the data are unchanged); road-network and
+  data jobs show *Queued → Downloading → Building network → Ready* in plain words.
+- The interface shows **Development build** instead of a `0.x` number; `/api/info` carries both (`version` for
+  display, `release` for the exact number). The first official release will be MOVE OpenLab 1.0.0.
+- Comparability verdicts count only the candidate's own rows; an experiment with no scenario in common with the
+  reference is *not comparable* instead of vacuously *directly comparable*. A record made by an earlier framework
+  version stays comparable when the problem specification and validator are unchanged.
+
 ### Added — mobility-first workflow, vehicles and configurable emissions
 - Five-step **Generate wizard** over the map (Area & Data → Participants & Vehicles → Constraints → Experiment →
   Review) with *Save Scenario* and *Save & Run*; nothing is stored before the Review step. Participants can be

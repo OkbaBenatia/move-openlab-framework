@@ -3,6 +3,15 @@
 Releases follow [GITFLOW.md](GITFLOW.md) and Semantic Versioning. Every step that changes a remote repository is
 performed by the maintainer.
 
+## Versioning policy
+
+- Development builds carry internal `0.x` numbers (`0.3.x`, `0.4.x`, …) in `src/move_openlab/__init__.py` and
+  `frontend/package.json`. They are recorded in every campaign (`spec.framework_version`) and bundle for provenance,
+  but the interface shows **Development build** instead of a number (`display_version()`); `0.2.0` is never emphasised.
+- The first official release is **MOVE OpenLab 1.0.0**: from `1.0.0` on, the interface shows the version number.
+- A record made by an earlier development build stays comparable with a newer one as long as the problem
+  specification and the validator version are unchanged (the framework version is not part of the comparison scope).
+
 ## 1. Prepare
 
 ```bash
@@ -58,10 +67,14 @@ Branch `hotfix/X.Y.Z+1` from `main`, fix with a regression test, then follow ste
 ## First public release checklist
 
 - [ ] Apache-2.0 `LICENSE` and `NOTICE` added after ownership and third-party rights are verified; README licence section updated
-- [ ] Authentic logo and demonstration video (supplied by the maintainer)
+- [ ] Demonstration video (supplied by the maintainer)
 - [x] Screenshots generated from a real local run (`docs/assets/screenshots/`)
 - [ ] Verified LinkedIn, Google Scholar and ORCID links; scientific references and citation file
 - [x] Code of Conduct and security contact address
-- [ ] Production tile service and place-search policy decided (`MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_GEOCODER_URL`)
+- [ ] Production tile service and place-search policy decided (`MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_GEOCODER_URL`, `MOVE_OPENLAB_GEOCODER_PROVIDER`)
+- [x] Approved logo pack integrated (header, sign-in pages, favicon, README banner)
+- [x] Default demonstration on Montbéliard rebuilt from one frozen RPC release (2026-10) with full provenance
+- [x] Roles (Administrator, Researcher, Student), supervision and the server-side password policy
+- [ ] Version set to `1.0.0` in both places; `display_version()` then shows the number
 - [ ] Private vulnerability reporting enabled; `PUBLIC_DENYLIST` secret configured; rulesets applied
 - [ ] Repository visibility changed by the maintainer
