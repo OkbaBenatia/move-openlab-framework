@@ -13,7 +13,7 @@ import { CompareCharts, type CustomMetric } from './CompareCharts';
 import { planLayers, planPositions } from './layers';
 import { useReplay } from './ReplayBar';
 import { runtime } from './ResultPanel';
-import { byMethod, cellOf, type Cell } from './compareData';
+import { byMethod, cellOf, ridersOf, sameScenarios, type Cell } from './compareData';
 
 const SUMMARY_KEY = 'move-openlab.compare-summary';   // collapsed / open, remembered on this browser
 
@@ -86,7 +86,8 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (route: string) 
   const sides: { label: string; e: Experiment | null; rows: Map<string, ResultRow> }[] = [{ label: 'A', e: ea, rows: byMethod(ea) }, ...bs.map((_, i) => ({ label: bLabel(i), e: ebs[i] ?? null, rows: byMethod(ebs[i] ?? null) }))];
   const methodIds = Array.from(new Set(sides.flatMap((s) => Array.from(s.rows.keys()))));
   const nScen = ea?.scenarios.length ?? 0;
-  const riders = (e: Experiment | null) => (scope === 'all' ? (e?.scenarios.reduce((s, x) => s + (x.riders ?? 0), 0) ?? null) : e?.scenarios[scope]?.riders ?? null);
+  const riders = (e: Experiment | null) => ridersOf(e, scope, ea);
+  const otherSets = sides.slice(1).filter((s) => s.e && !sameScenarios(s.e, ea)).map((s) => s.label);
   const objective = ea?.problem.objective ?? [];
   const mdef = (id: string) => ea?.problem.metrics.find((m) => m.id === id);
   const co2Ok = (i: number) => !!sides[i].e && (i === 0 || (cands.find((c) => c.campaign_id === sides[i].e!.campaign.campaign_id)?.emissions ?? 'direct') !== 'incompatible');
@@ -106,7 +107,7 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (route: string) 
     // exactly the compared experiments: one value column per experiment and method, and the delta to the reference A
     const q = (x: string) => `"${x.replace(/"/g, '""')}"`;
     const head = ['metric', 'basis', ...methodIds.flatMap((m) => sides.flatMap((s, i) => [`${m} ${s.label}`, ...(i > 0 ? [`${m} ${s.label}-A`] : [])]))];
-    const val = (d: RowDef, m: string, i: number) => { const s = sides[i]; const c = cellOf(s.rows.get(m), scope, s.e); const v = c ? d.get(c, s.e) : null; return d.co2 && !co2Ok(i) ? null : v ?? null; };
+    const val = (d: RowDef, m: string, i: number) => { const s = sides[i]; const c = cellOf(s.rows.get(m), scope, s.e, ea); const v = c ? d.get(c, s.e) : null; return d.co2 && !co2Ok(i) ? null : v ?? null; };
     const lines = defs.map((d) => [q(d.label), q(d.basis), ...methodIds.flatMap((m) => sides.flatMap((_, i) => { const v = val(d, m, i), av = val(d, m, 0);
       return [v ?? '', ...(i > 0 ? [v != null && av != null ? v - av : ''] : [])]; }))].join(','));
     const legend = sides.map((s) => `# ${s.label}${s.label === 'A' ? ' (reference)' : ''}: ${s.e?.campaign.title ?? ''} [${s.e?.campaign.campaign_id ?? ''}]`);
@@ -232,7 +233,7 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (route: string) 
     </div>
     {err && <div className="lab-notes"><ErrorNote text={err} /></div>}
     <div className={`cmp-body ${tab === 'maps' || tab === 'replay' ? 'maps' : ''}`}>
-      {tab === 'results' && <>{table}<p className="small muted">{ea?.results?.rows.every((x) => x.repetitions_consistent) ? `Results identical in all ${ea?.campaign.repetitions} repetitions (values from repetition 1); runtime uses every run.` : 'Repetitions differ for some cells: values from repetition 1.'} Deltas are against the reference A ({ea?.campaign.title ?? '…'}). CO₂ is compared only when the calculation is the same.</p></>}
+      {tab === 'results' && <>{table}<p className="small muted">{ea?.results?.rows.every((x) => x.repetitions_consistent) ? `Results identical in all ${ea?.campaign.repetitions} repetitions (values from repetition 1); runtime uses every run.` : 'Repetitions differ for some cells: values from repetition 1.'} Deltas are against the reference A ({ea?.campaign.title ?? '…'}). CO₂ is compared only when the calculation is the same.{otherSets.length > 0 && ` ${otherSets.join(', ')} ${otherSets.length > 1 ? 'cover' : 'covers'} other scenarios than A: totals are not compared; each sample is matched to A's scenario by its frozen instance.`}</p></>}
       {tab === 'charts' && charts}
       {(tab === 'maps' || tab === 'replay') && <>{maps}{tab === 'replay' && replayBar}</>}
       {tab === 'diff' && diffView}
@@ -250,9 +251,9 @@ function FragmentRow({ d, methodIds, sides, scope, riders, co2Ok }: {
   return <>
     {d.group && <tr className="grp"><td colSpan={cols}>{d.group}</td></tr>}
     <tr><td className="strong">{d.label}</td><td className="tiny muted nowrap">{d.basis}</td>
-      {methodIds.flatMap((m) => { const av = (() => { const c = cellOf(sides[0].rows.get(m), scope, sides[0].e); return c ? d.get(c, sides[0].e) : null; })();
+      {methodIds.flatMap((m) => { const av = (() => { const c = cellOf(sides[0].rows.get(m), scope, sides[0].e, sides[0].e); return c ? d.get(c, sides[0].e) : null; })();
         return sides.flatMap((s, i) => {
-          const c = cellOf(s.rows.get(m), scope, s.e); const v = c ? d.get(c, s.e) : null; const hide = d.co2 && !co2Ok(i);
+          const c = cellOf(s.rows.get(m), scope, s.e, sides[0].e); const v = c ? d.get(c, s.e) : null; const hide = d.co2 && !co2Ok(i);
           const shown = hide ? <span className="muted" title="different CO₂ calculation">not compared</span> : v == null ? <span className="muted">—</span>
             : d.label === 'Served riders' ? <>{d.fmt(v)}<span className="muted"> / {riders(s.e) ?? '—'}</span></> : d.fmt(v);
           const cells = [<td key={`${m}${i}`} className={`n ${i === 0 ? 'grp-l' : ''}`}>{shown}</td>];

@@ -9,7 +9,8 @@
     "noUnusedLocals": true,
     "outDir": "../.unit-tests",
     "rootDir": "..",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmitOnError": true
   },
   "include": [
     "./**/*.test.ts",

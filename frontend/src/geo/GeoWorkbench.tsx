@@ -67,7 +67,7 @@ export function GeoWorkbench({ setErr, onOpenWorkspace, onRun, initialView, onVi
     lab.prefs({ area_id: id }).catch((e) => setErr(errText(e)));
   };
   const useArea = (id: string) => { setCurrent(id); setUsed(`${areas.find((a) => a.area_id === id)?.name ?? 'This area'} is now your working area: the Workspace lists its experiments and Generate starts there.`); };
-  const useDataset = (d: DatasetItem) => {
+  const applyDataset = (d: DatasetItem) => {
     const covering = (a: Area) => !d.bbox || (a.bbox[0] < d.bbox[2] && a.bbox[2] > d.bbox[0] && a.bbox[1] < d.bbox[3] && a.bbox[3] > d.bbox[1]);
     const a = (current && covering(current) ? current : null) ?? areas.find(covering);
     if (!a) { setErr(`No area covers ${d.name} yet: create one under Areas first.`); return; }
@@ -95,7 +95,7 @@ export function GeoWorkbench({ setErr, onOpenWorkspace, onRun, initialView, onVi
       <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setUsed(null); setView(v); onView?.(v); }}><Icon size={13} /> {label}</button>)}</nav>
     <p className="small muted view-help"><Info size={13} /> {VIEW_HELP[view]}</p>
     {view === 'areas' && <Areas cfg={cfg} areas={shownAreas} current={current} workingId={workingId} setCurrent={setCurrent} onUse={useArea} setErr={setErr} onChanged={load} {...hide} />}
-    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} onUse={(key) => { const d = datasets.find((x) => x.dataset_key === key); if (d) useDataset(d); }} {...hide} />}
+    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} onUse={(key) => { const d = datasets.find((x) => x.dataset_key === key); if (d) applyDataset(d); }} {...hide} />}
     {(view === 'library' || view === 'generate') && <Library cfg={cfg} lib={showHidden ? lib : lib.filter((s) => !hiddenIds.includes(s.scenario_id))} hiddenCount={showHidden ? 0 : lib.filter((s) => hiddenIds.includes(s.scenario_id)).length} setErr={setErr} {...hide} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('generate'); onView?.('generate'); }} onUse={useScenarios} />}
     {view === 'generate' && <Wizard cfg={cfg} areas={shownAreas} datasets={datasets.filter((d) => showHidden || !hiddenIds.includes(d.dataset_key))} methods={methods} areaId={current?.area_id} initial={editing} setErr={setErr} reloadAreas={load}
       onClose={closeWizard} onSaved={() => { load(); closeWizard(); }} onRun={(r) => { closeWizard(); onRun(r.campaign_id); }} />}

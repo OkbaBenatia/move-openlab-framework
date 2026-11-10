@@ -17,6 +17,8 @@ export function JobProgress({ job, onFinished, setErr, unit }: { job: Json; onFi
   const [j, setJ] = useState<Json>(job);
   const finished = useRef(onFinished);
   finished.current = onFinished;
+  const report = useRef(setErr);         // latest error sink, without restarting the polling loop
+  report.current = setErr;
   useEffect(() => {
     let alive = true, failures = 0, t: ReturnType<typeof setTimeout>;
     const tick = async () => {
@@ -28,7 +30,7 @@ export function JobProgress({ job, onFinished, setErr, unit }: { job: Json; onFi
       } catch (e) {                       // transient errors: keep polling with back-off, report after 5 failures
         if (!alive) return;
         failures += 1;
-        if (failures >= 5) setErr(`${errText(e)} (job status unavailable; still retrying)`);
+        if (failures >= 5) report.current(`${errText(e)} (job status unavailable; still retrying)`);
         t = setTimeout(tick, Math.min(10000, 600 * 2 ** failures));
       }
     };

@@ -1,4 +1,6 @@
 /** Thin typed client for the MOVE OpenLab API (same origin, cookie session). */
+// API replies are untyped JSON read field by field; `any` is confined to this one alias (the only exception to the lint rule).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Json = Record<string, any>;
 export interface User { username: string; display: string; role: string; must_change_password: boolean; expires_at: number; can_supervise?: boolean }
 export interface Metric { id: string; label: string; unit: string; definition: string; better: string | null }

@@ -106,10 +106,13 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const boxKey = box ? `${box.bbox.join(',')}|${box.color}|${box.onChange ? 1 : 0}` : '';
   const boxChange = useRef(box?.onChange);
   boxChange.current = box?.onChange;
+  const boxNow = useRef(box);              // the effect below re-runs only when boxKey (bbox, colour, editability) changes
+  boxNow.current = box;
   useEffect(() => {
     const g = boxLayer.current;
     if (!g) return;
     g.clearLayers();
+    const box = boxNow.current;
     if (!box) return;
     const [s, w, n, e] = box.bbox;
     const rect = L.rectangle([[s, w], [n, e]], { color: box.color, weight: 2, fillOpacity: 0.06 }).addTo(g);

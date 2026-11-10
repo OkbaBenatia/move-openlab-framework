@@ -4,7 +4,7 @@ import { BASELINE_LABEL, SCOPE_LABEL } from '../mobility/api';
 import type { Experiment } from './api';
 import { Chart, type ChartData, type Tip } from './Chart';
 import type { Candidate } from './ComparePicker';
-import { cellOf, type Cell, type Side } from './compareData';
+import { cellOf, ridersOf, type Cell, type Side } from './compareData';
 
 export interface CustomMetric { id: string; version: string; name: string; unit: string; direction: string; aggregate: string; description: string; provenance: string }
 type Kind = 'bar' | 'grouped' | 'line' | 'box' | 'scatter';
@@ -26,7 +26,7 @@ export function CompareCharts({ sides, colors, methodIds, cands, customs }: {
   const [kind, setKind] = useState<Kind>('grouped');
   const m = methodIds.includes(method) ? method : methodIds[0] ?? '';
   const nScen = ea?.scenarios.length ?? 0, reps = ea?.campaign.repetitions ?? 1;
-  const riders = (e: Experiment | null, k: number | 'all') => (k === 'all' ? e?.scenarios.reduce((s, x) => s + (x.riders ?? 0), 0) : e?.scenarios[k]?.riders) ?? null;
+  const riders = (e: Experiment | null, k: number | 'all') => ridersOf(e, k, ea);
   const objective = ea?.problem.objective ?? [];
   const mdef = (id: string) => ea?.problem.metrics.find((x) => x.id === id);
   const sum = (k: number | 'all') => (k === 'all' ? `sum over ${nScen} scenarios` : `sample ${k + 1}`);
@@ -55,7 +55,7 @@ export function CompareCharts({ sides, colors, methodIds, cands, customs }: {
   const methodName = sides.map((s) => s.rows.get(m)?.name).find(Boolean) ?? m;
   const tipFor = (s: Side, k: number | 'all', v: number, extra?: string): Tip => [name(s), `Method: ${methodName}`, k === 'all' ? `Scenario: all ${nScen} scenarios` : `Scenario: sample ${k + 1}`,
     `${d.label}: ${d.fmt(v)} ${d.unit}`, `Repetitions: ${s.e?.campaign.repetitions ?? '—'}${s.rows.get(m)?.repetitions_consistent ? ' (identical results)' : ''}`, `Aggregation: ${extra ?? d.basis(k)}`];
-  const val = (s: Side, i: number, k: number | 'all') => { if (!usable(i)) return null; const c = cellOf(s.rows.get(m), k, s.e); const v = c ? d.get(c, s.e, k) : null; return v ?? null; };
+  const val = (s: Side, i: number, k: number | 'all') => { if (!usable(i)) return null; const c = cellOf(s.rows.get(m), k, s.e, ea); const v = c ? d.get(c, s.e, k) : null; return v ?? null; };
   // which chart types the recorded data supports for this metric (never a chart from insufficient data)
   const runsOf = (s: Side) => Object.values(s.rows.get(m)?.per_scenario ?? {}).flatMap((c) => c.runs ?? []).map((r) => r.total_time_s).filter((x): x is number => x != null);
   const why: Partial<Record<Kind, string>> = {};
@@ -73,13 +73,13 @@ export function CompareCharts({ sides, colors, methodIds, cands, customs }: {
       return ts.length ? ts[Math.floor((ts.length - 1) / 2)] * 1000 : null; });
       return { name: name(s), color: colors[i], values: vs, tips: vs.map((v, r) => (v == null ? null : [...tipFor(s, 'all', v, `median over scenarios of repetition ${r + 1}`).slice(0, 3), `Repetition ${r + 1}: ${d.fmt(v)} ms`])) }; }) };
   else if (k0 === 'box') data = { kind: 'box', series: sides.map((s, i) => ({ name: s.label, color: colors[i], values: runsOf(s).map((x) => x * 1000), tip: [name(s), `Method: ${methodName}`, `Runtime of every recorded run (${runsOf(s).length} = scenarios × repetitions)`] })) };
-  else data = { kind: 'scatter', xLabel: 'Runtime', xUnit: 'ms', points: sides.flatMap((s, i) => Array.from({ length: nScen }, (_, k) => { const c = cellOf(s.rows.get(m), k, s.e); const v = val(s, i, k);
+  else data = { kind: 'scatter', xLabel: 'Runtime', xUnit: 'ms', points: sides.flatMap((s, i) => Array.from({ length: nScen }, (_, k) => { const c = cellOf(s.rows.get(m), k, s.e, ea); const v = val(s, i, k);
     return c?.time != null && v != null ? { x: c.time * 1000, y: v, color: colors[i], series: name(s), tip: [...tipFor(s, k, v), `Runtime: ${num(c.time * 1000, 1)} ms (median of ${reps} runs)`] } : null; }).filter((p): p is NonNullable<typeof p> => !!p)) };
   const excluded = sides.map((s, i) => (!usable(i) ? `${s.label} not shown: its CO₂ calculation is not comparable with A's` : null)).filter(Boolean);
   const conditional = d.co2 ? sides.map((s, i) => (i > 0 && co2Verdict(i) === 'conditional' ? `${s.label}: CO₂ comparable with conditions (other vehicle or factor values)` : null)).filter(Boolean) : [];
 
   // ---------------- CO₂ charts: baseline vs solution, avoided (kg and %), per served rider and per vehicle
-  const dom = (s: Side) => cellOf(s.rows.get(m), 'all', s.e)?.dom;
+  const dom = (s: Side) => cellOf(s.rows.get(m), 'all', s.e, ea)?.dom;
   const co2Sides = sides.map((s, i) => ({ s, i, dm: dom(s) })).filter((x) => x.dm?.complete && co2Verdict(x.i) !== 'incompatible');
   const kg = (g: number | null | undefined) => (g == null ? null : g / 1000);
   const co2Tip = (s: Side, label: string, v: number, unit: string, basis: string): Tip => [name(s), `Method: ${methodName}`, `Scenario: all ${nScen} scenarios`, `${label}: ${num(v, unit === '%' ? 1 : 2)} ${unit}`,
