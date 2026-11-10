@@ -205,7 +205,17 @@ def _compose(request: Request, b: ComposeBody) -> dict:
 
 
 def _edited_agents(base: dict, sc: dict) -> list[str]:
-    """Ids whose place or window differ between the composed scenario and the one being saved (added or removed too)."""
+    """Ids whose place or window differ between the composed scenario and the one being saved (added or removed too).
+    Both sides are compared in their validated form (coordinates rounded as stored), so a scenario saved as it was
+    previewed lists no edit."""
+    def pt(v):                                  # the rounding validate_scenario applies before storing
+        try:
+            return [round(float(v[0]), 6), round(float(v[1]), 6)]
+        except (TypeError, ValueError, IndexError):
+            return v
+    norm = lambda a: dict(a, origin=pt(a.get("origin")), destination=pt(a.get("destination")))   # noqa: E731
+    base = {r: [norm(a) for a in base.get(r) or []] for r in ("drivers", "riders")}
+    sc = {r: [norm(a) for a in sc.get(r) or [] if isinstance(a, dict)] for r in ("drivers", "riders")}
     keys = ("origin", "destination", "earliest", "latest")
     out = []
     for role in ("drivers", "riders"):

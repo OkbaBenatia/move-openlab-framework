@@ -390,3 +390,17 @@ def test_randomize_locations_keeps_ids_and_times_and_is_recorded(tmp_path, grid)
     prov = c.get(f"/api/geo/scenarios/{saved.json()['scenario_id']}").json()["scenario"]["provenance"]
     assert prov["source"] == "editor" and prov["locations"]["seed"] == 7 and prov["edited_agents"] == ["R2"]
     assert c.post("/api/geo/scenarios/preview", json=dict(basis, relocate_seed=-1)).status_code == 422
+
+
+def test_a_scenario_saved_as_previewed_lists_no_edited_participant():
+    """Regression: generator coordinates carry more decimals than stored ones; a scenario saved exactly as its preview
+    (validated, rounded) must not list every participant as edited."""
+    from move_openlab.api.geo import _edited_agents
+    a = dict(id="D1", origin=[47.51234567, 6.79876543], destination=[47.49876549, 6.81234561], earliest=25200, latest=26100)
+    r = dict(id="R1", origin=[47.50111119, 6.80222227], destination=[47.52333331, 6.79444449], earliest=25200, latest=26400)
+    base = dict(name="rounding check", network_id="n" * 16, params=dict(max_detour_s=900, max_detour_ratio=0.5), drivers=[a], riders=[r])
+    saved = SC.validate_scenario(dict(base))                       # what the preview returns and the client saves
+    assert saved["drivers"][0]["origin"] != a["origin"]            # rounded
+    assert _edited_agents(base, saved) == []
+    moved = dict(saved, riders=[dict(saved["riders"][0], origin=[47.5, 6.8])])
+    assert _edited_agents(base, moved) == ["R1"]

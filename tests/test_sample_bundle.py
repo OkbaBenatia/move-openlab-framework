@@ -54,3 +54,24 @@ def test_sample_extends_with_a_registered_method_in_the_sandbox(tmp_path):
     rows = compare(w, ext["campaign_id"])["rows"]
     assert {r["method_id"] for r in rows} >= {"nearest-pickup", "exact-matching-highs", "greedy-min-detour"}
     assert all(r["all_feasible"] for r in rows)
+
+
+def test_an_extension_as_reference_is_judged_against_its_lineage(tmp_path):
+    """Regression: an extension holds only the runs of the method it adds; as the reference of a comparison it is
+    judged against the reference method's runs of the record it extends (not 'no scenario maps')."""
+    from move_openlab.analysis.semantic import semantic_compare
+    sandbox_or_skip(tmp_path)
+    plugins = tmp_path / "plugins"
+    shutil.copytree(ROOT / "plugins" / "my_greedy_matching", plugins / "my_greedy_matching")
+    w = Installation(tmp_path / "B", plugins, "inst-b", plugin_mode="sandbox").workspace("researcher-b", "Researcher B")
+    rep = w.import_bundle(samples.bundle_bytes())
+    base = rep["root_campaign_id"]
+    w.register_plugin(registry.get(PID), "my_greedy_matching")
+    ext = w.create_extension(base, [("my-greedy-matching", "1.0.0")])
+    w.execute(ext["campaign_id"])
+    w.lock(ext["campaign_id"])
+    for a, b in ((ext["campaign_id"], base), (base, ext["campaign_id"])):
+        sc = semantic_compare(w, a, b)
+        assert sc["rows"] and sc["summary"]["quality"]["INCOMPATIBLE"] == 0, (a, b, sc["summary"])
+    rows = semantic_compare(w, ext["campaign_id"], base)["rows"]
+    assert {r["method"] for r in rows} == {"my-greedy-matching", "exact-matching-highs", "greedy-min-detour"} and all(r["reference"]["method"] == "exact-matching-highs" for r in rows)

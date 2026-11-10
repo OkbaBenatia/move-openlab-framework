@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 import zlib
 
@@ -77,7 +78,7 @@ ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: i
 EVIDENCE = "evidence/report.json"
 EVIDENCE_FORMAT = "move-openlab-evidence/1"
 DATASET_KEYS = ("source", "provider", "dataset_key", "release", "licence", "attribution", "source_sha256")
-HEX64 = __import__("re").compile(r"^[0-9a-f]{64}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
 # required manifest fields and their types (format 1 and 2); optional fields are type-checked when present
 MANIFEST_SCHEMA = dict(
     required=dict(format=str, exported_by=str, exporter_installation=str, root_campaign_id=str, spec=dict,

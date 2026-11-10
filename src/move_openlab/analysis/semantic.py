@@ -42,6 +42,16 @@ def semantic_compare(ws, reference_id: str, candidate_id: str) -> dict:
         raise BenchError("both campaigns must have executed runs")
     ref_mid = problem.reference_method[0]
     rc, cc = _cells(ws, problem, ref), _cells(ws, problem, cand)
+    # an extension holds only the runs of the methods it adds: the reference method's runs on the same frozen
+    # scenarios are those of its lineage (the record it extends), which is what its results are judged against
+    try:
+        ancestors = ws.lineage(reference_id)[1:]
+    except (BenchError, KeyError):                       # an unverifiable lineage adds nothing
+        ancestors = []
+    for anc in ancestors:
+        for k, v in _cells(ws, problem, anc).items():
+            if k[1] == ref_mid:
+                rc.setdefault(k, v)
     # a candidate scenario that is not the reference's instance (nor derived from it) still maps to a reference
     # scenario when it is the same optimization problem (equal problem fingerprint): e.g. the same participants and
     # travel times with other vehicle or emission data
