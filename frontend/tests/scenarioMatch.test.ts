@@ -21,3 +21,13 @@ test('totals are compared only over the same scenario set', () => {
   assert.ok(sameScenarios(shuffled, a) && totalsComparable(shuffled, a) && totalsComparable(a, a));
   assert.equal(ridersOf(shuffled, 'all', a), 33);
 });
+
+test('a controlled variant is matched to the scenarios it derives from', () => {
+  const a = exp(['h1', 'h2', 'h3']);
+  const v = { scenarios: [{ instance_hash: 'v2', riders: 11, derived_from: 'h2' }, { instance_hash: 'v1', riders: 10, derived_from: 'h1' }, { instance_hash: 'v3', riders: 12, derived_from: 'h3' }] };
+  assert.equal(sampleHash(0, a, v), 'v1');                 // A's sample 1 (h1) is the variant's v1
+  assert.equal(sampleHash(1, v, a), 'h1');                 // the other way round: the variant's 2nd scenario (v1) is A's h1
+  assert.ok(sameScenarios(v, a) && totalsComparable(v, a));
+  assert.equal(ridersOf(v, 'all', a), 33);
+  assert.equal(sampleHash(0, a, exp(['x1'])), undefined);  // an unrelated scenario is never matched
+});

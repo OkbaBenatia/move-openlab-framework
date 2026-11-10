@@ -33,7 +33,7 @@ export interface Experiment {
   context: { area: { label: string | null; network_id: string | null; area_id?: string; bbox?: [number, number, number, number] }; dataset: string | null; scenario: string };
   problem: { title: string; synthetic: boolean; metrics: Metric[]; objective: { metric: string; sense: string }[]; domain_metrics: { id: string; label: string; unit: string; better: string | null }[] };
   validation: Validation; provenance: Provenance;
-  scenarios: { instance_hash: string; instance_id: string; name: string | null; seed: number | null; edited: string[]; drivers?: number; riders?: number; pairs?: number; vehicles: { fleet: FleetEntry[]; default: { id: string; name: string } | null } | null; emissions: EmissionsConfig | null }[];
+  scenarios: { instance_hash: string; instance_id: string; derived_from?: string | null; name: string | null; seed: number | null; edited: string[]; drivers?: number; riders?: number; pairs?: number; vehicles: { fleet: FleetEntry[]; default: { id: string; name: string } | null } | null; emissions: EmissionsConfig | null }[];
   methods: { method_id: string; version: string; name: string; kind: string; source: string }[];
   runs: { run_id: string; campaign_id: string; instance_hash: string; method_id: string; accepted: boolean; status: string }[];
   job_id: string | null;

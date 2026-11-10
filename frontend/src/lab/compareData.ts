@@ -19,7 +19,7 @@ export const cellOf = (r: ResultRow | undefined, k: number | 'all', e: Experimen
   if (k === 'all' && !totalsComparable(e, ref)) return null;
   if (k === 'all') return { obj: r.totals, time: r.total_time_s, gap: r.gap_pct, dom: r.domain, custom: r.custom ?? {},
     runs: Object.values(r.per_scenario).flatMap((c) => c.runs ?? []) };
-  const h = sampleHash(k, ref ?? e);
+  const h = sampleHash(k, ref ?? e, e);
   const c = h ? r.per_scenario[h] : undefined;
   return c ? { obj: c.metrics, time: c.median_total_time_s, gap: c.gap_pct, dom: c.domain, custom: c.custom ?? {}, runs: c.runs ?? [] } : null;
 };

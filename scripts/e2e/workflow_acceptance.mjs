@@ -173,6 +173,9 @@ await check('A4b', 'Exactly two experiments; charts at 160 % zoom and on a phone
     await p.click('Compare selected (2)', '.picker-drawer button'); await p.waitFor('!!document.querySelector(".cmp-table")', 60000, 'cmp'); await sleep(2500);
     const ids = decodeURIComponent(await p.eval('location.hash')).replace('#/compare/', '').split(/[|,]/);
     expect(ids.length === 2 && ids[0] === base && ids[1] === variant, `route ${ids}`);
+    // the variant's values stand beside the baseline's (its scenarios are matched through their derivation)
+    const served = await p.eval(`[...document.querySelectorAll('.cmp-table tbody tr')].find((r) => r.cells[0]?.innerText === 'Served riders')?.innerText.replace(/\\s+/g, ' ')`);
+    expect(served && (served.match(/48 \/ 90/g) ?? []).length >= 2, `B values missing: ${served}`);
     const s1 = await shot('13-compare-two-experiments', 300);
     await p.click('Charts', '.tabs button'); await sleep(2500);
     const c100 = await cards(); const o100 = await overflow();

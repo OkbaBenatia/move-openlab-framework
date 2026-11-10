@@ -342,6 +342,7 @@ def experiment(cid: str, request: Request):
         problem=dict(title=problem.title, synthetic=problem.synthetic, metrics=[m.to_dict() for m in problem.metrics],
                      objective=[o.to_dict() for o in problem.objective], domain_metrics=problem.domain_metric_definitions()),
         scenarios=[dict(instance_hash=i["instance_hash"], instance_id=i["instance_id"], name=i.get("name"),
+                        derived_from=(i.get("derivation") or {}).get("parent_instance_hash"),
                         seed=(i.get("provenance") or {}).get("seed"),
                         edited=list((i.get("provenance") or {}).get("edited_agents") or []),
                         vehicles=_vehicle_summary(i), emissions=E.config_of(i, c["config"]),
