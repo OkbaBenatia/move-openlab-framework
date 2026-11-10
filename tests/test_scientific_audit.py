@@ -41,7 +41,11 @@ def _v(verdicts, cid):
 
 def test_verdicts_are_claim_dependent(lab):
     c, ids, verdicts, _ = lab
-    assert _v(verdicts, ids["reproduction"])[0] == dict(quality="direct", runtime="direct", emissions="direct")
+    v, why = _v(verdicts, ids["reproduction"])
+    assert v["quality"] == "direct" and v["emissions"] == "direct"
+    # runtime: direct on the environment the demonstration was recorded in; elsewhere (another Python, CPU…) only
+    # conditional, and the reason names the environment
+    assert v["runtime"] == "direct" or (v["runtime"] == "conditional" and why and all("environments differ" in r for r in why))
     assert _v(verdicts, ids["variant"])[0]["quality"] == "direct"
     # another CO₂ calculation on the same frozen scenarios: results comparable, CO₂ not, and the reason says why
     v, why = _v(verdicts, ids["tailpipe"])
