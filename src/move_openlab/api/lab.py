@@ -33,7 +33,7 @@ from ..hashing import sha256_bytes
 from ..integrations import rpc
 from ..mobility import emissions as E
 from ..mobility import vehicles as V
-from ..store import MAX_BUNDLE_BYTES, BenchError, _write, now, problem_for
+from ..store import MAX_BUNDLE_BYTES, BenchError, _write, display_title, now, problem_for
 from .experiments import _call, _problem, ws
 from .geo import RIDE, ComposeBody, ScenarioBody
 from .geo import store as network_store
@@ -110,6 +110,7 @@ class WorkspaceView(BaseModel):
 class PrefsBody(BaseModel):
     tour_dismissed: bool | None = None
     start_dismissed: bool | None = None                              # the first-use "start here" card
+    details_open: bool | None = None                                 # Workspace: "Experiment details" expanded
     theme: str | None = Field(None, pattern=r"^(light|dark)$")       # appearance; light unless the user chooses dark
     last_experiment: str | None = Field(None, max_length=128)
     area_id: str | None = Field(None, max_length=64)
@@ -124,7 +125,7 @@ def state(request: Request):
     # "installed" means *this* demonstration (by bundle digest): a newer shipped demonstration is imported next to the
     # previous one, which stays in the workspace (nothing is ever deleted)
     installed = demo.available() and p.get("demo_installed") == sha256_bytes(demo.bundle_bytes())
-    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "theme", "last_experiment", "area_id", "workspace")}
+    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "details_open", "theme", "last_experiment", "area_id", "workspace")}
                 | dict(hidden_ids=p.get("hidden_ids") or []),
                 demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or [],
                           area=p.get("demo_area")),
@@ -274,7 +275,7 @@ def experiments(request: Request):
         cat = category_of(e["kind"], e["imported"], e["campaign_id"] in demo_ids)
         prov = first.get("provenance") or {}
         n = len(c["scenario_set"]["instance_hashes"])
-        out.append(dict(campaign_id=e["campaign_id"], title=e["title"], kind=e["kind"], status=e["status"],
+        out.append(dict(campaign_id=e["campaign_id"], title=display_title(e["title"]), kind=e["kind"], status=e["status"],
                         problem_id=e["problem_id"], imported=e["imported"], locked=bool(e["checksum"]),
                         created_at=e["created_at"], owner_display=e["owner_display"],
                         parent=(e.get("parent") or {}).get("campaign_id"), demo=e["campaign_id"] in demo_ids,
@@ -328,7 +329,7 @@ def experiment(cid: str, request: Request):
     nid = (insts[0].get("network") or {}).get("network_id") if insts else None
     parent = c.get("parent")
     out = dict(
-        campaign=dict(campaign_id=cid, title=c["title"], kind=c["kind"], status=c["status"],
+        campaign=dict(campaign_id=cid, title=display_title(c["title"]), record_title=c["title"], kind=c["kind"], status=c["status"],
                       locked=bool(c.get("checksum")), owner_display=c["owner_display"], created_at=c["created_at"],
                       imported=bool(imp), imported_from=imp and imp["original_owner_display"],
                       parent=parent and dict(campaign_id=parent["campaign_id"], relation=parent["relation"],
@@ -621,7 +622,7 @@ def compatible(a: str, request: Request):
                 _compat_cache[key] = verdict
         worst = "incompatible" if verdict["quality"] == "incompatible" and verdict["runtime"] == "incompatible" else \
             "conditional" if "conditional" in (verdict["quality"], verdict["runtime"]) or verdict["quality"] == "incompatible" else "direct"
-        out.append(dict(campaign_id=cb["campaign_id"], title=cb["title"], kind=cb["kind"], owner_display=cb["owner_display"],
+        out.append(dict(campaign_id=cb["campaign_id"], title=display_title(cb["title"]), kind=cb["kind"], owner_display=cb["owner_display"],
                         validation=validation_of(cb), reproducibility=_repro_between(w, ca, cb),
                         imported=bool(w.import_record(cb["campaign_id"])), hidden=cb["campaign_id"] in hidden,
                         category=category_of(cb["kind"], bool(w.import_record(cb["campaign_id"])), cb["campaign_id"] in demo_ids),
@@ -632,7 +633,7 @@ def compatible(a: str, request: Request):
     order = {"direct": 0, "conditional": 1, "incompatible": 2}
     out.sort(key=lambda x: (order[x["overall"]], x["hidden"], x["created_at"]), reverse=False)
     # hidden records are never counted: the counts describe what the picker shows
-    return dict(a=dict(campaign_id=a, title=ca["title"], kind=ca["kind"], validation=validation_of(ca)), candidates=out,
+    return dict(a=dict(campaign_id=a, title=display_title(ca["title"]), kind=ca["kind"], validation=validation_of(ca)), candidates=out,
                 counts={k: sum(1 for x in out if x["overall"] == k and not x["hidden"]) for k in order},
                 hidden=sum(1 for x in out if x["hidden"]))
 
@@ -738,7 +739,7 @@ def diff(a: str, b: str, request: Request, method_a: str | None = None, method_b
         comparability = _comparability(semantic_compare(w, a, b)) if a != b else None
     except (BenchError, HTTPException, RuntimeError):
         comparability = None
-    side = lambda c, mid: dict(campaign_id=c["campaign_id"], title=c["title"], kind=c["kind"], method_id=mid,   # noqa: E731
+    side = lambda c, mid: dict(campaign_id=c["campaign_id"], title=display_title(c["title"]), kind=c["kind"], method_id=mid,   # noqa: E731
                                methods=[m["method_id"] for m in c["methods"]], owner_display=c["owner_display"],
                                emissions=c["config"].get("emissions"))
     return dict(a=side(ca, ma), b=side(cb, mb), rows=rows, totals=totals, comparability=comparability,
@@ -861,3 +862,57 @@ def register_metric(body: MetricRegisterBody, request: Request):
     """Register a metric file of the approved plugin directory for this workspace (pinned SHA-256, isolated
     self-test). Same rules as method plugins: plugins enabled; trusted-process mode: administrators only."""
     return _call(ws(request).register_metric, _problem(body.problem_id), body.plugin, admin=request.state.session.is_admin)
+
+
+# ---------------------------------------------------------------- public synthetic benchmark (methodological)
+PUBLIC_BENCHMARK = "synthetic-capacitated-bipartite-assignment"
+
+
+def _benchmark_definition() -> dict:
+    from ..benchmarks.synthetic_assignment import generator
+    from ..registry import get as get_problem
+    from ..store import builtin_refs
+    p = get_problem(PUBLIC_BENCHMARK)
+    return dict(
+        problem_id=PUBLIC_BENCHMARK, title="Public synthetic assignment benchmark", problem_title=p.title,
+        description="Capacitated assignment of artificial passengers to drivers: maximise the passengers served, then "
+                    "minimise the total pair cost. Fully synthetic and public; no map, no real mobility data.",
+        objective=[o.to_dict() for o in p.objective], metrics=[m.to_dict() for m in p.metrics],
+        generator=dict(name=generator.GENERATOR_NAME, version=generator.GENERATOR_VERSION,
+                       sizes={k: dict(drivers=v[0], passengers=v[1]) for k, v in generator.SIZES.items()},
+                       seeds=list(generator.SEEDS)),
+        scenario_params=dict(sizes=list(generator.SIZES), seeds=list(generator.SEEDS)), repetitions=5,
+        methods=[dict(method_id=m["method_id"], version=m["version"], name=m.get("name"), kind=m.get("kind")) for m in builtin_refs(p)],
+        optional_plugin=dict(plugin="regret_greedy", note="the example plug-in; register it with + Add method to include it"),
+        validator=p.validator_version, oracle="independent min-cost maximum flow (successive shortest paths), not the MILP",
+        command="python scripts/benchmark_synthetic_assignment.py --out <dir>",
+        scope="A methodological benchmark with its own measured results. It is not the separate synthetic scientific "
+              "study (semantic comparability stress test), which stays Planned until its protocol is published and "
+              "independently reproduced.")
+
+
+@router.get("/benchmark/public")
+def public_benchmark(request: Request):
+    """The public synthetic benchmark: its frozen definition, this researcher's runs of it, and for each run an
+    independent check of every validated result against the min-cost-flow oracle (computed here, not by a method)."""
+    from ..benchmarks.synthetic_assignment import oracle
+    w = ws(request)
+    d = _benchmark_definition()
+    runs = []
+    for e in w.list(PUBLIC_BENCHMARK):
+        c = w.get(e["campaign_id"])
+        if (c["scenario_set"].get("params") or {}) != d["scenario_params"] or not c["runs"]:
+            continue
+        opt = {h: oracle.lex_optimum(w.inst.get_instance(h)) for h in c["scenario_set"]["instance_hashes"]}
+        per: dict = {}
+        for r in c["runs"]:
+            m = per.setdefault(r["method_id"], dict(method_id=r["method_id"], runs=0, accepted=0, oracle_optimal=0, scenarios=set()))
+            m["runs"] += 1
+            m["accepted"] += bool(r.get("accepted"))
+            v = (r.get("validation") or {}).get("metrics") or {}
+            m["oracle_optimal"] += bool(r.get("accepted")) and (v.get("served"), v.get("cost")) == opt.get(r["instance_hash"])
+            m["scenarios"].add(r["instance_hash"])
+        runs.append(dict(campaign_id=c["campaign_id"], title=display_title(c["title"]), created_at=c["created_at"],
+                         locked=bool(c.get("checksum")), kind=c["kind"], scenarios=len(opt),
+                         methods=[dict(m, scenarios=len(m["scenarios"])) for m in per.values()]))
+    return dict(definition=d, runs=sorted(runs, key=lambda x: x["created_at"], reverse=True))

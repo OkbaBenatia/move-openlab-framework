@@ -71,6 +71,42 @@ def _write(path: Path, obj) -> None:
     os.replace(tmp, path)
 
 
+_OLD_PREFIX = ("Independent re-execution of ", "Extension of ")
+_DERIVED_SUFFIX = re.compile(r"\s+—\s+(?:Reproduction|Extension)(?:\s+\d+)?(?:\s+\(.*\))?$")
+
+
+def base_title(title: str) -> str:
+    """The experiment a derived title derives from, without the derivation words (old and new forms), e.g.
+    "Independent re-execution of Independent re-execution of X" or "X — Reproduction 2" -> "X"."""
+    t = (title or "").strip()
+    while True:
+        for pre in _OLD_PREFIX:
+            if t.startswith(pre):
+                t = t[len(pre):]
+                if pre == "Extension of " and " with " in t:
+                    t = t.rsplit(" with ", 1)[0]
+                break
+        else:
+            m = _DERIVED_SUFFIX.search(t)
+            if not m:
+                return t
+            t = t[:m.start()]
+
+
+def display_title(title: str) -> str:
+    """A short label for a stored title (titles are part of the record and its checksum, so old ones are never
+    rewritten): "Independent re-execution of Independent re-execution of X" -> "X — Reproduction (of a reproduction)"."""
+    t, n = title or "", 0
+    while t.startswith(_OLD_PREFIX[0]):
+        t, n = t[len(_OLD_PREFIX[0]):], n + 1
+    if n:
+        return f"{display_title(t)} — Reproduction" + (" (of a reproduction)" if n > 1 else "")
+    if t.startswith(_OLD_PREFIX[1]) and " with " in t:
+        base, added = t[len(_OLD_PREFIX[1]):].rsplit(" with ", 1)
+        return f"{display_title(base)} — Extension ({added})"
+    return t
+
+
 def campaign_checksum(c: dict) -> str:
     return sha256({k: v for k, v in c.items() if k not in LOCK_EXCLUDED})
 
@@ -612,12 +648,23 @@ class Workspace:
         c["config_differences_from_parent"] = diffs
         return c
 
+    def _derived_title(self, parent_title: str, word: str, detail: str = "") -> str:
+        """Short title of a derived experiment, never nested: "<root> — Reproduction 2", "<root> — Extension 1 (Method)".
+        The number counts the experiments of that kind derived from the same root in this workspace; the full lineage
+        is recorded separately (``parent``) and shown under Details."""
+        root = base_title(parent_title)
+        if root.endswith(" — Baseline"):
+            root = root[:-len(" — Baseline")]
+        kind = "reproduction" if word == "Reproduction" else "extended"
+        n = 1 + sum(1 for c in self.list() if c.get("kind") == kind and base_title(c.get("title", "")).removesuffix(" — Baseline") == root)
+        return f"{root} — {word} {n}{f' ({detail})' if detail else ''}"[:160]
+
     def create_reproduction(self, parent_id: str) -> dict:
         parent = self.get(parent_id)
         problem = problem_for(parent)
         for m in parent["methods"]:
             self.resolve_method(problem, m)
-        c = self._derive(parent_id, "reproduction", "reproduces", f"Independent re-execution of {parent['title']}",
+        c = self._derive(parent_id, "reproduction", "reproduces", self._derived_title(parent["title"], "Reproduction"),
                          parent["methods"])
         self._save(c)
         return c
@@ -633,8 +680,8 @@ class Workspace:
             if r["method_id"] in existing:
                 raise BenchError(f"{r['method_id']} is already part of the lineage")
             self.resolve_method(problem, r)
-        c = self._derive(parent_id, "extended", "extends", f"Extension of {chain[-1]['title']} with "
-                         + ", ".join(r["name"] for r in refs), refs)
+        c = self._derive(parent_id, "extended", "extends", self._derived_title(chain[-1]["title"], "Extension",
+                                                                               ", ".join(r["name"] for r in refs)), refs)
         self._save(c)
         return c
 
