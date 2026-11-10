@@ -34,7 +34,7 @@ const newPassword = () => `Ok-${randomBytes(12).toString('base64url')}-7z`;
 const W = 1440, H = 900, DSF = 2;
 
 const report = { base: BASE, started: new Date().toISOString(), checks: [], screenshots: [] };
-let n = ONLY === 'fallback' ? 40 : 0;
+let n = ONLY === 'fallback' ? 90 : 0;   // the fallback run numbers its captures after the main run's
 const p = await launch(chrome, { width: W, height: H });
 await p.size(W, H, DSF);
 await p.allowDownloads(DL);
