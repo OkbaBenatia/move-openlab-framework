@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CircleX, Columns2, RotateCcw, Scale, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleX, Columns2, ListChecks, Plus, RotateCcw, Scale, ShieldCheck, X } from 'lucide-react';
 import { HiddenFilter } from '../components/HiddenFilter';
 import { call } from '../api/client';
 import { errText } from '../components/common';
@@ -30,8 +30,10 @@ const reproText = (c: Candidate) => {
  *  same problem with its relation to the current one; the three kinds of evidence stay separate for each: independent
  *  validation, reproducibility (only for a re-execution), semantic comparability per claim. Not comparable candidates
  *  are folded and cannot be ticked; hidden records are neither shown nor counted unless the filter asks for them. */
-export function ComparePicker({ current, already = [], reference, onClose, onCompare }: {
+export function ComparePicker({ current, already = [], reference, onClose, onCompare, onMethods, onAddMethod, onReproduce }: {
   current: string; already?: string[]; reference?: string; onClose: () => void; onCompare: (sel: Selection) => void;
+  /** actions offered next to the list, and instead of it when nothing is comparable */
+  onMethods?: () => void; onAddMethod?: () => void; onReproduce?: () => void;
 }) {
   const [data, setData] = useState<Compatible | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -50,11 +52,13 @@ export function ComparePicker({ current, already = [], reference, onClose, onCom
   const groups = useMemo(() => GROUPS.map((g) => [g, visible.filter((c) => c.relation === g && (showIncompatible || c.overall !== 'incompatible'))] as const).filter(([, xs]) => xs.length), [visible, showIncompatible]);
   const title = (id: string) => id === current ? data?.a.title ?? id : data?.candidates.find((c) => c.campaign_id === id)?.title ?? id;
   const n = sel.ids.length;
+  const comparable = visible.filter((c) => c.overall !== 'incompatible').length;
   const refRadio = (id: string) => sel.ids.includes(id) && <label className="row small refpick" title="Deltas are computed against the reference">
     <input type="radio" name="reference" checked={sel.reference === id} onChange={() => setSel(setReference(sel, id))} aria-label={`use ${title(id)} as reference`} />Reference</label>;
   return <div className="overlay" role="dialog" aria-label="compare experiments" onClick={onClose}>
     <div className="drawer wide picker-drawer" onClick={(e) => e.stopPropagation()}>
       <div className="row gap drawer-head"><div className="grow"><h2>{t('cmp.with')}</h2><div className="small muted">{t('cmp.pick')}</div></div>
+        {onMethods && <button className="btn sm" onClick={onMethods} title="Compare the algorithms of this experiment on its own frozen scenarios"><ListChecks size={14} /> Compare methods in this experiment</button>}
         <button className="btn icon ghost" aria-label="close" onClick={onClose}><X size={16} /></button></div>
       {err && <p className="note warn" role="alert">{err}</p>}
       {!data && !err && <p className="muted small">Checking comparability…</p>}
@@ -73,7 +77,11 @@ export function ComparePicker({ current, already = [], reference, onClose, onCom
                 <span className="grow"><b>{data.a.title}</b><span className="small muted block">the experiment you opened{letterOf(sel, current) ? ` · column ${letterOf(sel, current)}` : ' · not in the comparison'}</span></span></label>{refRadio(current)}</div>
               <div className="ev"><span className="evk"><ShieldCheck size={13} />Validation</span><span>{data.a.validation.runs ? <><b>{data.a.validation.accepted} of {data.a.validation.runs}</b> runs accepted</> : <span className="muted">not run</span>}</span></div>
             </div></section>
-          {groups.length === 0 && <p className="muted">{t('cmp.none')}</p>}
+          {comparable === 0 && <div className="note empty-compare" role="status"><b>No comparable experiment found.</b>
+            <div className="row gap wrap">{onMethods && <button className="btn sm primary" onClick={onMethods}><ListChecks size={14} /> Compare methods in this experiment</button>}
+              {onAddMethod && <button className="btn sm" onClick={onAddMethod}><Plus size={14} /> Run another method on the same scenario</button>}
+              {onReproduce && <button className="btn sm" onClick={onReproduce}><RotateCcw size={14} /> Reproduce this experiment</button>}</div></div>}
+          {comparable > 0 && groups.length === 0 && <p className="muted">{t('cmp.none')}</p>}
           {groups.map(([g, xs]) => <section key={g} className="cands"><h4>{g}</h4>
           {xs.map((c) => { const dis = c.overall === 'incompatible' && !sel.ids.includes(c.campaign_id); const on = sel.ids.includes(c.campaign_id); return <div key={c.campaign_id} className={`cand ${on ? 'sel' : ''} ${dis ? 'dim' : ''}`}>
             <div className="row gap top"><label className="row gap top grow"><input type="checkbox" aria-label={c.title} disabled={dis} checked={on} onChange={() => setSel(toggle(sel, c.campaign_id))} />

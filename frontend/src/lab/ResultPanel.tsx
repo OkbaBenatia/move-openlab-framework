@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, GitBranch, Leaf, ListTree, Lock, Plus, RotateCcw, Scale, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, GitBranch, Leaf, ListChecks, ListTree, Lock, Plus, RotateCcw, Scale, ShieldCheck } from 'lucide-react';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { num } from '../components/common';
@@ -63,12 +63,12 @@ function Co2({ dom, basis }: { dom: Domain | null | undefined; basis: string }) 
 /** Right panel: methods (with Add method), the running job, results in an explicit scope, CO₂, and the evidence kept
  *  apart — independent validation, reproducibility (only for a re-execution), semantic comparability with the parent. */
 export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone, setErr, selected, setSelected, onLock, opts, setOpts, variants, onVariant,
-  onWhy, onTrace, onAddMethod, hash, scope, setScope, onRecalcCo2, onEditVehicles }: {
+  onWhy, onTrace, onAddMethod, hash, scope, setScope, onRecalcCo2, onEditVehicles, onCompareMethods }: {
   exp: Experiment | null; methods: MethodRef[]; checked: string[]; setChecked: (k: string[]) => void;
   job: Json | null; onJobDone: (j: Json) => void; setErr: (s: string | null) => void;
   selected: string; setSelected: (m: string) => void; onLock: () => void;
   opts: RunOptions; setOpts: (o: RunOptions) => void; variants: { id: string; description: string }[]; onVariant: () => void; onWhy: () => void;
-  onTrace: (() => void) | null; onAddMethod: () => void; hash: string; scope: Scope; setScope: (s: Scope) => void;
+  onTrace: (() => void) | null; onAddMethod: () => void; onCompareMethods?: () => void; hash: string; scope: Scope; setScope: (s: Scope) => void;
   onRecalcCo2?: (scope: string, baseline: string) => void; onEditVehicles?: () => void;
 }) {
   const [why, setWhy] = useState(false);
@@ -104,6 +104,7 @@ export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone,
     {job && <section className="sec"><JobProgress job={job} setErr={setErr} onFinished={onJobDone} unit="runs" /></section>}
     <section className="sec" data-tour="results" aria-label="results">
       <div className="row gap"><h3 className="grow">{t('ws.results')}</h3>
+        {onCompareMethods && new Set(rows.map((r) => r.method_id)).size > 1 && <button className="btn sm" onClick={onCompareMethods} title="Compare the algorithms of this experiment on its own frozen scenarios"><ListChecks size={13} /> Compare methods</button>}
         {rows.length > 0 && n > 1 && <div className="seg" role="group" aria-label="scope"><button className={scope === 'scenario' ? 'on' : ''} aria-pressed={scope === 'scenario'} onClick={() => setScope('scenario')}>Sample {k + 1}</button>
           <button className={scope === 'all' ? 'on' : ''} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('ws.allScenarios')}</button></div>}</div>
       {rows.length === 0 ? <p className="small muted">{exp ? t('ws.notRun') : 'Choose scenarios and methods, then Run.'}</p> : <>

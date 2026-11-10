@@ -11,6 +11,7 @@ import { JobsPage } from './components/JobsPage';
 import { GeoWorkbench } from './geo/GeoWorkbench';
 import { t } from './i18n';
 import { CompareAB } from './lab/CompareAB';
+import { CompareMethods } from './lab/CompareMethods';
 import { Lab, OPEN_WIZARD } from './lab/Lab';
 import { useRoute, type Section } from './router';
 import { AccountPage, BenchmarksPage, HiddenPage } from './shell/Pages';
@@ -37,13 +38,14 @@ export default function App() {
     if (route.section === 'data' && route.arg === 'generate') { try { sessionStorage.setItem(OPEN_WIZARD, '1'); } catch { /* */ } go('workspace', '', true); }
   }, [route, go]);
   const open = (s: Section, arg = '') => { setErr(null); go(s, arg); };
-  const full = route.section === 'workspace' || route.section === 'compare';
+  const full = route.section === 'workspace' || route.section === 'compare' || route.section === 'methods';
   const supervises = user.role === 'researcher' && !!user.can_supervise;
   return <div className={`app ${full ? 'app-lab' : ''}`}>
     <Header user={user} section={route.section} go={open} theme={theme} setTheme={setTheme}
       onTour={() => { if (route.section !== 'workspace') go('workspace'); setTourRequest((k) => k + 1); }} />
     <ErrorBoundary resetKey={`${route.section}/${route.arg}`}>
     {route.section === 'workspace' && <Lab key="lab" cid={route.arg} go={go} tourRequest={tourRequest} onTourShown={() => setTourRequest(0)} />}
+    {route.section === 'methods' && <CompareMethods key={route.arg.split('|')[0]} arg={route.arg} go={(r) => go('methods', r, true)} back={() => go('workspace', route.arg.split('|')[0])} />}
     {route.section === 'compare' && <CompareAB key={route.arg} arg={route.arg} go={(r) => go('compare', r)} back={() => go('workspace', route.arg.split('|')[0])} />}
     {!full && <main className={route.section === 'experiments' ? 'page' : 'content page'}>
       <div className="page-head row gap"><button className="btn ghost sm" onClick={() => go('workspace')}><ChevronLeft size={14} />{t('nav.workspace')}</button>

@@ -58,6 +58,7 @@ const en = {
   'ws.import': 'Import',
   'ws.run': 'Run',
   'ws.runAgain': 'Run again',
+  'ws.runAdded': 'Run added methods',
   'ws.compare': 'Compare',
   'ws.export': 'Export',
   'ws.locked.tip': 'Original results are frozen. Re-run or extend this experiment to create new results.',

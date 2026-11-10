@@ -12,7 +12,7 @@ export const NEW = '__new__';
 export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp, onGenerate, onRun, runLabel, runDisabled, runTitle, onCompare, canCompare,
   onImport, onTrySample, sampleAvailable, onExport, canExport, onPanel, onLibrary, comparePrimary }: {
   experiments: ExpItem[]; current: ExpItem | null; areaFilter: string; setAreaFilter: (a: string) => void; setExp: (id: string) => void;
-  onGenerate: () => void; onRun: () => void; runLabel: 'run' | 'again'; runDisabled: boolean; runTitle: string; onCompare: () => void; canCompare: boolean;
+  onGenerate: () => void; onRun: () => void; runLabel: 'run' | 'again' | 'extend'; runDisabled: boolean; runTitle: string; onCompare: () => void; canCompare: boolean;
   onImport: () => void; onTrySample: () => void; sampleAvailable: boolean; onExport: () => void; canExport: boolean;
   onPanel: (p: 'left' | 'right') => void; onLibrary: () => void; comparePrimary: boolean;
 }) {
@@ -57,7 +57,7 @@ export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp
       </div>
       <span className="vsep" />
       <button className={`btn ${comparePrimary ? '' : 'primary'}`} data-tour="run" onClick={onRun} disabled={runDisabled} title={runTitle}>
-        {runLabel === 'again' ? <><RotateCcw size={15} />{t('ws.runAgain')}</> : <><Play size={15} />{t('ws.run')}</>}</button>
+        {runLabel === 'again' ? <><RotateCcw size={15} />{t('ws.runAgain')}</> : runLabel === 'extend' ? <><Play size={15} />{t('ws.runAdded')}</> : <><Play size={15} />{t('ws.run')}</>}</button>
       <button className={`btn ${comparePrimary ? 'primary' : ''}`} data-tour="compare" onClick={onCompare} disabled={!canCompare}><GitCompareArrows size={15} />{t('ws.compare')}</button>
       <button className="btn" onClick={onExport} disabled={!canExport}><Download size={15} />{t('ws.export')}</button>
       <button className="btn icon only-narrow" aria-label="results panel" onClick={() => onPanel('right')}><PanelRight size={15} /></button>

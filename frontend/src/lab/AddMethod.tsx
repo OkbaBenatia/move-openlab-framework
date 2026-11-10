@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, Ban, Box, CheckCircle2, Code2, Copy, Lock, Puzzle, Shield, ShieldCheck, Terminal, X } from 'lucide-react';
+import { ArrowRight, Ban, Box, CheckCircle2, Code2, Copy, Lock, Play, Puzzle, Shield, ShieldCheck, Terminal, X } from 'lucide-react';
 import { call, post, type Json } from '../api/client';
 import { errText, sh } from '../components/common';
 
@@ -13,7 +13,9 @@ const whyNot = (p: Json, problemId: string) => (p.metadata?.problem_id && p.meta
 /** "+ Add method": use a built-in method, register my method (a plug-in from the approved folder, run in the verified
  *  sandbox), or create one from the template. The experiment keeps the scenario, objective, constraints, validator,
  *  metrics, baseline and CO₂ semantics; a method only proposes decisions. */
-export function AddMethod({ problemId, onClose, onChanged, setErr }: { problemId: string; onClose: () => void; onChanged: () => void; setErr: (s: string | null) => void }) {
+export function AddMethod({ problemId, onClose, onChanged, setErr, onRun, done = [], runNote }: { problemId: string; onClose: () => void; onChanged: () => void; setErr: (s: string | null) => void;
+  /** run one method on the open experiment's frozen scenarios (absent: nothing open to run on); done: methods it already ran */
+  onRun?: (methodId: string, version: string) => void; done?: string[]; runNote?: string }) {
   const [m, setM] = useState<Json | null>(null);
   const [choice, setChoice] = useState<Choice>('register');
   const [name, setName] = useState('my_method');
@@ -37,6 +39,9 @@ export function AddMethod({ problemId, onClose, onChanged, setErr }: { problemId
     <button className="btn sm" type="button" onClick={() => copy(id, text)} aria-label="copy command"><Copy size={12} /> {copied === id ? 'Copied' : 'Copy'}</button></div>;
   const opt = (c: Choice, icon: React.ReactNode, title: string, sub: string) => <button className={`choice ${choice === c ? 'on' : ''}`} aria-pressed={choice === c} onClick={() => setChoice(c)}>
     <span className="choice-ico">{icon}</span><span><b>{title}</b><span>{sub}</span></span></button>;
+  const runBtn = (id: string | undefined, ver: string | undefined, primary = false) => onRun && id && ver && (done.includes(`${id}@${ver}`)
+    ? <span className="badge ok" title="Already run in this experiment">Run</span>
+    : <button className={`btn sm ${primary ? 'primary' : ''}`} onClick={() => onRun(id, ver)} title={runNote}><Play size={12} /> Run with this method</button>);
   const flow = ['Frozen experiment', 'Your method', 'Independent validator', 'Same metrics and CO₂', 'Compare'];
   return <div className="overlay top" role="dialog" aria-label="add a method" onClick={onClose}>
     <div className="drawer addm" onClick={(e) => e.stopPropagation()}>
@@ -44,8 +49,8 @@ export function AddMethod({ problemId, onClose, onChanged, setErr }: { problemId
       {!m ? <p className="muted small">Loading…</p> : <>
         <div className="choices3">{opt('builtin', <Box size={18} />, 'Built-in methods', 'Ready to use')}{opt('register', <Puzzle size={18} />, 'Register my method', 'A plug-in in the approved folder')}{opt('template', <Code2 size={18} />, 'Create from template', 'Start a new plug-in')}</div>
         {choice === 'builtin' && <section className="sec"><h3>Built-in methods</h3>
-          <ul className="plain">{m.builtin.map((b: Json) => <li key={b.method_id} className="row gap"><CheckCircle2 size={14} className="ok-text" /><b>{b.name}</b><span className="small muted">· {b.kind} · {b.version}</span></li>)}</ul>
-          <p className="small muted">Tick a method in the Methods list, then Run.</p></section>}
+          <ul className="plain">{m.builtin.map((b: Json) => <li key={b.method_id} className="row gap"><CheckCircle2 size={14} className="ok-text" /><b>{b.name}</b><span className="small muted grow">· {b.kind} · {b.version}</span>{runBtn(b.method_id, b.version)}</li>)}</ul>
+          <p className="small muted">{onRun ? runNote : 'Tick a method in the Methods list, then Run.'}</p></section>}
         {choice === 'register' && <section className="sec"><h3>Plug-ins in the approved folder</h3>
           {!m.plugins_enabled ? <p className="note warn small">Plug-ins are off on this installation: {m.plugin_status.reason}</p> : <>
             <p className={`small ${m.plugin_status.isolation === 'sandbox' ? 'muted' : 'bad-text'}`}>{m.plugin_status.isolation === 'sandbox' ? 'Each registered method runs in the verified sandbox; its code is pinned by its digest.' : 'Trusted-process mode: administrators only.'}</p>
@@ -56,8 +61,9 @@ export function AddMethod({ problemId, onClose, onChanged, setErr }: { problemId
                   <span className="small muted block">{p.registered ? `Registered · code pinned ${sh(p.code_sha256, 12)}` : p.compatible ? 'Written for this problem · fits this experiment' : whyNot(p, problemId)}</span></span>
                 {!p.registered && p.compatible && m.can_register && <button className="btn primary sm" disabled={!!busy} onClick={() => register(p.plugin)}><Puzzle size={12} /> {busy === p.plugin ? 'Checking…' : 'Register'}</button>}
                 {!p.registered && !p.compatible && <span className="badge">Not compatible</span>}
-                {p.registered && <span className="badge ok">Registered</span>}</div>)}</div>}
-            {last && <p className="note ok small">Registered {last.name} {last.version}: code pinned, self-test accepted in the sandbox. It is now in the Methods list.</p>}</>}</section>}
+                {p.registered && <span className="badge ok">Registered</span>}
+                {p.registered && runBtn(p.metadata?.method_id, p.metadata?.version, true)}</div>)}</div>}
+            {last && <div className="note ok small row gap wrap"><span className="grow">Registered {last.name} {last.version}: code pinned, self-test accepted in the sandbox. It is now in the Methods list.</span>{runBtn(last.method_id, last.version, true)}</div>}</>}</section>}
         {choice === 'template' && <section className="sec"><h3>Create from the template</h3>
           <label className="field">Method name <input value={name} onChange={(e) => setName(e.target.value)} aria-label="method name" /></label>
           <ol className="small steps-list"><li>Create the plug-in from the template (command under Developer details).</li><li>Implement <span className="mono">solve(instance, config)</span>: return the decisions; nothing else.</li>

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /** Hash routes, so that the browser's Back and Forward buttons and bookmarks work:
- *  #/workspace[/<experiment>] · #/compare/<A>|<B>[,<B2>…] · #/data[/<view>] · #/experiments[/<view>] · #/jobs · #/students · #/admin
+ *  #/workspace[/<experiment>] · #/compare/<A>|<B>[,<B2>…] · #/methods/<experiment>[|<method@version>,…] · #/data[/<view>] · #/experiments[/<view>] · #/jobs · #/students · #/admin
  *  · #/account · #/hidden · #/benchmarks */
-export type Section = 'workspace' | 'compare' | 'data' | 'experiments' | 'jobs' | 'students' | 'admin' | 'account' | 'hidden' | 'benchmarks';
+export type Section = 'workspace' | 'compare' | 'methods' | 'data' | 'experiments' | 'jobs' | 'students' | 'admin' | 'account' | 'hidden' | 'benchmarks';
 export interface Route { section: Section; arg: string }
 
-const SECTIONS: Section[] = ['workspace', 'compare', 'data', 'experiments', 'jobs', 'students', 'admin', 'account', 'hidden', 'benchmarks'];
+const SECTIONS: Section[] = ['workspace', 'compare', 'methods', 'data', 'experiments', 'jobs', 'students', 'admin', 'account', 'hidden', 'benchmarks'];
 
 export function parse(hash: string): Route {
   const [s, ...rest] = hash.replace(/^#\/?/, '').split('/');
