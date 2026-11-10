@@ -628,8 +628,8 @@ svg [role=img]:focus-visible rect, svg [role=img]:focus-visible circle { stroke:
 .lg-sq.glyph { width: 13px; height: 13px; background: #1f5fd1; color: #fff; font: 700 9px/13px var(--font, system-ui), sans-serif; text-align: center; font-style: normal; }
 .lg-pt { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
 
-/* a toolbar menu never leaves the viewport on narrow screens */
-@media (max-width: 760px) { .actions-bar .menu.left { left: auto; right: 0; } .actions-bar .menu { max-width: calc(100vw - 24px); } }
+/* a toolbar menu never leaves the viewport on narrow screens (useInViewport shifts it horizontally) */
+@media (max-width: 760px) { .actions-bar .menu, .filters-pop { max-width: calc(100vw - 16px); } }
 
 /* a short explanation shown on hover and on keyboard focus (a native title shows neither on focus nor on touch) */
 .has-tip { position: relative; cursor: help; }

@@ -3,6 +3,7 @@ import { ChevronDown, Download, FileUp, GitCompareArrows, Lock, PanelLeft, Panel
 import { t } from '../i18n';
 import type { ExpItem } from './api';
 import { ExperimentPicker } from './ExperimentPicker';
+import { useInViewport } from '../components/useInViewport';
 
 export const NEW = '__new__';
 
@@ -18,6 +19,8 @@ export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp
   const [imp, setImp] = useState(false);
   const impRef = useRef<HTMLDivElement>(null);
   const impBtn = useRef<HTMLButtonElement>(null);
+  const impMenu = useRef<HTMLDivElement>(null);
+  useInViewport(impMenu, imp);
   // keyboard: the first item takes the focus, arrows move between items, Escape closes and returns to the button
   const items = () => Array.from(impRef.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ?? []);
   useEffect(() => { if (imp) items()[0]?.focus(); }, [imp]);
@@ -47,7 +50,7 @@ export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp
       <button className="btn" onClick={onGenerate} data-tour="generate"><Plus size={15} />{t('ws.generate')}</button>
       <div className="menu-wrap" ref={impRef}>
         <button ref={impBtn} className="btn" aria-haspopup="menu" aria-expanded={imp} onClick={() => setImp(!imp)}><Upload size={15} />{t('ws.import')}<ChevronDown size={13} /></button>
-        {imp && <div className="menu left" role="menu" aria-label="import" onKeyDown={onMenuKey}>
+        {imp && <div ref={impMenu} className="menu left" role="menu" aria-label="import" onKeyDown={onMenuKey}>
           <button role="menuitem" className="mi" onClick={() => { setImp(false); onImport(); }}><FileUp size={15} /><span className="grow">Import a bundle file…</span></button>
           <button role="menuitem" className="mi" disabled={!sampleAvailable} onClick={() => { setImp(false); onTrySample(); }}><PackageOpen size={15} /><span className="grow">{t('sample.title')}</span>{!sampleAvailable && <span className="tag-planned">Unavailable</span>}</button>
         </div>}

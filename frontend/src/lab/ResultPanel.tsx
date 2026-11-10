@@ -4,7 +4,8 @@ import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { num } from '../components/common';
 import { t } from '../i18n';
-import { BASELINE_LABEL, SCOPE_LABEL, grams, pct, type Domain } from '../mobility/api';
+import { BASELINE_LABEL, PARAM_LABEL, SCOPE_LABEL, grams, pct, type Domain } from '../mobility/api';
+import { CountInput } from '../components/CountInput';
 import { VERDICT, rowKey, scopeMethods, type Experiment, type ResultRow } from './api';
 
 export interface RunOptions { repetitions: number; variant: string }
@@ -38,7 +39,15 @@ export function scoped(r: ResultRow, scope: Scope, hash: string) {
 
 function Co2({ dom, basis }: { dom: Domain | null | undefined; basis: string }) {
   if (!dom) return null;
-  if (!dom.complete) return <p className="small muted">No CO₂ figure: {dom.missing?.slice(0, 2).join(', ')}{(dom.missing?.length ?? 0) > 2 ? ', …' : ''}</p>;
+  if (!dom.complete) {
+    // "D1: profile.parameter" → "D1 · profile · parameter (unit)"; nothing is assumed in its place
+    const said = (m: string) => { const [who, what = ''] = m.split(': '); const i = what.lastIndexOf('.'); return `${who} · ${what.slice(0, i)} · ${PARAM_LABEL[what.slice(i + 1)] ?? what.slice(i + 1)}`; };
+    const miss = dom.missing ?? [];
+    return <section className="sec co2" aria-label="CO2"><div className="row gap"><h3 className="grow"><Leaf size={16} /> CO₂</h3><span className="small muted">{SCOPE_LABEL[dom.scope] ?? dom.scope}</span></div>
+      <p className="small">Not computed: a vehicle parameter has no value, and none is assumed.</p>
+      <ul className="plain small muted">{miss.slice(0, 3).map((m) => <li key={m}>{said(m)}</li>)}{miss.length > 3 && <li>and {miss.length - 3} more</li>}</ul>
+      <p className="tiny muted">Enter it under Advanced › Edit vehicles and their parameters (a new scenario version).</p></section>;
+  }
   const w = dom.baseline_g ? Math.min(100, (100 * (dom.solution_g ?? 0)) / dom.baseline_g) : 0;
   return <section className="sec co2" aria-label="CO2">
     <div className="row gap"><h3 className="grow"><Leaf size={16} /> CO₂</h3><span className="small muted">{SCOPE_LABEL[dom.scope] ?? dom.scope}</span></div>
@@ -131,8 +140,8 @@ export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone,
     </section>}
     <details className="sec small">
       <summary>Advanced</summary>
-      <label className="row">Repetitions <input type="number" min={1} max={20} value={opts.repetitions} aria-label="repetitions"
-        onChange={(e) => setOpts({ ...opts, repetitions: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })} style={{ width: '5em' }} /></label>
+      <label className="row">Repetitions <CountInput min={1} max={20} value={opts.repetitions} aria-label="repetitions"
+        onChange={(n) => setOpts({ ...opts, repetitions: n })} style={{ width: '5em' }} /></label>
       {exp?.campaign.locked && variants.length > 0 && <div className="row gap">
         <select aria-label="controlled variant" value={opts.variant} onChange={(e) => setOpts({ ...opts, variant: e.target.value })} className="grow">
           {variants.map((v) => <option key={v.id} value={v.id}>{v.description}</option>)}</select>

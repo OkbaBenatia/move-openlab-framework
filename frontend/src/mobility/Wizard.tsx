@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, S
 import { CarIcon, RiderIcon, VehicleIcon } from '../components/DomainIcons';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
+import { CountInput } from '../components/CountInput';
 import { errText, num } from '../components/common';
 import { COLORS, LeafletMap, POWERTRAIN_GLYPH, type BBox, type MapLine, type MapPoint } from '../geo/LeafletMap';
 import { geo, hhmm, km, mins, toSec, type Agent, type Area, type GeoConfig, type Scenario } from '../geo/api';
@@ -75,7 +76,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   useEffect(() => { setChecked((c) => c.length ? c : methods.filter((m) => m.source === 'builtin').map(methodKey)); }, [methods]);
   useEffect(() => { if (area) setFocus({ key: area.area_id, bbox: area.bbox }); }, [area]);
   useEffect(() => { if (!shownDatasets.some((d) => d.dataset_key === datasetKey)) setDatasetKey(shownDatasets[0]?.dataset_key ?? ''); }, [shownDatasets, datasetKey]);
-  useEffect(() => { if (!f.name && area) setF((x) => ({ ...x, name: `${area.name} · ${source === 'manual' ? 'scenario' : 'demand'}` })); }, [area, source, f.name]);
+  // the suggested name follows the chosen area and source until the researcher types one
+  const autoName = useRef(!initial?.scenario.name);
+  useEffect(() => { if (area && autoName.current) setF((x) => ({ ...x, name: `${area.name} · ${source === 'manual' ? 'scenario' : 'demand'}` })); }, [area, source]);
 
   // vehicles and emissions as the scenario carries them
   const vehicles = () => {
@@ -105,7 +108,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
 
   // "Randomize locations": a new seed gives new places on the road network, inside the area; counts, ids and time
   // windows stay. Placed by hand, the participants get new places drawn by the server (recorded with the seed).
-  const newSeed = (cur: number | null) => { let s = cur ?? 0; while (s === cur) s = 1 + Math.floor(Math.random() * 999_999); return s; };
+  const newSeed = (cur: number | null) => { let s: number; do s = 1 + Math.floor(Math.random() * 999_999); while (s === cur); return s; };
   const randomize = () => act(async () => {
     if (source !== 'manual') { setF((x) => ({ ...x, seed: newSeed(x.seed) })); return; }
     const body = compose(); if (!body) return;
@@ -260,7 +263,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
           </fieldset>
         </>}
         {step === 2 && <>
-          <label>Scenario name <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} aria-label="scenario name" /></label>
+          <label>Scenario name <input value={f.name} onChange={(e) => { autoName.current = false; setF({ ...f, name: e.target.value }); }} aria-label="scenario name" /></label>
           {source !== 'manual' && <div className="row gap">
             <label>Drivers <input type="number" min={1} max={100} value={f.n_drivers} onChange={(e) => setF({ ...f, n_drivers: Number(e.target.value) })} aria-label="drivers" /></label>
             <label>Riders <input type="number" min={1} max={100} value={f.n_riders} onChange={(e) => setF({ ...f, n_riders: Number(e.target.value) })} aria-label="riders" /></label>
@@ -300,7 +303,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
         {step === 4 && <>
           <label>Experiment name <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="experiment name" /></label>
           <fieldset><legend className="row gap">Method{onAddMethod && <button type="button" className="btn sm" onClick={onAddMethod}><Plus size={12} /> Add method</button>}</legend><ul className="methods">{methods.map((m) => { const k = methodKey(m); return <li key={k}><label className="row"><input type="checkbox" checked={checked.includes(k)} onChange={() => setChecked(checked.includes(k) ? checked.filter((x) => x !== k) : [...checked, k])} /> <span className="grow">{m.name}<span className="muted small"> · {m.kind}{m.source === 'plugin' ? ' · your method' : ''}</span></span></label></li>; })}</ul></fieldset>
-          <div className="row gap"><label>Repetitions <input type="number" min={1} max={20} value={reps} onChange={(e) => setReps(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} aria-label="repetitions" style={{ width: '5em' }} /></label>
+          <div className="row gap"><label>Repetitions <CountInput min={1} max={20} value={reps} onChange={setReps} aria-label="repetitions" style={{ width: '5em' }} /></label>
             <span className="small muted" style={{ alignSelf: 'flex-end', paddingBottom: 9 }}>Seed {source === 'manual' ? '— (participants placed by hand)' : `${f.seed} (set in step 2)`} · each repetition runs every method on the same scenarios</span></div>
           {profile && veh && <fieldset><legend>CO₂ calculation</legend>
             <label>Method <select aria-label="emission scope" value={emis.scope} onChange={(e) => setEmis({ ...emis, scope: e.target.value })}>{veh.scopes.map((s) => <option key={s.id} value={s.id}>{SCOPE_LABEL[s.id] ?? s.id}</option>)}</select></label>

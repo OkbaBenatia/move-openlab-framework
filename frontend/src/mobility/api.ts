@@ -54,6 +54,9 @@ export const mob = {
 
 export const SCOPE_LABEL: Record<string, string> = { tailpipe: 'Tailpipe only', 'operational-energy': 'Fuel and electricity use', 'direct-intensity': 'Direct CO₂/km' };
 export const BASELINE_LABEL: Record<string, string> = { 'everyone-drives-alone': 'Everyone drives alone', 'drivers-only': 'Drivers only' };
+/** Emission parameters as people read them (the ids are those of the vehicle profiles). */
+export const PARAM_LABEL: Record<string, string> = { fuel_consumption_l_100km: 'fuel consumption (L/100 km)', fuel_emission_factor_g_per_l: 'fuel emission factor (g/L)',
+  electricity_consumption_kwh_100km: 'electricity consumption (kWh/100 km)', electricity_emission_factor_g_per_kwh: 'electricity emission factor (g/kWh)', direct_co2_g_per_km: 'direct CO₂ (g/km)' };
 export const POWERTRAIN_LABEL: Record<string, string> = { ICE: 'Combustion (ICE)', HEV: 'Hybrid (HEV)', PHEV: 'Plug-in hybrid (PHEV)', BEV: 'Battery-electric (BEV)', custom: 'Custom' };
 
 /** Grams of CO2 as text: 850 g · 12.4 kg · 3.21 t. */
