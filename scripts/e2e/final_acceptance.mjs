@@ -89,8 +89,10 @@ async function signOut() {
   await p.waitFor('location.pathname === "/login"', 15000, 'login page after sign-out');
 }
 const waitWorkspace = () => p.waitFor('!!document.querySelector(".lab-grid") && !/Loading the demonstration/.test(document.querySelector(".lab-notes")?.innerText ?? "")', 60000, 'workspace');
+/** Before a click that starts a job: remember that a progress panel appeared, even if it is gone before the next poll. */
+const armJob = () => p.eval(`(() => { window.__jobSeen = false; const o = new MutationObserver(() => { if (document.querySelector('.job')) { window.__jobSeen = true; o.disconnect(); } }); o.observe(document.body, { childList: true, subtree: true }); return true; })()`);
 async function waitJob(timeout = 240000) {
-  await p.waitFor('!!document.querySelector(".job")', 30000, 'job progress');
+  await p.waitFor('window.__jobSeen === true || !!document.querySelector(".job")', 30000, 'job progress');
   await p.waitFor('["done","error","cancelled","interrupted"].includes(document.querySelector(".job")?.dataset.state) || !document.querySelector(".job")', timeout, 'job end');
   return p.eval('document.querySelector(".job")?.dataset.state ?? "gone"');
 }
@@ -376,8 +378,9 @@ await scenario(6, 'Save & Run', 'Next to Constraints (departures 07:30–08:00, 
     const review = await text('.review');
     for (const k of ['Area', 'Mobility data', 'Drivers', 'Riders', 'Vehicles', 'Constraints', 'Methods', 'CO₂ calculation', 'Provenance']) expect(review.includes(k), `review lacks ${k}`);
     const s1 = await shot('wizard-review', 300);
+    await armJob();
     await p.click('Save & Run', '.wizard-foot button');
-    await p.waitFor('!!document.querySelector(".job")', 30000, 'job'); const s2 = await shot('running-experiment', 150);
+    await p.waitFor('window.__jobSeen === true || !!document.querySelector(".job")', 30000, 'job'); const s2 = await shot('running-experiment', 150);
     const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
     await sleep(3000); mine = await cidNow();
     const e = await experiment(mine);
@@ -397,6 +400,7 @@ await scenario(7, 'Change vehicle/emission parameters', 'Results › Advanced: c
     await openAdvanced();
     await choose('select[aria-label="CO₂ calculation of the new experiment"]', 'tailpipe'); await sleep(200);
     const s1 = await shot('co2-calculation-change', 300);
+    await armJob();
     await p.click('New experiment with this calculation', '.lab-right button');
     const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
     await sleep(3000); co2Exp = await cidNow(); expect(co2Exp && co2Exp !== mine, 'no new experiment');
@@ -465,6 +469,7 @@ await scenario(24, 'Run and validate the custom method', 'Tick My Greedy Matchin
   async () => {
     const cs0 = (await api(`/api/campaigns/${demoBase}`)).body;
     await clickCss('.lab-right input[aria-label="My Greedy Matching"]'); await sleep(400);
+    await armJob();
     await p.click('Run again', '.labbar button');
     const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
     await sleep(3500); extension = await cidNow(); expect(extension && extension !== demoBase, 'no extension experiment');
@@ -804,6 +809,7 @@ await scenario(11, 'Import into another researcher workspace', 'Confirm: Import 
 
 await scenario(13, 'Reproduce the frozen experiment', 'Press Run again on the imported experiment.', 'A re-execution on the same frozen scenarios; validation, reproducibility and comparability are reported separately; Reproduced when the solutions are identical.',
   async () => {
+    await armJob();
     await p.click('Run again', '.labbar button');
     const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
     await sleep(3500);
