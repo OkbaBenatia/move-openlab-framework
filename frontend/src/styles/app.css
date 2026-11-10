@@ -636,3 +636,8 @@ svg [role=img]:focus-visible rect, svg [role=img]:focus-visible circle { stroke:
 .has-tip[data-tip]:hover::after, .has-tip[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 8px); left: 0; z-index: 1300;
   width: max-content; max-width: 300px; white-space: normal; text-align: left; padding: 7px 10px; border-radius: 8px; background: var(--text); color: var(--panel);
   font: 500 12px/1.4 Inter, system-ui, sans-serif; letter-spacing: 0; text-transform: none; box-shadow: var(--sh-2); pointer-events: none; }
+
+/* a drawer never grows past its width because of a wide table (it was pushed off-screen on the left) */
+.overlay > .drawer { min-width: 0; max-width: 100%; }
+.veh-grid > * { min-width: 0; }
+.veh-grid table { width: 100%; table-layout: auto; } .veh-grid table input:not([type=number]) { width: 100%; min-width: 0; }

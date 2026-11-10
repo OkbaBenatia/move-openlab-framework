@@ -265,9 +265,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
         {step === 2 && <>
           <label>Scenario name <input value={f.name} onChange={(e) => { autoName.current = false; setF({ ...f, name: e.target.value }); }} aria-label="scenario name" /></label>
           {source !== 'manual' && <div className="row gap">
-            <label>Drivers <input type="number" min={1} max={100} value={f.n_drivers} onChange={(e) => setF({ ...f, n_drivers: Number(e.target.value) })} aria-label="drivers" /></label>
-            <label>Riders <input type="number" min={1} max={100} value={f.n_riders} onChange={(e) => setF({ ...f, n_riders: Number(e.target.value) })} aria-label="riders" /></label>
-            <label>Seed <input type="number" min={0} value={f.seed} onChange={(e) => setF({ ...f, seed: Number(e.target.value) })} aria-label="seed" /></label>
+            <label>Drivers <CountInput min={1} max={100} value={f.n_drivers} onChange={(n) => setF((x) => ({ ...x, n_drivers: n }))} aria-label="drivers" /></label>
+            <label>Riders <CountInput min={1} max={100} value={f.n_riders} onChange={(n) => setF((x) => ({ ...x, n_riders: n }))} aria-label="riders" /></label>
+            <label>Seed <CountInput min={0} max={1000000} value={f.seed} onChange={(n) => setF((x) => ({ ...x, seed: n }))} aria-label="seed" /></label>
             <button type="button" className="btn sm self-end" onClick={randomize} title="A new seed: new places, same counts and time window"><Shuffle size={12} /> Randomize locations</button>
             {source === 'dataset' && <label>Date <input value={f.date} placeholder="YYYY-MM-DD" onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="date" /></label>}
           </div>}
