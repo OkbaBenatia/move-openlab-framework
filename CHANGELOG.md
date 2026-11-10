@@ -5,6 +5,56 @@ interfaces.
 
 ## Unreleased
 
+### Added — scientific UX corrections and validation
+- **Comparison selection is exact**: the open experiment is a visible item that can be unticked; *Compare selected (N)*
+  compares exactly the ticked experiments (A = reference, then B, C… in tick order); the reference is named and can be
+  changed; table, charts, maps, replay, diff and CSV use the selected set only. Selection model with unit tests
+  (`npm --prefix frontend test`).
+- **Interactive charts**: bar, grouped bar, line, box and scatter where they apply (otherwise disabled with the reason);
+  a metric selector (served riders, objective, runtime, gap, vehicles, vehicle distance, service rate, CO₂, CO₂ avoided,
+  custom metrics); tooltips with experiment, method, scenario, value and unit, repetitions and aggregation; CSV, PNG
+  and SVG export.
+- **CO₂ charts**: baseline vs solution, avoided (kg and %, negative values drawn below zero), per served rider and per
+  vehicle, with the calculation, baseline, vehicle parameters and their sources; not drawn side by side when the CO₂
+  calculations are incompatible.
+- **Traceable CO₂ and vehicle changes** (Results › Advanced): another calculation or baseline runs as a new experiment on
+  the same frozen scenarios; edited vehicles or parameters open the wizard on a new scenario version that records the
+  frozen scenario it derives from (`from_instance`). Worked emissions examples and unit conversions in tests.
+- **Custom metrics** (`move_openlab.metrics` entry points): contract (id, version, name, unit, direction, problems,
+  required validated inputs, aggregation, provenance), computed by the platform from validated figures only;
+  example `detour-per-served-rider` and the package `examples/custom_metric/`; `GET /api/lab/metrics`.
+- **Workspace restore** per account: experiment, scenario, selected result, methods, scope and map view after
+  navigation, reload or a new sign-in (`preferences.workspace`).
+- **Randomize locations** in the wizard: a new seed gives new places on the road network inside the area; ids and time
+  windows are kept; the seed is recorded in the scenario's provenance and re-checked when saved.
+- **Map markers**: drivers as squares lettered by vehicle type (C combustion, H hybrid, P plug-in hybrid, E electric),
+  pick-ups filled, drop-offs hollow, unmatched riders grey; tooltips with role, vehicle and served state; points at the
+  same place fanned out; replay plans name each driver's vehicle.
+- **One-ZIP export**: the evidence report goes inside the bundle (`evidence/report.json`, listed and checksummed, checked
+  against the root experiment and fingerprints on import); the report alone is an explicit action. Manifest schema
+  check; documentation of what each checksum protects.
+- **My Greedy Matching**, a public plugin example (`plugins/my_greedy_matching/`), and the tutorial
+  `docs/ADD_YOUR_METHOD.md` with verified commands and outputs; `docs/DEMO_GUIDE.md`.
+- Final browser acceptance run of the required scenarios: `scripts/e2e/final_acceptance.mjs`.
+
+### Changed
+- *Show hidden* moved into a compact **Filters** control (experiment picker, comparison picker, Library, Experiments),
+  with an explanation of hidden records.
+- The **Locked** badge explains: *Original results are frozen. Re-run or extend this experiment to create new results.*
+  (on hover and keyboard focus).
+- Incomplete CO₂ figures name the missing parameter in words and where to enter it.
+
+### Fixed
+- An **extension** used as the comparison reference was reported incompatible with every experiment, its own parent
+  included ("no scenario maps"): its reference-method runs are now taken from its lineage.
+- Scenarios saved from the wizard listed **every participant as edited** (stored coordinates are rounded, generated ones
+  were not); the comparison now uses the stored rounding.
+- The **Import** menu opened under the map's expand control; it now opens above it, stays inside the viewport on a
+  phone and works with the keyboard.
+- Typing a number of **repetitions** (delete "3", type "2") gave 12: the field now accepts typing and clamps on leaving.
+- The wizard kept a scenario name built from the previous area; the suggested name follows the chosen area until edited.
+
+
 ### Added — polish pass: export and import dialogs, Library Use, expanded map
 - **Export dialog**: what the bundle contains before anything is written — manifest and integrity, records and lineage,
   scenario definitions, run results and validator evidence, area / road network / mobility data references, vehicle and

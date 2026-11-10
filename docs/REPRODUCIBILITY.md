@@ -41,6 +41,7 @@ no server data). Format 2 (`move-openlab-bundle/2`) contains:
 | `campaigns/*.json` | each campaign of the lineage with its checksum: problem specification, methods, configuration, runs, environment |
 | `instances/*.json` | every instance used: frozen participants, parameters, travel times, dataset and network provenance |
 | `geometry/*.json` | optional replay polylines of the legs an instance can use (derived from OpenStreetMap, ODbL) |
+| `evidence/report.json` | optional evidence report: validation, reproducibility, comparability with the parent, fingerprints and results, readable on its own (manifest field `evidence`) |
 | `problem` | objective levels, metric definitions, evaluation contract (validator, timing definitions), decision description |
 | `scenarios` | per instance: name, size, source, generator, seed, dataset key, network id, derivation |
 | `networks` | road-network references: id, profile, box, OSM data timestamp, raw-response SHA-256, builder version, licence |
@@ -57,6 +58,32 @@ checksums and lineage, the problem specification and validator version, both fin
 member belongs to an instance of the bundle. Instances are content-addressed, so imported vehicle parameters are
 restored exactly as exported. Format 1 bundles and format 2 bundles written before the `vehicles` / `emissions`
 sections existed are still imported (their semantic fingerprint has no domain component and verifies unchanged).
+
+Every manifest is first checked against a schema (required fields and their types, SHA-256 digests where digests are
+expected), so a malformed manifest is refused with a clear message instead of a parsing error.
+
+**One file to share.** Export writes one ZIP; with *Evidence report* ticked (the default) the report is inside it
+as `evidence/report.json`, listed in the manifest with its SHA-256 like every other member. On import the report must
+name the bundle's root experiment, its checksum and the recomputed fingerprints, otherwise the bundle is refused.
+The report alone is available as a separate JSON only on request (*Evidence report alone* after an export, or
+`GET /api/lab/experiments/{id}/evidence`). Compatibility: bundles without the report verify as before; an
+installation older than this revision refuses a bundle that contains it (unknown member) — untick the report when
+sending to such an installation.
+
+### What each checksum protects
+
+| Check | Protects | Detects |
+|---|---|---|
+| `manifest.sha256` = SHA-256 of `manifest.json` | the manifest, hence the list of members and their digests | an edited, added or removed member, a changed manifest field |
+| `files[member]` = SHA-256 of each member | one campaign, instance, replay-geometry file or the evidence report | any change to that file |
+| campaign checksum (recomputed from the record) | a campaign and its runs, decisions and timings | an edited run or result, also when the manifest was rewritten |
+| instance hash (content address) | frozen participants, travel times, vehicle parameters | an edited scenario |
+| experiment and semantic fingerprints (recomputed) | what was run and which problem it solves | a lineage or problem that does not match its records |
+| bundle SHA-256 (shown at export and import) | the ZIP file as a whole | any difference from the file the exporter sent |
+
+Checksums detect corruption and inconsistent edits; they are **not signatures**. Whoever rewrites a member and
+recomputes every digest produces a different, internally consistent bundle: compare its bundle SHA-256 with the value
+the exporter communicated, and reproduce the results to check them independently (below).
 
 Changing an emission parameter (for example the electricity emission factor) is therefore never silent: the
 instance hash, the experiment fingerprint and the semantic fingerprint all change, the bundle records the new value

@@ -44,6 +44,10 @@ ruff check src tests scripts plugins
 cd frontend && npm run build
 ```
 
+```bash
+npm --prefix frontend test
+```
+
 Add regression tests with every fix, and tests for every new capability. Existing tests must keep passing. Pull
 requests are reviewed by the maintainer and never merged automatically.
 

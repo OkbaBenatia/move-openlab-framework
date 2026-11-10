@@ -85,6 +85,8 @@ per served request, per passenger-km. The configuration is part of the experimen
 experiment and semantic fingerprints, travels in the bundle, and the comparability badge says whether emission
 figures are *directly comparable*, *comparable with conditions* (other factor values or assignments) or *not
 comparable* (other scope, baseline, units or no data) — objective results and runtimes keep their own verdicts.
+From the results (*Advanced*), another calculation or baseline runs as a new experiment on the same frozen
+scenarios, and edited vehicles or parameters become a new scenario version: locked results are never rewritten.
 
 ## Import → Validate → Reproduce → Extend → Compare
 
@@ -136,7 +138,9 @@ move-openlab method new my_method --problem public-ride-matching --dir plugins
 move-openlab method check plugins/my_method --bundle experiment.zip
 ```
 
-Implement `solve(instance, config)` in the generated `plugin.py`; `method check` verifies the metadata, runs a
+A complete worked example with every command and its output: [docs/ADD_YOUR_METHOD.md](docs/ADD_YOUR_METHOD.md)
+(*My Greedy Matching*, `plugins/my_greedy_matching/`). Implement `solve(instance, config)` in the generated
+`plugin.py`; `method check` verifies the metadata, runs a
 self-test in the sandbox, runs your method on every instance of the imported experiment and compares it with the
 experiment's methods, with clear errors at each step. Register it in the web interface, tick it in the workspace and
 press *Run*. The experiment keeps ownership of the scenario, objective, validator and metrics. Guide:
@@ -208,7 +212,9 @@ publishable version is integrated, and is never mixed with the geographic demons
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, web interface, data model, pipeline |
 | [docs/DATASETS.md](docs/DATASETS.md) | Areas, road networks, datasets, external services and their rules |
 | [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Bundles, fingerprints, determinism, semantic comparability |
-| [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, problem packages, dataset providers |
+| [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, custom metrics, problem packages, dataset providers |
+| [docs/ADD_YOUR_METHOD.md](docs/ADD_YOUR_METHOD.md) | Worked example: create, check, register, run and compare a method |
+| [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md) | A short, repeatable demonstration: where to click, what you should see |
 | [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts and roles, password policy, bundles, uploads, external services |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | `start-local.sh`, installation, configuration, tests |
 | [examples/README.md](examples/README.md) | The sample bundle: where it is, how to download, check and rebuild it |

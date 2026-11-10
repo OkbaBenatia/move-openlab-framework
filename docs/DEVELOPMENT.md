@@ -43,6 +43,16 @@ It writes numbered screenshots and `acceptance-report.json` into `--out`; exit s
 no page error occurred. `--only fallback` checks the map without a basemap (start that server with
 `MOVE_OPENLAB_TILE_URL=none`).
 
+### Final acceptance run (33 required scenarios)
+
+`scripts/e2e/final_acceptance.mjs` signs in as the test administrator and a second researcher and runs the required
+scenarios end to end — first use, Workspace restore, manual and random participants, Randomize locations, Save & Run,
+vehicle and CO₂ changes, single-ZIP export and its integrity, staged import, reproduction, comparisons of exactly two
+and three experiments with a changed reference, verdicts, chart tooltips and types, CO₂ charts, chart export, the
+*My Greedy Matching* plugin, custom metric, hidden records, markers, Import menu, locked results, isolation, layouts,
+permissions. Same usage as above (`--base`, `--creds`, `--out`); it writes `final-acceptance.json` (action, expected,
+actual, PASS/FAIL, evidence per scenario) and the screenshots.
+
 ## Installation (manual)
 
 ```bash
@@ -116,6 +126,16 @@ service.
 | `test_geo.py`, `test_geo_workflow.py` | road networks, routing, scenarios, ride matching, RPC ingestion |
 | `test_areas_datasets.py` | areas, profiles, place search, CSV/GeoJSON uploads, limits, isolation |
 | `test_public_safety.py` | confidentiality and hygiene gate |
+| `test_lab.py`, `test_export_import_dialogs.py`, `test_sample_bundle.py` | Workspace API and saved view, demonstration, bundle format 2, one-ZIP export with the evidence report, manifest schema and tampering, sample bundle, extensions as comparison reference |
+| `test_mobility.py`, `test_emissions_examples.py` | vehicles and emissions (worked examples, units, negative avoided CO₂, traceability), wizard composition, Randomize locations, edited-participant provenance |
+| `test_custom_metrics.py`, `test_method_tools.py` | custom-metric contract, aggregation and loading; method template, `method check`, the *My Greedy Matching* example |
+
+Frontend unit tests (the comparison selection model; TypeScript compiled by `tsc`, run by `node --test`, no extra
+dependency):
+
+```bash
+npm --prefix frontend test
+```
 
 Other checks run in CI:
 

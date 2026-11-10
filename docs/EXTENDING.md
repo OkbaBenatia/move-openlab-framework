@@ -1,7 +1,8 @@
 # Extending MOVE OpenLab
 
-Three extension points, none of which requires changing the core: method adapters (plugins), problem packages
-and dataset providers.
+Four extension points, none of which requires changing the core: method adapters (plugins), custom metrics,
+problem packages and dataset providers. A complete worked example of a method, with every command and its output:
+[ADD_YOUR_METHOD.md](ADD_YOUR_METHOD.md).
 
 ## A method plugin (adapter)
 
@@ -80,6 +81,42 @@ file's SHA-256, then runs a self-test on a reserved instance inside the sandbox.
 accept the self-test output. In the sandbox a plugin has no network access and no file access beyond the Python
 installation: it receives everything it needs through `instance` and `config`. Bundles never carry plugin code: a
 colleague who wants to re-run your method installs the same plugin (same version and code hash) on their side.
+
+## A custom metric
+
+An extra figure computed for every scenario and aggregated per method — for example *detour per served rider* or
+*CO₂ avoided per served rider*. It is computed **by the platform** from figures the platform established: the
+metrics recomputed by the problem's validator, the CO₂ figures computed from the validated decisions and counts of
+the frozen instance. It never sees what a method reported about itself, so a method cannot inflate it.
+
+```python
+from move_openlab.custom_metrics import MetricSpec
+
+CO2_AVOIDED_PER_SERVED_RIDER = MetricSpec(
+    id="co2-avoided-per-served-rider", version="1.0.0", name="CO₂ avoided per served rider", unit="kg",
+    direction="higher", problems=("public-ride-matching",), requires=("served", "domain.avoided_g"),
+    aggregate="ratio-of-sums",
+    compute=lambda ctx: (ctx["domain"]["avoided_g"] / 1000, ctx["metrics"]["served"]) if ctx["domain"].get("complete") else None,
+    description="CO2 avoided against the baseline divided by the riders served", provenance="your lab, public")
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `version` | lowercase identifier; semantic version — change it whenever the formula changes |
+| `name`, `unit`, `direction` | display name, unit, `higher` or `lower` is better |
+| `problems` | the problems it is defined for; it is offered nowhere else (no *Accuracy* on ride matching) |
+| `requires` | validated metric ids (`served`, `detour_s`), `domain.<key>` (CO₂ figures) or `instance.<drivers\|riders\|pairs>`; a scenario lacking one gets no value |
+| `aggregate` | `sum`, `mean`, `median` or `ratio-of-sums` (`compute` then returns `(numerator, denominator)`) |
+| `compute(ctx)` | `ctx = {"metrics", "domain", "instance"}`; returns a number, a pair or `None` (no value — never a guess) |
+| `description`, `provenance` | what it measures; who maintains it and where its definition is published |
+
+Install it as a package exposing the object under the entry-point group `move_openlab.metrics` — the complete
+example is [`examples/custom_metric/`](../examples/custom_metric/) (`pip install ./examples/custom_metric`). The
+contract is checked when the metric is loaded; a malformed or duplicate metric is refused and reported
+(`GET /api/lab/metrics?problem_id=…` lists the loaded ones and the errors). The platform ships one example,
+`detour-per-served-rider`. Values appear per scenario and per method in the experiment results
+(`per_scenario[…].custom`, `custom`) and in the comparison charts' metric selector. Tests:
+`tests/test_custom_metrics.py`.
 
 ## A problem package
 

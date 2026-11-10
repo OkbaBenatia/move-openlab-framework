@@ -67,6 +67,13 @@ Checksums are unkeyed SHA-256 values: they detect accidental or partial modifica
 transit that is not accompanied by recomputed hashes; they do not authenticate the author against someone who can
 rewrite both the records and their checksums. Treat a bundle's provenance as trustworthy as the channel it came from.
 
+## Custom metrics
+
+A custom metric is code in an installed Python package, like a problem package: the operator installs it, and it
+runs in the server process (it is not a sandboxed plugin). Its contract is checked when it is loaded; it receives
+only validated figures and instance counts, never what a method reported; a failing or non-finite computation gives
+no value and never interrupts a comparison. Install only metrics you trust as you trust problem packages.
+
 ## Accounts and sessions
 
 Passwords are hashed with scrypt. Sessions are HMAC-signed, HttpOnly, SameSite=Lax cookies bound to a per-user
