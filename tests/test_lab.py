@@ -212,3 +212,33 @@ def test_imported_geometry_stays_in_the_importing_workspace(tmp_path):
     a.import_bundle(demo.bundle_bytes())
     assert list((a.root / "geometry").glob("*.json")) and not (b.root / "geometry").exists()
     assert not (inst.data / "geometry").exists()
+
+
+def test_workspace_view_is_kept_per_account_and_validated(tmp_path):
+    """Scenario, methods, result, scope and map view of the last Workspace visit survive sign-out and are per account."""
+    c = make_client(tmp_path, "view")
+    login(c, "alice")
+    r = c.post("/api/lab/demo").json()
+    base = r["baseline_id"]
+    e = c.get(f"/api/lab/experiments/{base}").json()
+    h = e["scenarios"][-1]["instance_hash"]
+    row = e["results"]["rows"][-1]
+    view = dict(campaign_id=base, instance_hash=h, methods=[f"{row['method_id']}@{row['version']}"],
+                result=f"{row['campaign_id']}:{row['method_id']}", scope="all", map=dict(center=[47.51, 6.8], zoom=14))
+    assert c.put("/api/lab/preferences", json=dict(workspace=view)).status_code == 200
+    c.post("/api/auth/logout")
+    login(c, "alice")                                                   # sign out and in: the view is still there
+    assert c.get("/api/lab/state").json()["preferences"]["workspace"] == view
+    c.post("/api/auth/logout")
+    login(c, "bob")                                                     # another researcher never sees it
+    assert c.get("/api/lab/state").json()["preferences"]["workspace"] is None
+    c.post("/api/auth/logout")
+    login(c, "alice")
+    for bad in (dict(view, campaign_id="../x"), dict(view, instance_hash="zz"), dict(view, scope="every"),
+                dict(view, methods=["a b"]), dict(view, map=dict(center=[95, 0], zoom=3)), dict(view, map=dict(center=[0, 0], zoom=40))):
+        assert c.put("/api/lab/preferences", json=dict(workspace=bad)).status_code == 422, bad
+    assert c.get("/api/lab/state").json()["preferences"]["workspace"] == view       # refused updates change nothing
+    # a reinstalled demonstration keeps the researcher's experiment and view (the demonstration opens on first use only)
+    c.post("/api/lab/demo")
+    st = c.get("/api/lab/state").json()["preferences"]
+    assert st["workspace"] == view and st["last_experiment"] == base

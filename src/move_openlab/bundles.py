@@ -7,6 +7,8 @@ A bundle is a ZIP archive without executable code::
   campaigns/<cid>.json      the locked campaign and its whole lineage (each with its checksum)
   instances/<hash>.json     every content-addressed instance used (frozen participants and travel times)
   geometry/<hash>.json      format 2, optional: replay polylines of an instance (see :mod:`.geo.geometry`)
+  evidence/report.json      format 2, optional³: the evidence report (validation, reproducibility, comparability,
+                            fingerprints, results) — informative, cross-checked against the bundle on import
 
 Format 2 manifest (format 1 bundles are still imported; they lack the fields marked ²)::
 
@@ -25,7 +27,23 @@ Format 2 manifest (format 1 bundles are still imported; they lack the fields mar
   emissions³               emission configuration per campaign (scope, baseline) and the domain descriptors
   fingerprints²            experiment fingerprint (what was run) and semantic fingerprint (which problem; ³ plus
                            the domain descriptors when the instances carry vehicle data)
+  evidence³                present when evidence/report.json is: its path and format
   files                    SHA-256 of every other member
+
+What each checksum protects:
+
+  manifest.sha256          the manifest bytes; the manifest lists the SHA-256 of every other member, so this one
+                           digest covers the whole bundle content (an edited, added or removed member is detected)
+  files[<member>]          one member (campaign, instance, replay geometry, evidence report)
+  campaign checksum        a campaign record and its runs (recomputed from the record; the manifest repeats it)
+  fingerprints             recomputed from the campaigns and instances: what was run and which problem it solves
+  bundle SHA-256           the ZIP file as a whole, shown at export and import, to compare with the exporter's value
+
+Checksums detect corruption and inconsistent edits; they are not signatures. Whoever rewrites a member and
+recomputes every digest produces a different bundle, recognisable only by its bundle SHA-256 — compare it with the
+value the exporter communicated, and reproduce the results to check them independently.
+
+Every manifest is checked against :data:`MANIFEST_SCHEMA` (required fields and their types) before it is used.
 
 ³ added in a later format-2 revision; absent from older format-2 bundles, which keep verifying identically.
 
@@ -56,7 +74,53 @@ MAX_MEMBERS = 5000
 MAX_MEMBER_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_BYTES = 256 * 1024 * 1024                 # sum of uncompressed members (decompression bombs)
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: identical content -> identical bundle
+EVIDENCE = "evidence/report.json"
+EVIDENCE_FORMAT = "move-openlab-evidence/1"
 DATASET_KEYS = ("source", "provider", "dataset_key", "release", "licence", "attribution", "source_sha256")
+HEX64 = __import__("re").compile(r"^[0-9a-f]{64}$")
+# required manifest fields and their types (format 1 and 2); optional fields are type-checked when present
+MANIFEST_SCHEMA = dict(
+    required=dict(format=str, exported_by=str, exporter_installation=str, root_campaign_id=str, spec=dict,
+                  validator_version=str, campaigns=list, instances=list, methods=list, files=dict),
+    required_v2=dict(fingerprints=dict),
+    optional=dict(created_at=str, synthetic=bool, problem=dict, scenarios=list, networks=list, datasets=list,
+                  lineage=list, environment_requirements=dict, environments=list, vehicles=list, emissions=dict,
+                  evidence=dict))
+
+
+def check_manifest(man: object) -> list[str]:
+    """Schema errors of a manifest (empty when its structure is sound). Contents are verified afterwards."""
+    if not isinstance(man, dict):
+        return ["the manifest is not a JSON object"]
+    errs = []
+    req = dict(MANIFEST_SCHEMA["required"], **(MANIFEST_SCHEMA["required_v2"] if man.get("format") == FORMAT_V2 else {}))
+    for k, t in req.items():
+        if k not in man:
+            errs.append(f"missing field {k!r}")
+        elif not isinstance(man[k], t) or (t is str and not man[k]):
+            errs.append(f"field {k!r} must be a non-empty {t.__name__}" if t is str else f"field {k!r} must be a {t.__name__}")
+    for k, t in MANIFEST_SCHEMA["optional"].items():
+        if man.get(k) is not None and not isinstance(man[k], t):
+            errs.append(f"field {k!r} must be a {t.__name__}")
+    if errs:
+        return errs
+    if not isinstance(man["spec"].get("problem_id"), str):
+        errs.append("spec.problem_id must be a string")
+    if not all(isinstance(h, str) and HEX64.match(h) for h in man["instances"]):
+        errs.append("instances must be SHA-256 hex digests")
+    if not all(isinstance(k, str) and isinstance(v, str) and HEX64.match(v) for k, v in man["files"].items()):
+        errs.append("files must map member names to SHA-256 hex digests")
+    for c in man["campaigns"]:
+        if not (isinstance(c, dict) and all(isinstance(c.get(k), str) and c.get(k) for k in ("campaign_id", "kind", "checksum"))):
+            errs.append("each campaign entry needs campaign_id, kind and checksum")
+            break
+    for m in man["methods"]:
+        if not (isinstance(m, dict) and isinstance(m.get("method_id"), str) and isinstance(m.get("version"), str)):
+            errs.append("each method entry needs method_id and version")
+            break
+    if man["format"] == FORMAT_V2 and not all(isinstance(man["fingerprints"].get(k), str) for k in ("experiment", "semantic")):
+        errs.append("fingerprints must give the experiment and semantic fingerprints")
+    return errs
 NETWORK_KEYS = ("network_id", "profile", "builder", "nodes", "edges", "network_sha256", "licence")
 
 
@@ -177,9 +241,10 @@ def _network_present(nets, nid: str) -> bool:
         return False
 
 
-def export(ws, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
+def export(ws, cid: str, geometry: bool = True, evidence: dict | None = None) -> tuple[bytes, dict]:
     """Build the bundle of ``cid`` and its lineage. ``geometry=False`` leaves out the optional replay polylines (the
-    importer can still verify, reproduce and compare; routes then replay only where the road network is installed)."""
+    importer can still verify, reproduce and compare; routes then replay only where the road network is installed).
+    ``evidence`` (the evidence report of ``cid``) is stored as ``evidence/report.json``: one file to share."""
     from .geo.osm import NetworkStore
     chain = ws.lineage(cid)
     if not all(c.get("checksum") for c in chain):
@@ -213,6 +278,8 @@ def export(ws, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
             datasets[prov["dataset_key"]] = {k: prov.get(k) for k in DATASET_KEYS if prov.get(k) is not None}
     methods = sorted({(m["method_id"], m["version"], m["source"], m.get("code_sha256") or "")
                       for c in chain for m in c["methods"]})
+    if evidence is not None:
+        files[EVIDENCE] = canonical(evidence)
     manifest = dict(
         format=FORMAT_V2, created_at=now(), exported_by=ws.display, exporter_installation=ws.inst.id,
         root_campaign_id=cid, spec=problem.spec_record(), validator_version=problem.validator_version,
@@ -245,6 +312,9 @@ def export(ws, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
                        note="editable parameters and their provenance are frozen inside the instances (drivers' "
                             "vehicle and vehicles.default); figures are recomputed from validated decisions"),
         fingerprints=dict(experiment=experiment_fingerprint(chain), semantic=semantic_fingerprint(problem, instances, chain)),
+        **(dict(evidence=dict(file=EVIDENCE, format=evidence.get("format"),
+                              note="informative report of the exporting installation; the importer verifies the records "
+                                   "and recomputes the fingerprints itself")) if evidence is not None else {}),
         files={k: sha256_bytes(v) for k, v in sorted(files.items())})
     mbytes = canonical(manifest)
     buf = io.BytesIO()
@@ -256,7 +326,7 @@ def export(ws, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
     data = buf.getvalue()
     return data, dict(bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes), bytes=len(data),
                       campaigns=[c["campaign_id"] for c in chain], instances=len(hashes),
-                      geometry=sum(k.startswith("geometry/") for k in files))
+                      geometry=sum(k.startswith("geometry/") for k in files), evidence=EVIDENCE in files)
 
 
 def verify(ws, data: bytes) -> tuple[dict, dict, dict, Problem, dict]:
@@ -291,9 +361,12 @@ def _verify(ws, data: bytes):
     if sha256_bytes(mbytes) != z.read("manifest.sha256").decode().strip():
         raise IntegrityError("manifest digest mismatch")
     man = json.loads(mbytes)
-    fmt = man.get("format")
+    fmt = man.get("format") if isinstance(man, dict) else None
     if fmt not in FORMATS:
         raise IntegrityError(f"unsupported bundle format {fmt!r}")
+    errs = check_manifest(man)
+    if errs:
+        raise IntegrityError("malformed manifest: " + "; ".join(errs[:3]))
     try:
         problem = registry.get(man["spec"]["problem_id"])
     except registry.UnknownProblem:
@@ -307,7 +380,7 @@ def _verify(ws, data: bytes):
     for name, digest in man["files"].items():
         if name not in names:
             raise IntegrityError(f"listed file missing: {name}")
-        if not name.startswith(prefixes) or not name.endswith(".json"):
+        if (not name.startswith(prefixes) or not name.endswith(".json")) and not (fmt == FORMAT_V2 and name == EVIDENCE):
             raise IntegrityError(f"unexpected member {name}")
         if sha256_bytes(z.read(name)) != digest:
             raise IntegrityError(f"file checksum mismatch: {name}")
@@ -355,6 +428,16 @@ def _verify(ws, data: bytes):
         fingerprints = dict(experiment=experiment_fingerprint(chain), semantic=semantic_fingerprint(problem, instances, chain))
         if man.get("fingerprints") != fingerprints:
             raise IntegrityError("experiment or semantic fingerprint differs from the recomputed one")
+    evidence = None
+    if EVIDENCE in man["files"]:                # informative, but it must describe this bundle and nothing else
+        ev = json.loads(z.read(EVIDENCE))
+        exp = ev.get("experiment") if isinstance(ev, dict) else None
+        root = campaigns[man["root_campaign_id"]]
+        if (not isinstance(exp, dict) or ev.get("format") != EVIDENCE_FORMAT or exp.get("campaign_id") != root["campaign_id"]
+                or exp.get("checksum") != root["checksum"] or ev.get("fingerprints") != fingerprints):
+            raise IntegrityError("the evidence report does not describe this bundle (experiment, checksum or fingerprints differ)")
+        evidence = dict(file=EVIDENCE, sha256=man["files"][EVIDENCE], format=ev["format"], generated_at=ev.get("generated_at"),
+                        generated_by=ev.get("generated_by"))
     avail = []
     for m in man["methods"]:
         try:
@@ -371,7 +454,7 @@ def _verify(ws, data: bytes):
                   lineage=man.get("lineage") or [],
                   exporter_installation=man["exporter_installation"], root_campaign_id=man["root_campaign_id"],
                   files_checked=len(man["files"]), instances_verified=len(instances),
-                  geometry_verified=len(geometry), fingerprints=fingerprints,
+                  geometry_verified=len(geometry), fingerprints=fingerprints, evidence=evidence,
                   networks=man.get("networks") or [], datasets=man.get("datasets") or [],
                   campaigns_verified=[dict(campaign_id=k, kind=v["kind"], checksum=v["checksum"], title=v["title"],
                                            owner_display=v.get("owner_display"),

@@ -351,3 +351,42 @@ def test_vehicle_profiles_and_ab_diff(tmp_path):
     assert dg["a"]["method_id"] == "greedy-min-detour"
     assert c.get("/api/lab/diff", params=dict(a=a, b=b, method_a="nope")).status_code == 400
     assert other.get("/api/lab/diff", params=dict(a=a, b=b)).status_code == 404
+
+
+def test_randomize_locations_keeps_ids_and_times_and_is_recorded(tmp_path, grid):
+    """"Randomize locations": seeded places on the road network inside the area; ids, windows and vehicles kept;
+    each participant's place depends only on the seed and its id; the seed is recorded when saved and re-checked."""
+    _, net, _ = grid
+    sc = scenario(net.network_id)
+    s, w, n, e = net.bounds()
+    nodes = set(zip(net.lat, net.lon))
+    d1, r1 = SC.relocate(net, sc["drivers"], sc["riders"], 42, 300)
+    for old, new in zip(sc["drivers"] + sc["riders"], d1 + r1):
+        assert {k: v for k, v in new.items() if k not in ("origin", "destination")} == {k: v for k, v in old.items() if k not in ("origin", "destination")}
+        for p in (new["origin"], new["destination"]):
+            assert tuple(p) in nodes and s <= p[0] <= n and w <= p[1] <= e        # on the network, inside the area
+    assert SC.relocate(net, sc["drivers"], sc["riders"], 42, 300) == (d1, r1)    # same seed, same places
+    d2, r2 = SC.relocate(net, sc["drivers"], sc["riders"], 43, 300)
+    assert [a["origin"] for a in d2 + r2] != [a["origin"] for a in d1 + r1]       # a new seed moves them
+    more, _ = SC.relocate(net, sc["drivers"] + [dict(sc["drivers"][0], id="D9")], [], 42, 300)
+    assert more[:3] == d1                                                         # adding one leaves the others in place
+    # over HTTP: the preview relocates, the saved scenario records the seed; a later hand edit is listed as edited
+    c, nid = client(tmp_path)
+    login(c, "alice")
+    sc = scenario(nid)
+    basis = dict(source="manual", network_id=nid, name="manual relocated", params=sc["params"], drivers=sc["drivers"],
+                 riders=sc["riders"], min_trip_m=300, relocate_seed=7, vehicles=sc["vehicles"], emissions=sc["emissions"])
+    pv = c.post("/api/geo/scenarios/preview", json=basis)
+    assert pv.status_code == 200, pv.text
+    moved = pv.json()["scenario"]
+    assert [a["id"] for a in moved["drivers"]] == ["D1", "D2", "D3"] and moved["drivers"][0]["origin"] != sc["drivers"][0]["origin"]
+    assert moved["provenance"]["locations"] == dict(generator=SC.RELOCATE_GENERATOR, seed=7, min_trip_m=300)
+    moved["riders"][1]["origin"] = sc["riders"][1]["origin"]                       # moved back by hand
+    body = dict(scenario=dict(name="manual relocated", network_id=nid, params=sc["params"], drivers=moved["drivers"],
+                              riders=moved["riders"], vehicles=sc["vehicles"], emissions=sc["emissions"]),
+                basis=dict(basis, drivers=moved["drivers"], riders=moved["riders"]))
+    saved = c.post("/api/geo/scenarios", json=body)
+    assert saved.status_code == 200, saved.text
+    prov = c.get(f"/api/geo/scenarios/{saved.json()['scenario_id']}").json()["scenario"]["provenance"]
+    assert prov["source"] == "editor" and prov["locations"]["seed"] == 7 and prov["edited_agents"] == ["R2"]
+    assert c.post("/api/geo/scenarios/preview", json=dict(basis, relocate_seed=-1)).status_code == 422

@@ -193,11 +193,21 @@ def lock(cid: str, request: Request):
 
 
 @router.get("/campaigns/{cid}/export")
-def export(cid: str, request: Request, geometry: bool = True):
-    data, info_ = _call(ws(request).export_bundle, cid, geometry)
+def export(cid: str, request: Request, geometry: bool = True, evidence: bool = False):
+    """One ZIP. ``evidence=true`` puts the evidence report inside it (``evidence/report.json``, listed and checksummed in
+    the manifest like every other member); nothing else is downloaded."""
+    w = ws(request)
+    doc = None
+    if evidence:
+        from .lab import evidence_doc                    # lazy: the Workspace API module imports this one
+        if not all(c.get("checksum") for c in _call(w.lineage, cid)):
+            raise HTTPException(400, "lock the campaign before exporting it")
+        doc = evidence_doc(cid, request)
+    data, info_ = _call(w.export_bundle, cid, geometry, doc)
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="move_openlab_campaign_{cid}.zip"',
-        "X-Bundle-SHA256": info_["bundle_sha256"], "X-Manifest-SHA256": info_["manifest_sha256"]})
+        "X-Bundle-SHA256": info_["bundle_sha256"], "X-Manifest-SHA256": info_["manifest_sha256"],
+        "X-Bundle-Evidence": "included" if doc else "not-included"})
 
 
 @router.post("/import")

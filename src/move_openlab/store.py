@@ -669,9 +669,9 @@ class Workspace:
         return c
 
     # ------------------------------------------------------------------ bundles (see :mod:`.bundles`)
-    def export_bundle(self, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
+    def export_bundle(self, cid: str, geometry: bool = True, evidence: dict | None = None) -> tuple[bytes, dict]:
         from . import bundles
-        return bundles.export(self, cid, geometry=geometry)
+        return bundles.export(self, cid, geometry=geometry, evidence=evidence)
 
     def verify_bundle(self, data: bytes) -> tuple[dict, dict, dict, Problem]:
         from . import bundles

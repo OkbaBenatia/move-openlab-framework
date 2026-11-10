@@ -20,9 +20,9 @@ import threading
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from .. import bundles, demo, samples
+from .. import bundles, custom_metrics, demo, samples
 from ..analysis.common import SCOPE_FULL, by_cell, med
 from ..analysis.compare import compare
 from ..analysis.reproducibility import reproducibility
@@ -78,6 +78,35 @@ def _prefs(w) -> dict:
         return {}
 
 
+class MapViewBody(BaseModel):
+    center: tuple[float, float]
+    zoom: int = Field(ge=0, le=22)
+
+    @field_validator("center")
+    @classmethod
+    def _on_earth(cls, c):
+        if not (-90 <= c[0] <= 90 and -180 <= c[1] <= 180):
+            raise ValueError("center outside latitude/longitude ranges")
+        return c
+
+
+class WorkspaceView(BaseModel):
+    """What the Workspace showed for the last experiment: restored when the researcher comes back to it."""
+    campaign_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+    instance_hash: str = Field("", pattern=r"^([0-9a-f]{64})?$")
+    methods: list[str] = Field(default_factory=list, max_length=200)
+    result: str = Field("", max_length=300)
+    scope: str = Field("scenario", pattern=r"^(scenario|all)$")
+    map: MapViewBody | None = None
+
+    @field_validator("methods")
+    @classmethod
+    def _keys(cls, ms):
+        if not all(isinstance(m, str) and 0 < len(m) <= 200 and re.match(r"^[A-Za-z0-9._:@+-]+$", m) for m in ms):
+            raise ValueError("invalid method key")
+        return ms
+
+
 class PrefsBody(BaseModel):
     tour_dismissed: bool | None = None
     start_dismissed: bool | None = None                              # the first-use "start here" card
@@ -85,6 +114,7 @@ class PrefsBody(BaseModel):
     last_experiment: str | None = Field(None, max_length=128)
     area_id: str | None = Field(None, max_length=64)
     hidden_ids: list[str] | None = Field(None, max_length=1000)     # records hidden from lists (never deleted)
+    workspace: WorkspaceView | None = None                            # scenario, methods, result and map of the last view
 
 
 @router.get("/state")
@@ -94,7 +124,7 @@ def state(request: Request):
     # "installed" means *this* demonstration (by bundle digest): a newer shipped demonstration is imported next to the
     # previous one, which stays in the workspace (nothing is ever deleted)
     installed = demo.available() and p.get("demo_installed") == sha256_bytes(demo.bundle_bytes())
-    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "theme", "last_experiment", "area_id")}
+    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "theme", "last_experiment", "area_id", "workspace")}
                 | dict(hidden_ids=p.get("hidden_ids") or []),
                 demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or [],
                           area=p.get("demo_area")),
@@ -367,9 +397,32 @@ def _provenance(request: Request, w, insts: list[dict]) -> dict:
     return out
 
 
+def _custom(problem, insts, per: dict) -> tuple[dict, dict]:
+    """Registered custom metrics of this problem, computed by the platform from validated figures (never from what a
+    method reported): value per scenario (keyed like ``per_scenario``) and the aggregate of each metric."""
+    specs = custom_metrics.for_problem(problem.problem_id)
+    if not specs or not per:
+        return {}, {}
+    hs = [i["instance_hash"] for i in insts if i["instance_hash"] in per]
+    ctxs = [dict(metrics=per[h].get("metrics") or {}, domain=per[h].get("domain") or {},
+                 instance={k: len(i[k]) for i in insts if i["instance_hash"] == h for k in custom_metrics.INSTANCE_KEYS if isinstance(i.get(k), list)})
+            for h in hs]
+    by_scen: dict = {h: {} for h in hs}
+    totals: dict = {}
+    for spec in specs:
+        vals, total = custom_metrics.evaluate(spec, ctxs)
+        totals[spec.id] = total
+        for h, v in zip(hs, vals):
+            by_scen[h][spec.id] = v
+    return by_scen, totals
+
+
 def _row(problem, insts, r: dict) -> dict:
     sc = r.get("optimality_scope") or {}
     proven = sc.get(SCOPE_FULL, 0)
+    per = r.get("per_scenario") or {}
+    by_scen, custom = _custom(problem, insts, per)
+    per = {h: dict(c, custom=by_scen.get(h, {})) for h, c in per.items()}
     return dict(method_id=r["method_id"], version=r["version"], name=r["name"], kind=r["kind"], source=r["source"],
                 campaign_id=r["campaign_id"], origin=r["origin"], campaign_kind=r["campaign_kind"],
                 researcher=r["researcher"], scenarios=r["scenarios"], valid=r["all_feasible"],
@@ -379,7 +432,7 @@ def _row(problem, insts, r: dict) -> dict:
                 solver_time_s=r["median_solver_time_s"], total_time_s=r["median_total_time_s"],
                 mean_rank=r.get("mean_rank"), reproduction=r.get("reproduction_status"),
                 repetitions=r.get("repetitions"), repetitions_consistent=r.get("repetitions_consistent"),
-                per_scenario=r.get("per_scenario") or {})
+                per_scenario=per, custom=custom)
 
 
 def _comparability(sem: dict) -> dict:
@@ -429,6 +482,7 @@ class RunBody(BaseModel):
     scenario: dict | None = None
     basis: ComposeBody | None = None
     parent: str | None = Field(None, max_length=64)
+    from_instance: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
 
 
 @router.post("/run")
@@ -438,7 +492,8 @@ def run(body: RunBody, request: Request):
     hashes = list(body.instance_hashes)
     scenario = None
     if body.scenario is not None:
-        scenario = geo_save_scenario(ScenarioBody(scenario=body.scenario, parent=body.parent, basis=body.basis), request)
+        scenario = geo_save_scenario(ScenarioBody(scenario=body.scenario, parent=body.parent, basis=body.basis,
+                                                  from_instance=body.from_instance), request)
         hashes.insert(0, scenario["instance_hash"])
     if not hashes:
         raise HTTPException(400, "choose or create at least one scenario")
@@ -685,9 +740,17 @@ def export_preview(cid: str, request: Request):
 
 @router.get("/experiments/{cid}/evidence")
 def evidence_report(cid: str, request: Request):
-    """A readable evidence report to keep next to a bundle: provenance, independent validation, reproducibility (for a
-    re-execution), semantic comparability with the parent, fingerprints and the results table. Computed from the stored
-    records only; it is not part of the bundle and is not needed to verify it."""
+    """The evidence report alone, as a JSON download (an explicit action; Export can also put it inside the bundle)."""
+    body = json.dumps(evidence_doc(cid, request), indent=1, ensure_ascii=False)
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="move_openlab_evidence_{cid}.json"'})
+
+
+def evidence_doc(cid: str, request: Request) -> dict:
+    """A readable evidence report: provenance, independent validation, reproducibility (for a re-execution), semantic
+    comparability with the parent, fingerprints and the results table. Computed from the stored records only. Inside a
+    bundle (``evidence/report.json``) it is informative: the importer verifies the records themselves and recomputes
+    the fingerprints; the report must name the bundle's root experiment, its checksum and the same fingerprints."""
     w = ws(request)
     e = experiment(cid, request)
     chain = _call(w.lineage, cid)
@@ -712,9 +775,7 @@ def evidence_report(cid: str, request: Request):
         results=[dict(method_id=r["method_id"], name=r.get("name"), kind=r.get("kind"), campaign_id=r.get("campaign_id"),
                       totals=r.get("totals"), proven_optimal=r.get("proven_optimal"), repetitions=r.get("repetitions"),
                       repetitions_consistent=r.get("repetitions_consistent")) for r in (e["results"] or {}).get("rows", [])])
-    body = json.dumps(rep, indent=1, ensure_ascii=False)
-    return Response(body, media_type="application/json",
-                    headers={"Content-Disposition": f'attachment; filename="move_openlab_evidence_{cid}.json"'})
+    return rep
 
 
 @router.post("/inspect")
@@ -750,3 +811,12 @@ async def inspect_bundle(request: Request, file: UploadFile = File(...)):
                           "this problem; runtimes only with conditions (other hardware and load).",
                warnings=warnings)
     return rep
+
+
+@router.get("/metrics")
+def metrics(request: Request, problem_id: str = ""):
+    """Custom metrics registered for a problem (computed by the platform from validated results), and load errors."""
+    ws(request)
+    st = custom_metrics.status()
+    return dict(metrics=[m.public() for m in custom_metrics.for_problem(problem_id)] if problem_id else [],
+                errors=st["errors"])

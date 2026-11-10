@@ -117,7 +117,11 @@ def compare(ws, cid: str) -> dict:
                           feasible=all(r["accepted"] and r["validation"]["feasible"] for r in rs),
                           accepted=sum(1 for r in rs if r["accepted"]), optimality=lab,
                           median_solver_time_s=med(rs, "solver_time_s"), median_total_time_s=med(rs, "total_time_s"),
-                          domain=rs[0].get("domain"), gap_pct=None)
+                          domain=rs[0].get("domain"), gap_pct=None,
+                          # every recorded run of this cell (for distributions: box plots, per-repetition lines)
+                          runs=[dict(repetition=r.get("repetition"), total_time_s=r.get("total_time_s"),
+                                     solver_time_s=r.get("solver_time_s"), accepted=r.get("accepted"))
+                                for r in sorted(rs, key=lambda r: r.get("repetition") or 0)])
         row["optimality_scope"] = scopes
         row["per_scenario"] = per
         row["domain"] = problem.aggregate_domain([rs[0].get("domain") for rs in cells.values()])

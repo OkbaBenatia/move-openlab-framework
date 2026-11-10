@@ -155,12 +155,14 @@ class ComposeBody(BaseModel):
     riders: list[dict] | None = Field(None, max_length=200)
     vehicles: dict | None = None
     emissions: dict | None = None
+    relocate_seed: int | None = Field(None, ge=0, le=1_000_000)    # manual: new places for the given participants
 
 
 class ScenarioBody(BaseModel):
     scenario: dict
     parent: str | None = None
     basis: ComposeBody | None = None            # the composition a wizard scenario started from (keeps its provenance)
+    from_instance: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")   # an experiment's frozen scenario it edits
 
 
 def _trips_inside(request: Request, net, key: str) -> tuple[list[dict], dict]:
@@ -187,8 +189,12 @@ def _compose(request: Request, b: ComposeBody) -> dict:
             sc = SC.generate_empirical(inside, rep, b.network_id, b.name, b.n_drivers, b.n_riders, b.seed, b.start_s,
                                        b.end_s, b.params, b.date)
         else:
+            drivers, riders, prov = b.drivers or [], b.riders or [], dict(source="editor")
+            if b.relocate_seed is not None:      # "Randomize locations": ids and time windows kept, places re-drawn
+                drivers, riders = SC.relocate(net, drivers, riders, b.relocate_seed, b.min_trip_m)
+                prov["locations"] = dict(generator=SC.RELOCATE_GENERATOR, seed=b.relocate_seed, min_trip_m=b.min_trip_m)
             sc = dict(name=b.name, network_id=b.network_id, params=b.params or dict(SC.DEFAULT_PARAMS),
-                      drivers=b.drivers or [], riders=b.riders or [], provenance=dict(source="editor"))
+                      drivers=drivers, riders=riders, provenance=prov)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     if b.vehicles:
@@ -224,7 +230,9 @@ def save_scenario(body: ScenarioBody, request: Request):
     a generator or a dataset keeps that provenance (seed, release, licence, attribution) plus the list of agents the
     researcher edited; an edited version records its parent and keeps the parent's provenance."""
     prov: dict = dict(source="editor")
-    if body.basis is not None and body.basis.source != "manual":
+    # a generator, a dataset or randomized locations: recomputed here, so the recorded seed matches the saved places
+    # (participants moved by hand afterwards are listed as edited)
+    if body.basis is not None and (body.basis.source != "manual" or body.basis.relocate_seed is not None):
         base = _compose(request, body.basis)
         prov = dict(base["provenance"])
         edited = _edited_agents(base, body.scenario)
@@ -233,6 +241,9 @@ def save_scenario(body: ScenarioBody, request: Request):
     if body.parent:
         parent = _call(ws(request).scenario, body.parent)
         prov.update(parent=body.parent, derived_from=parent["scenario"].get("provenance") or dict(source="editor"))
+    elif body.from_instance:                    # a new version of an experiment's frozen scenario (never overwritten)
+        frozen = instance(body.from_instance, request)          # same access rule: used by one of the user's records
+        prov.update(derived_from_instance=body.from_instance, derived_from=frozen.get("provenance") or dict(source="editor"))
     return _build_and_save(request, dict(body.scenario, provenance=prov), body.parent)
 
 

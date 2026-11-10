@@ -202,6 +202,30 @@ def generate_synthetic(net: RoadNetwork, name: str, n_drivers: int, n_riders: in
     return sc
 
 
+RELOCATE_GENERATOR = "move_openlab.geo.relocate/1.0.0"
+
+
+def relocate(net: RoadNetwork, drivers: list[dict], riders: list[dict], seed: int, min_trip_m: float = 1500.0
+             ) -> tuple[list[dict], list[dict]]:
+    """New start and end points for the given participants, drawn among the road network's nodes (so inside the area
+    and on the network), with a straight-line trip of at least ``min_trip_m``. Ids, time windows and every other field
+    are kept. Each participant's draw depends only on the seed, its role and its id: adding or removing one leaves the
+    others where they are, and the same seed always gives the same places."""
+    from .osm import haversine_m
+    n = len(net)
+    if n < 2:
+        raise ValueError("the road network has too few nodes to place participants")
+
+    def moved(role: str, a: dict) -> dict:
+        rnd = random.Random(f"relocate:{net.network_id}:{seed}:{role}:{a.get('id')}")
+        for _ in range(1000):
+            i, j = rnd.randrange(n), rnd.randrange(n)
+            if haversine_m(net.lat[i], net.lon[i], net.lat[j], net.lon[j]) >= min_trip_m:
+                return dict(a, origin=[net.lat[i], net.lon[i]], destination=[net.lat[j], net.lon[j]])
+        raise ValueError("network too small for the minimum trip length")
+    return [moved("drivers", a) for a in drivers], [moved("riders", a) for a in riders]
+
+
 def generate_empirical(trips: list[dict], dataset: dict, network_id: str, name: str, n_drivers: int, n_riders: int,
                        seed: int, start_s: int, end_s: int, params: dict | None = None, date: str | None = None) -> dict:
     """Seeded resampling of validated trip records (see the module docstring).

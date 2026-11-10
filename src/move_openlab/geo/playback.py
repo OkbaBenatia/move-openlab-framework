@@ -32,6 +32,12 @@ def _leg(net, index, a_node, b_node, a_pt, b_pt, t0: float, duration: float, leg
     return [[round(p[0], 6), round(p[1], 6), round(t0 + duration * c / total, 1)] for p, c in zip(coords, cum)]
 
 
+def _vehicle(dr: dict) -> dict | None:
+    """The driver's frozen vehicle as the map shows it (name and powertrain), when the scenario has vehicles."""
+    v = dr.get("vehicle")
+    return dict(id=v.get("id"), name=v.get("name"), powertrain=v.get("powertrain")) if isinstance(v, dict) else None
+
+
 def plan(inst: dict, decisions: list, net=None, legs: dict | None = None) -> dict:
     index = {osm: i for i, osm in enumerate(net.osm_node_ids)} if net is not None else {}
     riders = {r["id"]: r for r in inst["riders"]}
@@ -53,12 +59,12 @@ def plan(inst: dict, decisions: list, net=None, legs: dict | None = None) -> dic
             stops = [dict(type="depart", t=dep, at=dr["origin"]), dict(type="pickup", t=t_pick, at=r["origin"], rider=r_id),
                      dict(type="dropoff", t=t_drop, at=r["destination"], rider=r_id), dict(type="arrive", t=t_end, at=dr["destination"])]
             served.add(r_id)
-            vehicles.append(dict(driver=dr["id"], rider=r_id, detour_s=p["detour_s"], path=path, stops=stops))
+            vehicles.append(dict(driver=dr["id"], rider=r_id, detour_s=p["detour_s"], path=path, stops=stops, vehicle=_vehicle(dr)))
         else:
             dep = dr["earliest"]
             path = _leg(net, index, dr["origin_node"], dr["destination_node"], dr["origin"], dr["destination"], dep,
                         dr["direct_s"], legs)
-            vehicles.append(dict(driver=dr["id"], rider=None, detour_s=0, path=path,
+            vehicles.append(dict(driver=dr["id"], rider=None, detour_s=0, path=path, vehicle=_vehicle(dr),
                                  stops=[dict(type="depart", t=dep, at=dr["origin"]),
                                         dict(type="arrive", t=dep + dr["direct_s"], at=dr["destination"])]))
     unserved = [dict(rider=r["id"], at=r["origin"], destination=r["destination"], window=[r["earliest"], r["latest"]])
