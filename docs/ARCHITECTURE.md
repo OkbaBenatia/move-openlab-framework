@@ -120,7 +120,7 @@ first official release (`display_version()`).
 | `move_openlab.bundles` | Bundle export, complete verification and import (formats 1 and 2), experiment and semantic fingerprints |
 | `move_openlab.demo` | The shipped demonstration bundle, imported once per workspace (with the demonstration's area) |
 | `move_openlab.samples` | The shipped sample bundle (kept unpacked, packed deterministically on demand), offered only when its recorded cross-installation check passed |
-| `move_openlab.custom_metrics` | Custom metrics (`move_openlab.metrics` entry points): contract check, per-problem registry, evaluation from validated figures only, aggregation |
+| `move_openlab.custom_metrics` | Custom metrics: built-in (trusted, in-process) and registered metric files (static metadata, pinned SHA-256, evaluated only in the verified sandbox through `move_openlab.worker`), input filtering, output validation, aggregation |
 | `move_openlab.method_tools` | `method new` (template) and `method check` (metadata, sandboxed self-test, run on a bundle) |
 | `move_openlab.analysis` | Comparison, reproducibility, semantic comparability, threshold studies, reports |
 | `move_openlab.comparability` | Fingerprints and the claim-dependent comparability contract |

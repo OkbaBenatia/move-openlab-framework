@@ -134,7 +134,7 @@ def command(spec: SandboxSpec, plugin_file: str | None, python: str | None = Non
             argv += ["--symlink", tgt, link]
     if plugin_file:
         argv += ["--ro-bind", str(Path(plugin_file).resolve()), PLUGIN_MOUNT]
-    argv += ["--chdir", "/tmp", "--hostname", "sandbox", "--", python or sys.executable, "-I", "-m", "move_openlab.worker"]
+    argv += ["--chdir", "/tmp", "--hostname", "sandbox", "--", python or sys.executable, "-I", "-B", "-m", "move_openlab.worker"]
     return argv
 
 
@@ -186,7 +186,7 @@ def verify(spec: SandboxSpec, refresh: bool = False) -> dict:
         if not refresh and spec in _verified:
             return _verified[spec]
         argv = command(spec, None)
-        argv = argv[:argv.index("--") + 1] + [sys.executable, "-I", "-c", PROBE]
+        argv = argv[:argv.index("--") + 1] + [sys.executable, "-I", "-B", "-c", PROBE]
         import move_openlab
         payload = json.dumps(dict(protected=list(spec.protected), home=str(Path.home()), allowed_env=sorted(ENV) + ["PWD"],
                                   roots=_readonly_roots(spec),

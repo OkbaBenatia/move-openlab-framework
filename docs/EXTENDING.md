@@ -85,38 +85,62 @@ colleague who wants to re-run your method installs the same plugin (same version
 ## A custom metric
 
 An extra figure computed for every scenario and aggregated per method — for example *detour per served rider* or
-*CO₂ avoided per served rider*. It is computed **by the platform** from figures the platform established: the
-metrics recomputed by the problem's validator, the CO₂ figures computed from the validated decisions and counts of
-the frozen instance. It never sees what a method reported about itself, so a method cannot inflate it.
+*CO₂ avoided per served rider*. It is computed from figures the platform established: the metrics recomputed by the
+problem's validator, the CO₂ figures computed from the validated decisions and counts of the frozen instance. It
+receives **only the inputs it declares** in `requires`, never what a method reported about itself, so a method cannot
+inflate it.
+
+A custom metric is third-party code, so it follows the rules of method plug-ins
+([SECURITY_MODEL.md › Custom metrics](SECURITY_MODEL.md#custom-metrics)): a file
+`<approved plugin directory>/<name>/metric.py`, never imported by the server, registered per workspace with its
+SHA-256 pinned, and computed only in the verified sandbox, with a timeout and memory limits. Without plug-ins (the
+default) or without a working sandbox, registered metrics are listed with the reason and **no value** — there is no
+fallback.
 
 ```python
-from move_openlab.custom_metrics import MetricSpec
+# plugins/co2_avoided_per_served_rider/metric.py   (the complete, shipped example)
+METADATA = {
+    "id": "co2-avoided-per-served-rider", "version": "1.0.0", "name": "CO₂ avoided per served rider", "unit": "kg",
+    "direction": "higher", "problems": ["public-ride-matching"],
+    "requires": ["served", "domain.avoided_g", "domain.complete"], "aggregate": "ratio-of-sums",
+    "description": "CO2 avoided against the experiment's baseline, divided by the riders served (validated figures).",
+    "provenance": "MOVE OpenLab example metric plugins/co2_avoided_per_served_rider, public",
+}
 
-CO2_AVOIDED_PER_SERVED_RIDER = MetricSpec(
-    id="co2-avoided-per-served-rider", version="1.0.0", name="CO₂ avoided per served rider", unit="kg",
-    direction="higher", problems=("public-ride-matching",), requires=("served", "domain.avoided_g"),
-    aggregate="ratio-of-sums",
-    compute=lambda ctx: (ctx["domain"]["avoided_g"] / 1000, ctx["metrics"]["served"]) if ctx["domain"].get("complete") else None,
-    description="CO2 avoided against the baseline divided by the riders served", provenance="your lab, public")
+
+def compute(ctx):
+    if not ctx["domain"]["complete"]:           # incomplete CO2 figures: no value rather than a partial one
+        return None
+    return (ctx["domain"]["avoided_g"] / 1000.0, ctx["metrics"]["served"])
 ```
 
 | Field | Meaning |
 |---|---|
-| `id`, `version` | lowercase identifier; semantic version — change it whenever the formula changes |
+| `id`, `version` | lowercase identifier; semantic version — change it whenever the formula changes (a changed file is refused until it is registered again under a new version) |
 | `name`, `unit`, `direction` | display name, unit, `higher` or `lower` is better |
 | `problems` | the problems it is defined for; it is offered nowhere else (no *Accuracy* on ride matching) |
-| `requires` | validated metric ids (`served`, `detour_s`), `domain.<key>` (CO₂ figures) or `instance.<drivers\|riders\|pairs>`; a scenario lacking one gets no value |
+| `requires` | validated metric ids (`served`, `detour_s`), `domain.<key>` (CO₂ figures, e.g. `domain.avoided_g`, `domain.complete`) or `instance.<drivers\|riders\|pairs>`; checked against the problem at registration; a scenario lacking one gets no value |
 | `aggregate` | `sum`, `mean`, `median` or `ratio-of-sums` (`compute` then returns `(numerator, denominator)`) |
-| `compute(ctx)` | `ctx = {"metrics", "domain", "instance"}`; returns a number, a pair or `None` (no value — never a guess) |
+| `compute(ctx)` | `ctx = {"metrics", "domain", "instance"}` holding the declared inputs only (read-only); returns a finite number, a pair or `None` (no value — never a guess). Anything else, an exception or a timeout gives no value and is reported |
 | `description`, `provenance` | what it measures; who maintains it and where its definition is published |
 
-Install it as a package exposing the object under the entry-point group `move_openlab.metrics` — the complete
-example is [`examples/custom_metric/`](../examples/custom_metric/) (`pip install ./examples/custom_metric`). The
-contract is checked when the metric is loaded; a malformed or duplicate metric is refused and reported
-(`GET /api/lab/metrics?problem_id=…` lists the loaded ones and the errors). The platform ships one example,
-`detour-per-served-rider`. Values appear per scenario and per method in the experiment results
-(`per_scenario[…].custom`, `custom`) and in the comparison charts' metric selector. Tests:
-`tests/test_custom_metrics.py`.
+`METADATA` must be a literal (it is read without executing the file). Register the file for your workspace — the
+self-test runs it once in the sandbox on a reserved context (every input = 1):
+
+```bash
+curl -b cookies -X POST http://127.0.0.1:8765/api/lab/metrics/register \
+     -H 'content-type: application/json' -d '{"problem_id": "public-ride-matching", "plugin": "co2_avoided_per_served_rider"}'
+```
+
+`GET /api/lab/metrics?problem_id=…` lists the metrics of your workspace (built-in and registered, with their trust
+statement and code hash), the metric files that could be registered and why a registered one cannot be computed here.
+Values appear per scenario and per method in the experiment results (`per_scenario[…].custom`, `custom`, and
+`custom_issues` for invalid outputs, failures and timeouts) and in the comparison charts' metric selector.
+
+The platform ships one **built-in** metric, `detour-per-served-rider` (`move_openlab.custom_metrics`). Built-in metrics
+are part of the framework, reviewed with it, and are the only metric code that runs in the server process. Packages
+declaring the former entry-point group `move_openlab.metrics` are no longer loaded. Tests:
+`tests/test_custom_metrics.py`, `tests/test_metric_security.py`.
 
 ## A problem package
 

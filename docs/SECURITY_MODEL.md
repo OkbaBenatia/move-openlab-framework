@@ -69,10 +69,31 @@ rewrite both the records and their checksums. Treat a bundle's provenance as tru
 
 ## Custom metrics
 
-A custom metric is code in an installed Python package, like a problem package: the operator installs it, and it
-runs in the server process (it is not a sandboxed plugin). Its contract is checked when it is loaded; it receives
-only validated figures and instance counts, never what a method reported; a failing or non-finite computation gives
-no value and never interrupts a comparison. Install only metrics you trust as you trust problem packages.
+A registered custom metric is third-party code and gets the plug-in boundary, not the server's trust:
+
+| Property | Mechanism |
+|---|---|
+| Never in the server process | metric files (`<approved plugin directory>/<name>/metric.py`) are discovered and checked statically (literal `METADATA`, `ast.literal_eval`); listing, registration, comparisons and charts never import them. Installed packages are not scanned and no `move_openlab.metrics` entry point is loaded |
+| Same modes as method plug-ins | off unless plug-ins are enabled; registered per workspace; in `trusted-process` mode only administrators may register (a separate plain process, not a sandbox) |
+| Isolation | every evaluation (and the registration self-test) runs in the verified bubblewrap sandbox described above: no network, no server environment, no data directory, credential store or other workspace, read-only installation |
+| Fail closed | plug-ins off, sandbox unavailable or unverifiable, isolation mode changed since registration, file moved: the metric is listed with the reason and **no value**; nothing falls back to the server process |
+| Pinned code | the SHA-256 is recorded at registration; the worker executes exactly the verified bytes and re-checks `METADATA` against the registration; a modified file is refused (register a new version) |
+| Controlled inputs | only the inputs declared in `requires`, read from the validator's recomputed metrics, the CO₂ figures computed from validated decisions and counts of the frozen instance; read-only views |
+| Validated outputs | the server accepts only a finite number (or a pair of finite numbers for `ratio-of-sums`); strings, booleans, NaN, other shapes, exceptions and timeouts give no value and are reported (`custom_issues`) |
+| Resource bounds | 20 s wall-clock timeout per evaluation, 512 MB address space and CPU-time rlimits |
+
+Built-in metrics (shipped in `move_openlab.custom_metrics`, reviewed with the framework) are the documented trusted
+path: they run in the server process, with the same input filtering and output validation. An application embedding
+the framework may register further in-process metrics with `custom_metrics.register()`, which is by definition code
+it already runs.
+
+**Evidence.** `tests/test_metric_security.py` registers probe metrics that try to read another researcher's
+workspace, the credential store and the data directory, read the server's environment (its own and through
+`/proc/*/environ`), reach a local service and the internet, write to their own file, loop forever, allocate 3 GB, return
+invalid values and run after their file was modified. In the sandbox every attempt is blocked or refused, and the
+same probe run in a plain process does see those resources (the probe is not vacuous). Further tests prove that
+metric code never runs in the server process, that registrations belong to one workspace and that an unavailable
+isolation gives no value. Remaining risks are those of the sandbox (above).
 
 ## Accounts and sessions
 

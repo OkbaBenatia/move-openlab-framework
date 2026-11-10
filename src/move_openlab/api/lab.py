@@ -34,7 +34,7 @@ from ..integrations import rpc
 from ..mobility import emissions as E
 from ..mobility import vehicles as V
 from ..store import MAX_BUNDLE_BYTES, BenchError, _write, now, problem_for
-from .experiments import _call, ws
+from .experiments import _call, _problem, ws
 from .geo import RIDE, ComposeBody, ScenarioBody
 from .geo import store as network_store
 from .geo import save_scenario as geo_save_scenario
@@ -358,7 +358,8 @@ def experiment(cid: str, request: Request):
                             method_id=r["method_id"], accepted=r["accepted"], status=r.get("status_declared"))
                        for x in _call(w.lineage, cid) if x["campaign_id"] in scope
                        for r in x["runs"] if r.get("repetition") == 1]
-        out["results"] = dict(rows=[_row(problem, insts, r) for r in cmp["rows"]], warnings=cmp["warnings"],
+        customs = _customs(w, problem, insts, cmp["rows"])
+        out["results"] = dict(rows=[_row(problem, insts, r, cu) for r, cu in zip(cmp["rows"], customs)], warnings=cmp["warnings"],
                               reference=cmp["reference"], metrics=cmp["metrics"])
         if parent:
             try:
@@ -397,32 +398,49 @@ def _provenance(request: Request, w, insts: list[dict]) -> dict:
     return out
 
 
-def _custom(problem, insts, per: dict) -> tuple[dict, dict]:
-    """Registered custom metrics of this problem, computed by the platform from validated figures (never from what a
-    method reported): value per scenario (keyed like ``per_scenario``) and the aggregate of each metric."""
-    specs = custom_metrics.for_problem(problem.problem_id)
-    if not specs or not per:
-        return {}, {}
-    hs = [i["instance_hash"] for i in insts if i["instance_hash"] in per]
-    ctxs = [dict(metrics=per[h].get("metrics") or {}, domain=per[h].get("domain") or {},
-                 instance={k: len(i[k]) for i in insts if i["instance_hash"] == h for k in custom_metrics.INSTANCE_KEYS if isinstance(i.get(k), list)})
-            for h in hs]
-    by_scen: dict = {h: {} for h in hs}
-    totals: dict = {}
-    for spec in specs:
-        vals, total = custom_metrics.evaluate(spec, ctxs)
-        totals[spec.id] = total
-        for h, v in zip(hs, vals):
-            by_scen[h][spec.id] = v
-    return by_scen, totals
+def _customs(w, problem, insts, rows: list[dict]) -> list[tuple[dict, dict, dict]]:
+    """Custom metrics of this problem for every result row, computed from validated figures (never from what a
+    method reported): built-in metrics in this process, registered ones in isolation — one isolated evaluation per
+    metric for all rows. Per row: (value per scenario keyed like ``per_scenario``, aggregate per metric, issues)."""
+    keys, ctxs = [], []
+    for ri, r in enumerate(rows):
+        per = r.get("per_scenario") or {}
+        for i in insts:
+            h = i["instance_hash"]
+            if h in per:
+                keys.append((ri, h))
+                ctxs.append(dict(metrics=per[h].get("metrics") or {}, domain=per[h].get("domain") or {},
+                                 instance={k: len(i[k]) for k in custom_metrics.INSTANCE_KEYS if isinstance(i.get(k), list)}))
+    out = [({h: {} for h in (r.get("per_scenario") or {})}, {}, {}) for r in rows]
+    if not ctxs:
+        return out
+    for meta, ev in w.metric_evaluations(problem, ctxs):
+        spec = _spec_of(meta)
+        for ri in range(len(rows)):
+            idx = [n for n, (rj, _) in enumerate(keys) if rj == ri]
+            if not idx:
+                continue
+            sub = (custom_metrics.Evaluation([None] * len(idx), None, ev.issues) if ev.outputs is None
+                   else custom_metrics.combine(spec, [ev.outputs[n] for n in idx]))     # this row's scenarios only
+            for n, v in zip(idx, sub.per):
+                out[ri][0].setdefault(keys[n][1], {})[meta["id"]] = v
+            out[ri][1][meta["id"]] = sub.total
+            if sub.issues:
+                out[ri][2][meta["id"]] = sub.issues
+    return out
 
 
-def _row(problem, insts, r: dict) -> dict:
+def _spec_of(meta: dict):
+    """Aggregation view of a metric description (no code: only ``aggregate`` and the identity are used)."""
+    return custom_metrics.MetricSpec(**{k: tuple(meta[k]) if k in ("problems", "requires") else meta[k]
+                                        for k in custom_metrics.METADATA_KEYS}, source=meta.get("source", "builtin"))
+
+
+def _row(problem, insts, r: dict, customs: tuple[dict, dict, dict] = ({}, {}, {})) -> dict:
     sc = r.get("optimality_scope") or {}
     proven = sc.get(SCOPE_FULL, 0)
-    per = r.get("per_scenario") or {}
-    by_scen, custom = _custom(problem, insts, per)
-    per = {h: dict(c, custom=by_scen.get(h, {})) for h, c in per.items()}
+    by_scen, custom, issues = customs
+    per = {h: dict(c, custom=by_scen.get(h, {})) for h, c in (r.get("per_scenario") or {}).items()}
     return dict(method_id=r["method_id"], version=r["version"], name=r["name"], kind=r["kind"], source=r["source"],
                 campaign_id=r["campaign_id"], origin=r["origin"], campaign_kind=r["campaign_kind"],
                 researcher=r["researcher"], scenarios=r["scenarios"], valid=r["all_feasible"],
@@ -432,7 +450,7 @@ def _row(problem, insts, r: dict) -> dict:
                 solver_time_s=r["median_solver_time_s"], total_time_s=r["median_total_time_s"],
                 mean_rank=r.get("mean_rank"), reproduction=r.get("reproduction_status"),
                 repetitions=r.get("repetitions"), repetitions_consistent=r.get("repetitions_consistent"),
-                per_scenario=per, custom=custom)
+                per_scenario=per, custom=custom, custom_issues=issues)
 
 
 def _comparability(sem: dict) -> dict:
@@ -815,8 +833,31 @@ async def inspect_bundle(request: Request, file: UploadFile = File(...)):
 
 @router.get("/metrics")
 def metrics(request: Request, problem_id: str = ""):
-    """Custom metrics registered for a problem (computed by the platform from validated results), and load errors."""
-    ws(request)
-    st = custom_metrics.status()
-    return dict(metrics=[m.public() for m in custom_metrics.for_problem(problem_id)] if problem_id else [],
-                errors=st["errors"])
+    """Custom metrics of a problem for this workspace: the built-in ones (trusted, shipped with the framework) and the
+    ones this researcher registered (third-party code, computed only in isolation), the metric files that could be
+    registered, and why a registered metric cannot be computed here. Listing never executes metric code."""
+    w = ws(request)
+    if not problem_id:
+        return dict(metrics=[], available=[], errors={}, can_register=False)
+    problem = _problem(problem_id)
+    listed, errors = [], {}
+    for meta, ev in w.metric_evaluations(problem, []):
+        listed.append(meta)
+        if meta.get("available") is False:
+            errors[meta["id"]] = "; ".join(ev.issues)
+    st = w.inst.plugin_status()
+    return dict(metrics=listed, available=w.available_metrics(problem), errors=errors,
+                can_register=st["enabled"] and (st["isolation"] == "sandbox" or request.state.session.is_admin),
+                plugin_status={k: v for k, v in st.items() if k != "checks"})
+
+
+class MetricRegisterBody(BaseModel):
+    problem_id: str = Field(min_length=1, max_length=120)
+    plugin: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/metrics/register")
+def register_metric(body: MetricRegisterBody, request: Request):
+    """Register a metric file of the approved plugin directory for this workspace (pinned SHA-256, isolated
+    self-test). Same rules as method plugins: plugins enabled; trusted-process mode: administrators only."""
+    return _call(ws(request).register_metric, _problem(body.problem_id), body.plugin, admin=request.state.session.is_admin)

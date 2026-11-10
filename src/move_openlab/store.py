@@ -24,7 +24,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, registry
+from . import __version__, custom_metrics, registry
 from .hashing import instance_hash, json_copy, sha256
 from .methods import ContractError, builtin_registry, check_metadata
 from .plugins import code_sha256, discover, plugin_path, read_plugin_metadata
@@ -358,6 +358,82 @@ class Workspace:
         with _lock:
             _write(self.root / "methods.json", self.registered_methods() + [entry])
         return entry
+
+    # ------------------------------------------------------------------ custom metrics (third-party: sandboxed)
+    def registered_metrics(self, problem_id: str | None = None) -> list[dict]:
+        f = self.root / "metrics.json"
+        regs = json.loads(f.read_text()) if f.exists() else []
+        return [r for r in regs if problem_id is None or problem_id in r["problems"]]
+
+    def available_metrics(self, problem: Problem) -> list[dict]:
+        """Metric files of the approved directory (static metadata only) and whether this researcher registered them."""
+        if not self.inst.plugin_status()["enabled"]:
+            return []
+        reg = {(r["id"], r["version"]): r for r in self.registered_metrics(problem.problem_id)}
+        out = []
+        for item in custom_metrics.discover(self.inst.plugin_dir, problem):
+            m = item.get("metadata") or {}
+            r = reg.get((m.get("id"), m.get("version")))
+            item["registered"] = bool(r and r["code_sha256"] == item["code_sha256"])
+            out.append(item)
+        return out
+
+    def register_metric(self, problem: Problem, plugin: str, admin: bool = False) -> dict:
+        """Register a metric file for this workspace: static contract and compatibility checks, SHA-256 pinned,
+        self-test on a reserved context in the required isolation. Nothing of the file runs in this process."""
+        st = self.inst.require_plugins()
+        if st["isolation"] == "process" and not admin:
+            raise Forbidden("trusted-process mode: only an administrator can register metrics")
+        try:
+            f = custom_metrics.metric_path(self.inst.plugin_dir, plugin)
+        except FileNotFoundError as e:
+            raise NotFound(str(e)) from None
+        code = custom_metrics.code_sha256(f)
+        try:
+            spec = custom_metrics.spec_from_metadata(custom_metrics.read_metadata(f), code)
+        except (ValueError, SyntaxError) as e:
+            raise ContractError(f"metric contract: {e}") from None
+        errs = custom_metrics.compatibility(spec, problem)
+        if errs:
+            raise ContractError("; ".join(errs))
+        if custom_metrics.is_builtin_id(spec.id):
+            raise ContractError("a registered metric cannot replace a built-in metric")
+        with _lock:
+            if any((r["id"], r["version"]) == (spec.id, spec.version) for r in self.registered_metrics()):
+                raise BenchError(f"{spec.id}@{spec.version} is already registered (bump the semantic version)")
+        probe = custom_metrics.selftest_context(spec)
+        ev = custom_metrics.evaluate_isolated(spec, [probe], str(f), st["isolation"], self.inst.sandbox_spec)
+        if ev.per[0] is None:
+            raise ContractError("metric self-test failed: " + ("; ".join(ev.issues) or "no value for the reserved context"))
+        entry = dict(spec.public(st["isolation"]), plugin=plugin, registered_by=self.display, registered_at=now(),
+                     selftest=dict(context=probe, value=ev.per[0]), isolation_at_registration=st["isolation"])
+        with _lock:
+            _write(self.root / "metrics.json", self.registered_metrics() + [entry])
+        return entry
+
+    def metric_evaluations(self, problem: Problem, contexts: list[dict]) -> list[tuple[dict, custom_metrics.Evaluation]]:
+        """Every metric of this problem for this workspace — built-in ones in this process (trusted), registered ones
+        in isolation — as (public description, evaluation). A registered metric that cannot run here (plugins off,
+        isolation unavailable or changed, file moved or modified) is listed with no values and the reason."""
+        out = [(m.public(), custom_metrics.evaluate_detailed(m, contexts)) for m in custom_metrics.builtin_for(problem.problem_id)]
+        for r in self.registered_metrics(problem.problem_id):
+            spec = custom_metrics.spec_from_metadata({k: r[k] for k in custom_metrics.METADATA_KEYS}, r["code_sha256"])
+            none = [None] * len(contexts)
+            try:
+                st = self.inst.require_plugins()
+                if r["isolation_at_registration"] != st["isolation"]:
+                    raise ContractError(f"registered for {r['isolation_at_registration']} isolation; this installation now "
+                                        f"uses {st['isolation']} (register it again)")
+                f = custom_metrics.metric_path(self.inst.plugin_dir, r["plugin"])
+                if custom_metrics.code_sha256(f) != r["code_sha256"]:
+                    raise ContractError("metric code changed since registration (register a new semantic version)")
+            except (ContractError, FileNotFoundError) as e:
+                out.append((dict(spec.public(r["isolation_at_registration"]), available=False),
+                            custom_metrics.Evaluation(none, None, [f"not computed: {e}"])))
+                continue
+            out.append((spec.public(st["isolation"]),
+                        custom_metrics.evaluate_isolated(spec, contexts, str(f), st["isolation"], self.inst.sandbox_spec)))
+        return out
 
     # ------------------------------------------------------------------ creation and execution
     def create_campaign(self, problem_id: str, title: str, scenario_params: dict, methods: list[tuple[str, str]],
