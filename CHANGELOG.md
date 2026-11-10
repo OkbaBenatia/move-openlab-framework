@@ -5,6 +5,39 @@ interfaces.
 
 ## Unreleased
 
+### Added — polish pass: export and import dialogs, Library Use, expanded map
+- **Export dialog**: what the bundle contains before anything is written — manifest and integrity, records and lineage,
+  scenario definitions, run results and validator evidence, area / road network / mobility data references, vehicle and
+  emission parameters (required, shown as such), replay geometry and a separate evidence report (optional, on by
+  default). `GET /api/lab/export/{id}`, `GET /api/campaigns/{id}/export?geometry=false`,
+  `GET /api/lab/experiments/{id}/evidence` (validation, reproducibility, comparability, fingerprints, results).
+- **Import dialog** in stages: choose file → inspect (complete verification on the server, nothing written:
+  `POST /api/lab/inspect`) → what will be imported (records new / already here / in conflict, scenarios, area and
+  road network, mobility data, methods available here, vehicles and CO₂, replay geometry) → integrity and
+  compatibility (importable, reproducible here, comparable) → confirm; *Reproduce it here* when the records are
+  already present. A public flow export → import → reproduce → compare works on the demonstration.
+- **Comparison**: the evidence summary collapses to a one-line strip (remembered on the browser) and states what is
+  identical, comparable (per claim) and not applicable.
+- **Expanded map** in the workspace: header and side panels give way, the action bar stays, panels open as overlays,
+  *Exit expanded map* or Esc returns.
+- **Mobility icons** (rider, combustion, hybrid, plug-in hybrid, electric car) in participant lists, fleet summaries,
+  the map legend (now also explaining driver starts) and the wizard review.
+- **Help menu**: Quick tour plus short definitions of Area, Mobility data, Scenario, Library and Hidden records; the
+  Library menu has a one-line introduction and a tooltip per entry; each Library view explains itself in one line.
+
+### Fixed
+- The Quick Tour reopened every time the workspace was shown again after it had been opened once from Help; it now
+  opens only on request, *Don't show again* is kept for the account, and the start card no longer offers it then.
+- Library *Use*: an area becomes the working area of the account (saved, shown as *In use*, followed by the Workspace
+  and Generate); mobility data now has *Use* (opens Generate with that data on its area); scenarios have *Use* (starts
+  a new experiment with the scenario in the Workspace). `area_id` preferences are validated (format, existence).
+- Hidden records: the page states its purpose, groups records by kind with counts, tells same-titled experiments
+  apart, and can drop entries for records no longer in the workspace; the Library's *Show hidden (n)* counts only the
+  records of the current view; an empty scenario list says how many are hidden.
+- *Add method* opened from the wizard or the sample guide appeared underneath them.
+- **Security**: `auth.sqlite3` (and its SQLite side files), `audit.log` and `dev-credentials.json` are owner-only
+  (`0600`) from creation whatever the umask, and existing wider files are tightened (`move_openlab.privatefiles`).
+
 ### Added — final UX implementation, one-command start, sample bundle
 - **`./start-local.sh`**: one command starts the complete application at http://127.0.0.1:8765 (loopback only):
   prepares `.venv` and the interface build when missing or outdated, keeps the local data directory as it is,

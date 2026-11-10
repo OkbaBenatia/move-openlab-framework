@@ -45,11 +45,14 @@ const shot = async (name, settle = 700) => {
   await p.shot(join(OUT, file)); report.screenshots.push(file); return file;
 };
 async function check(name, fn) {
-  const t0 = Date.now();
+  const t0 = Date.now(), e0 = p.errors.length;
+  const errs = () => p.errors.slice(e0);                // page errors raised while this check ran
   try { await p.key('Escape'); await p.key('Escape'); } catch { /* no page yet */ }   // start every check with no dialog open
-  try { const detail = await fn(); report.checks.push({ name, ok: true, detail: detail ?? '', ms: Date.now() - t0 }); console.log(`ok    ${name}${detail ? ` — ${detail}` : ''}`); return true; }
+  try {
+    const detail = await fn(); report.checks.push({ name, ok: true, detail: detail ?? '', ms: Date.now() - t0, page_errors: errs() });
+    console.log(`ok    ${name}${detail ? ` — ${detail}` : ''}${errs().length ? `  [page errors: ${errs().length}]` : ''}`); return true; }
   catch (e) {
-    report.checks.push({ name, ok: false, detail: String(e.message ?? e).slice(0, 400), ms: Date.now() - t0 });
+    report.checks.push({ name, ok: false, detail: String(e.message ?? e).slice(0, 400), ms: Date.now() - t0, page_errors: errs() });
     console.log(`FAIL  ${name} — ${String(e.message ?? e).slice(0, 300)}`);
     try { await p.shot(join(OUT, `fail-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`)); } catch { /* page gone */ }
     return false;
@@ -60,6 +63,14 @@ const has = (css) => p.eval(`!!document.querySelector(${JSON.stringify(css)})`);
 const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 const api = (path, init = {}) => p.eval(`fetch(${JSON.stringify(path)}, ${JSON.stringify(init)}).then(async (r) => ({ status: r.status, body: r.headers.get('content-type')?.includes('json') ? await r.json() : null }))`);
 const goHash = async (h, settle = 2500) => { await p.eval(`location.hash = ${JSON.stringify(h)}`); await sleep(settle); };
+/** Click the button labelled `button` in the first visible row (of `rows`) whose text contains `rowText`. */
+async function clickInRow(rows, rowText, button) {
+  const pt = await p.eval(`(() => { const row = [...document.querySelectorAll(${JSON.stringify(rows)})].find((r) => r.innerText.includes(${JSON.stringify(rowText)}));
+    const b = row && [...row.querySelectorAll('button, input[type=checkbox]')].find((x) => x.type === 'checkbox' ? ${JSON.stringify(button)} === 'checkbox' : (x.innerText.trim() === ${JSON.stringify(button)} || x.getAttribute('aria-label') === ${JSON.stringify(button)}));
+    if (!b) return null; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  if (!pt) throw new Error(`no "${button}" in a row with "${rowText}"`);
+  await p.clickAt(pt.x, pt.y); await sleep(150);
+}
 
 async function signIn(user, password) {
   await p.clearCookies();
@@ -185,7 +196,11 @@ if (ONLY === 'fallback') {
     await goHash(`#/workspace/${own.campaign_id}`, 3500);
     const before = p.downloadCount();
     await p.click('Export', '.labbar button');
-    await p.waitDownload(before, 60000);
+    await p.waitFor('!!document.querySelector(".exportd .exlist")', 20000, 'export dialog');
+    await p.click('xport', '.exportd .drawer-foot button.primary');          // "Export bundle" or "Lock and export"
+    await p.waitDownload(before, 60000); await p.waitDownload(before + 1, 60000);
+    await p.waitFor('/Bundle saved/.test(document.querySelector(".exportd")?.innerText)', 20000, 'confirmation');
+    await p.click('Done', '.exportd button');
     exported = readdirSync(DL).filter((f) => f.endsWith('.zip')).map((f) => join(DL, f)).at(-1);
     expect(exported, 'no bundle file');
     await signOut(); return `${own.title} → ${exported.split('/').at(-1)}`;
@@ -212,6 +227,8 @@ if (ONLY === 'fallback') {
     expect(/404 trips in the area/.test(t.left) && /Sampled/.test(t.left), 'provenance (observed trips, sampled) missing');
     expect(/18 of 18 runs accepted/.test(t.right), 'validation evidence missing');
     expect(/Compare with the variant/.test(t.start), 'start card lacks Compare with the variant');
+    const icons = await p.eval('({ people: document.querySelectorAll(".people .dicon, .seg .dicon, .fleet .dicon").length, legend: document.querySelectorAll(".legend .dicon").length })');
+    expect(icons.people >= 3 && icons.legend >= 2, `mobility icons ${JSON.stringify(icons)}`);
     demoBase = t.hash.split('/').at(-1);
     await shot('first-use-workspace');
     const areas = (await api('/api/geo/areas')).body.areas.map((a) => a.name);
@@ -239,12 +256,39 @@ if (ONLY === 'fallback') {
     return 'ok';
   });
 
+  await check('Help: Quick tour and the terms Area, Mobility data, Scenario, Library, Hidden records', async () => {
+    await p.click('Help', '.hdr button'); await sleep(400);
+    const g = await text('.menu .gloss');
+    for (const term of ['Area', 'Mobility data', 'Scenario', 'Library', 'Hidden records']) expect(g.includes(term), `glossary lacks ${term}`);
+    expect(!!(await p.find('Quick tour', '.menu button')), 'no Quick tour entry');
+    await shot('help-glossary'); await p.key('Escape'); return 'five terms and the tour';
+  });
+  await check("tour: opens only on request; \"Don't show again\" survives navigation and reload; reopens from Help", async () => {
+    expect(!(await has('.tour')), 'tour shown without being asked');
+    await p.click('Help', '.hdr button'); await p.click('Quick tour', '.menu button'); await sleep(600);
+    expect(await has('.tour'), 'Help → Quick tour did not open it');
+    expect(/reopen it any time from Help/.test(await text('.tour')), 'no hint about reopening');
+    await p.click("Don't show again", '.tour label'); await p.click('Skip', '.tour button'); await sleep(600);
+    expect(!(await has('.tour')), 'not closed');
+    expect((await api('/api/lab/state')).body.preferences.tour_dismissed === true, 'choice not saved for the account');
+    await goHash('#/data/library', 2000); await goHash(`#/workspace/${demoBase}`, 3500);
+    expect(!(await has('.tour')), 'reappeared after leaving and returning to the workspace');
+    await p.goto(`${BASE}/#/workspace/${demoBase}`); await waitWorkspace(); await sleep(3500);
+    expect(!(await has('.tour')), 'reappeared after a reload');
+    expect(!(await p.find('Quick tour', '.start-card button')), 'the start card still offers the tour');
+    await shot('workspace-tour-disabled');
+    await p.click('Help', '.hdr button'); await p.click('Quick tour', '.menu button'); await sleep(600);
+    expect(await has('.tour'), 'cannot reopen it from Help'); await p.key('Escape'); await sleep(400);
+    expect(!(await has('.tour')), 'Escape did not close it');
+    return 'dismissed for the account; reopened manually from Help';
+  });
+
   // ---- 5. comparison with the variant ----------------------------------------------------------------------------
   await check('comparison A/B: results, charts, maps, replay, diff', async () => {
     await p.click('Compare with the variant', '.start-card button');
     await p.waitFor('location.hash.startsWith("#/compare/") && !!document.querySelector(".evgrid")', 30000, 'comparison');
     await sleep(2500);
-    demoVariant = (await p.eval('location.hash')).split('|')[1];
+    demoVariant = (await p.eval('decodeURIComponent(location.hash)')).split('|')[1];
     const ev = await text('.evgrid');
     expect(/18 of 18/.test(ev) && /Not applicable/.test(ev) && /Directly comparable/i.test(ev), `evidence: ${ev.slice(0, 200)}`);
     await shot('compare-results');
@@ -263,6 +307,25 @@ if (ONLY === 'fallback') {
     expect(/Maximum detour/.test(diff) && /Routes that differ/.test(diff), 'diff incomplete');
     await shot('compare-diff');
     return ev.replace(/\s+/g, ' ').slice(0, 160);
+  });
+
+  await check('comparison: the evidence summary collapses and expands, and the choice is remembered', async () => {
+    if (!(await has('.cmp-head'))) await goHash(`#/compare/${demoBase}|${demoVariant}`, 4000);
+    await p.click('Results', '.tabs button'); await sleep(500);
+    const h0 = await p.eval('Math.round(document.querySelector(".cmp-head").getBoundingClientRect().height)');
+    await p.click('Hide summary', '.cmp-head button'); await sleep(600);
+    expect((await has('.evstrip')) && !(await has('.evgrid')), 'not collapsed');
+    const h1 = await p.eval('Math.round(document.querySelector(".cmp-head").getBoundingClientRect().height)');
+    expect(/Validated A 18\/18/.test(await text('.evstrip')), 'collapsed strip lost the evidence');
+    await shot('compare-summary-collapsed');
+    await p.goto(`${BASE}/#/compare/${demoBase}|${demoVariant}`); await p.waitFor('!!document.querySelector(".cmp-head")', 20000, 'comparison'); await sleep(2500);
+    expect(await has('.evstrip'), 'collapse not remembered after reload');
+    await p.click('Show summary', '.cmp-head button');
+    await p.waitFor('!!document.querySelector(".evgrid") && !!document.querySelector(".evsum")', 20000, 'expanded summary');
+    const shows = await text('.evsum');
+    expect(/Directly comparable:/.test(shows) && /Not applicable:/.test(shows), `summary: ${shows}`);
+    await shot('compare-summary-expanded');
+    return `header ${h0}px → ${h1}px collapsed · ${shows.replace(/\s+/g, ' ').slice(0, 120)}`;
   });
 
   // ---- 6. Generate wizard: Save Scenario, Save & Run, cancel, trace ----------------------------------------------
@@ -341,6 +404,46 @@ if (ONLY === 'fallback') {
     return right.match(/Sample[^\n]*|All[^\n]*/)?.[0] ?? '';
   });
 
+  // ---- 6b. Library: what areas, mobility data and scenarios are; Use applies them to the Workspace ----------------
+  await check('Library › Areas: explained; Use makes the area the working area (visible confirmation, saved)', async () => {
+    await goHash('#/data/areas', 3000);
+    expect(/geographic zone/.test(await text('.view-help')), 'no explanation of areas');
+    await clickInRow('table[aria-label=areas] tbody tr', 'Montbéliard', 'Use');
+    await p.waitFor('/now your working area/.test(document.querySelector(".note.ok")?.innerText)', 10000, 'confirmation');
+    expect(/In use/.test(await text('table[aria-label=areas]')), 'no In use badge');
+    const st = (await api('/api/lab/state')).body.preferences.area_id;
+    const areas = (await api('/api/geo/areas')).body.areas;
+    expect(areas.find((a) => a.area_id === st)?.name === 'Montbéliard', `working area ${st}`);
+    await shot('library-areas-use');
+    await p.click('Open the Workspace', '.note button'); await waitWorkspace(); await sleep(1500);
+    return 'Montbéliard is the working area';
+  });
+  await check('Library › Mobility data: explained; Use opens Generate with that data on its area', async () => {
+    await goHash('#/data/datasets', 3000);
+    expect(/where trips come from/.test(await text('.view-help')), 'no explanation of mobility data');
+    await shot('library-mobility-data');
+    await clickInRow('table[aria-label=datasets] tbody tr', 'RPC 2026-10 · Montbéliard', 'Use');
+    await p.waitFor('!!document.querySelector(".wizard")', 30000, 'wizard'); await sleep(3000);
+    const w = await p.eval(`({ area: document.querySelector('.wizard select[aria-label=area]')?.selectedOptions[0]?.textContent,
+      source: document.querySelector('.wizard input[name=src]:checked')?.closest('label')?.innerText.split('\\n')[0],
+      data: document.querySelector('.wizard select[aria-label=dataset]')?.selectedOptions[0]?.textContent })`);
+    expect(w.area === 'Montbéliard' && /Sampled from observed trips/.test(w.source ?? '') && /404 observed trips/.test(w.data ?? ''), JSON.stringify(w));
+    await shot('library-use-data-wizard');
+    await p.click('close', '.wizard-top button'); await sleep(600);
+    return `${w.area} · ${w.data}`;
+  });
+  await check('Library › Scenarios: explained; Use starts a new experiment with that scenario', async () => {
+    await goHash('#/data/library', 3000);
+    expect(/frozen sets/.test(await text('.view-help')), 'no explanation of scenarios');
+    await p.click('Use', 'table[aria-label="scenario library"] button', true);
+    await p.waitFor('location.hash.includes("__new__") && /selected for a new experiment/.test(document.querySelector(".lab-notes")?.innerText ?? "")', 20000, 'new experiment');
+    await sleep(1500);
+    const picked = await p.eval('document.querySelectorAll(".lab-left input[type=checkbox]:checked").length');
+    expect(picked >= 1, `no scenario ticked (${picked})`);
+    await shot('library-use-scenario');
+    return (await text('.lab-notes')).split('\n')[0].slice(0, 120);
+  });
+
   // ---- 7. comparison candidate picker ----------------------------------------------------------------------------
   await check('Compare with…: candidates with validation, reproducibility and comparability; Why?', async () => {
     await goHash(`#/workspace/${demoBase}`, 3500);
@@ -355,6 +458,66 @@ if (ONLY === 'fallback') {
     return t.match(/Direct \d+/)?.[0] + ' · ' + t.match(/With conditions \d+/)?.[0];
   });
 
+  // ---- 7b. public demo flow: export → import (inspect) → reproduce → compare --------------------------------------
+  let demoBundle = '', demoRepro = '';
+  await check('Export: the dialog lists every section with sensible defaults; bundle and evidence report saved', async () => {
+    await goHash(`#/workspace/${demoBase}`, 3500);
+    await p.click('Export', '.labbar button');
+    await p.waitFor('!!document.querySelector(".exportd .exlist")', 20000, 'export dialog'); await sleep(500);
+    const info = await p.eval(`(() => { const rows = [...document.querySelectorAll('.exportd .exrow')];
+      return { rows: rows.length, required: rows.filter((r) => r.classList.contains('fixed')).length, checked: rows.filter((r) => r.querySelector('input').checked).length,
+               text: document.querySelector('.exportd').innerText }; })()`);
+    expect(info.rows === 8 && info.required === 6 && info.checked === 8, JSON.stringify({ ...info, text: undefined }));
+    for (const k of ['Manifest and integrity', 'Scenario definitions', 'Run results and validator evidence', 'Area, road network and mobility data references', 'Vehicle and emission parameters', 'Replay geometry', 'Evidence report'])
+      expect(info.text.includes(k), `section missing: ${k}`);
+    await shot('export-dialog');
+    const before = p.downloadCount();
+    await p.click('Export bundle', '.exportd button');
+    await p.waitDownload(before, 60000); await p.waitDownload(before + 1, 60000);
+    await p.waitFor('/Bundle saved/.test(document.querySelector(".exportd")?.innerText)', 20000, 'confirmation');
+    const files = readdirSync(DL);
+    const zip = files.find((f) => f.includes('demo_baseline') && f.endsWith('.zip')), ev = files.find((f) => f.includes('demo_baseline') && f.endsWith('_evidence.json'));
+    expect(zip && ev, `downloads: ${files.join(', ')}`);
+    demoBundle = join(DL, zip);
+    const e = JSON.parse(readFileSync(join(DL, ev), 'utf8'));
+    expect(e.validation.accepted === e.validation.runs && e.fingerprints?.experiment && e.reproducibility.applicable === false, 'evidence report content');
+    await shot('export-saved');
+    await p.click('Done', '.exportd button');
+    return `${zip} + ${ev} · ${(await text('.lab-notes')) || 'saved'}`.slice(0, 160);
+  });
+  await check('Import: staged preview of the exported demonstration (contents, integrity, compatibility), then Reproduce it here', async () => {
+    expect(demoBundle, 'no exported bundle');
+    await p.click('Import', '.labbar button'); await p.click('Import a bundle file', '[role=menuitem]');
+    await p.waitFor('!!document.querySelector(".importd")', 10000, 'import dialog');
+    await shot('import-dialog-choose');
+    await p.setFiles('input[aria-label="bundle file to inspect"]', [demoBundle]);
+    await p.waitFor('!!document.querySelector(".importd .checks")', 60000, 'inspection'); await sleep(500);
+    const t = await text('.importd');
+    for (const k of ['What will be imported', 'Already here (identical)', 'Integrity verified', 'Problem and validator', 'Reproducible here', 'Comparable', 'Scenarios', 'Mobility data', 'Methods'])
+      expect(t.includes(k), `preview lacks ${k}`);
+    await shot('import-dialog-preview');
+    await p.click('Reproduce it here', '.importd button');
+    const st = await waitJob(240000);
+    expect(st === 'done' || st === 'gone', `job ${st}`);
+    await p.waitFor('!location.hash.endsWith(' + JSON.stringify(demoBase) + ')', 30000, 'reproduction opened'); await sleep(2500);
+    demoRepro = (await p.eval('location.hash')).split('/').at(-1);
+    expect(/Reproduc/.test(await text('.lab-right')), 'no reproducibility evidence');
+    return `reproduction ${demoRepro}`;
+  });
+  await check('Compare original and reproduction: identical, comparable and not applicable stated separately', async () => {
+    await goHash(`#/workspace/${demoRepro}`, 3500);
+    await p.click('Compare', '.labbar button');
+    await p.waitFor('!!document.querySelector(".cand")', 20000, 'candidates'); await sleep(600);
+    await clickInRow('.cand', 'Montbéliard Demo — Baseline', 'checkbox');
+    await p.click('Compare selected', '[role=dialog] button');
+    await p.waitFor('location.hash.startsWith("#/compare/") && !!document.querySelector(".evsum")', 30000, 'comparison'); await sleep(2500);
+    const ev = await text('.evgrid'), shows = await text('.evsum');
+    expect(/Reproduced: \d+ of \d+ results equal/.test(ev), `evidence: ${ev.slice(0, 160)}`);
+    expect(/Identical:/.test(shows) && /Reported, not required to match: runtimes/.test(shows), `summary: ${shows}`);
+    await shot('demo-original-vs-reproduction');
+    return shows.replace(/\s+/g, ' ').slice(0, 170);
+  });
+
   // ---- 8. sample bundle: import → verify → reproduce → compare → add method → extend → compare ---------------------
   const ensureGuide = async () => {                 // each step may start with the guide closed (Escape between checks)
     if (await has('.guide')) return;
@@ -363,6 +526,7 @@ if (ONLY === 'fallback') {
     await p.waitFor('!!document.querySelector(".guide .checks")', 30000, 'guide');
   };
   await check('sample bundle: download, integrity verified, import', async () => {
+    await goHash(`#/workspace/${demoBase}`, 3500);
     await p.click('Import', '.labbar button'); await p.click('Try an imported experiment', '[role=menuitem]');
     await p.waitFor('!!document.querySelector(".guide .checks")', 30000, 'integrity report');
     const before = p.downloadCount();
@@ -421,7 +585,12 @@ if (ONLY === 'fallback') {
   await check('bundle from researcher B: import file, integrity, reproduce (Run again)', async () => {
     expect(exported, 'no exported bundle');
     await goHash(`#/workspace/${demoBase}`, 3000);
-    await p.setFiles('input[aria-label="bundle file"]', [exported]);
+    await p.click('Import', '.labbar button'); await p.click('Import a bundle file', '[role=menuitem]');
+    await p.setFiles('input[aria-label="bundle file to inspect"]', [exported]);
+    await p.waitFor('!!document.querySelector(".importd .checks")', 60000, 'inspection'); await sleep(400);
+    expect(/New here/.test(await text('.importd')), 'records not reported as new');
+    await shot('import-dialog-new-records');
+    await p.click('Import experiment', '.importd button');
     await p.waitFor('/Integrity verified/.test(document.querySelector(".lab-notes")?.innerText)', 60000, 'import notice');
     await sleep(2500);
     const note = await text('.lab-notes');
@@ -447,6 +616,40 @@ if (ONLY === 'fallback') {
     expect(await p.eval('document.documentElement.dataset.theme') === 'light', 'not light again');
     return 'light → dark → light';
   });
+  await check('map: expanded mode keeps Run, Compare, Export and Replay reachable; panels open on demand; Esc exits', async () => {
+    await goHash(`#/workspace/${demoBase}`, 3500);
+    await p.click('Expand the map', '.map-expand'); await sleep(1500);
+    const st = await p.eval(`(() => { const b = (sel) => document.querySelector(sel); const btn = (txt) => [...document.querySelectorAll('.labbar button')].find((x) => x.innerText.includes(txt));
+      return { header: getComputedStyle(b('.hdr')).display, map: Math.round(b('.leaflet-container').getBoundingClientRect().width), run: !!btn('Run') && !btn('Run').disabled,
+               compare: !!btn('Compare') && !btn('Compare').disabled, exp: !!btn('Export') && !btn('Export').disabled, replay: !!b('.replay-pill'), exit: b('.map-expand')?.innerText }; })()`);
+    expect(st.header === 'none' && st.map >= 1400 && st.run && st.compare && st.exp && st.replay && /Exit expanded map/.test(st.exit), JSON.stringify(st));
+    await shot('map-expanded');
+    await p.click('results panel', '.labbar button'); await sleep(700);
+    expect(await p.eval('getComputedStyle(document.querySelector(".lab-right")).display !== "none"'), 'results panel not reachable');
+    await shot('map-expanded-results-panel');
+    await p.click('results panel', '.labbar button'); await sleep(300);
+    await p.key('Escape'); await sleep(700);
+    expect(!(await p.eval('document.documentElement.classList.contains("map-expanded")')), 'Esc did not exit');
+    return `map ${st.map}px wide; Run, Compare, Export, Replay reachable`;
+  });
+  await check('Hidden records: purpose stated; hiding is reversible and leaves the visible lists and counts', async () => {
+    await goHash('#/data/library', 3000);
+    const name = await p.eval('document.querySelector("table[aria-label=\'scenario library\'] tbody tr td:nth-child(2) b")?.innerText');
+    expect(name, 'no scenario to hide');
+    const before = await p.eval('document.querySelectorAll("table[aria-label=\'scenario library\'] tbody tr").length');
+    await p.click(`hide ${name}`, 'table[aria-label="scenario library"] button'); await sleep(800);
+    const after = await p.eval('document.querySelectorAll("table[aria-label=\'scenario library\'] tbody tr").length');
+    expect(after === before - 1 && /Show hidden \(1\)/.test(await text('.areabar')), `list ${before} → ${after}`);
+    await goHash('#/hidden', 2500);
+    const page = await text('main');
+    expect(/Hide items from normal lists without deleting them\. You can restore them later\./.test(page) && page.includes(name), 'purpose or record missing');
+    await shot('hidden-records');
+    await clickInRow('table[aria-label="hidden scenarios"] tr', name, 'Show again'); await sleep(800);
+    expect(!(await text('main')).includes(`${name}\nShow again`), 'not restored');
+    await goHash('#/data/library', 2500);
+    expect(await p.eval('document.querySelectorAll("table[aria-label=\'scenario library\'] tbody tr").length') === before, 'not back in the list');
+    return `${name}: hidden (list ${before} → ${after}), restored`;
+  });
   await check('phone width: no horizontal scroll, full-width map, profile menu reachable', async () => {
     await p.size(390, 844, 3, true);
     try {
@@ -461,7 +664,12 @@ if (ONLY === 'fallback') {
       return JSON.stringify(m);
     } finally { await p.size(W, H, DSF, false); }
   });
-  await check('researcher signs out', async () => { await p.goto(`${BASE}/`); await waitWorkspace(); await signOut(); return 'ok'; });
+  await check('tour stays off after signing out and in again', async () => {
+    await p.goto(`${BASE}/`); await waitWorkspace(); await signOut();
+    expect(await signIn(researcher, rPw) === '/', 'workspace'); await waitWorkspace(); await sleep(3500);
+    expect(!(await has('.tour')), 'tour reappeared after signing in');
+    await signOut(); return 'not shown';
+  });
 
   // ---- 11. supervision: researcher creates a student; the student is isolated -----------------------------------
   let supExp = '';

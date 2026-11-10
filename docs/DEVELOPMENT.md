@@ -23,6 +23,26 @@ already runs there, holds a lock so that two terminals cannot start two servers 
 `MOVE_OPENLAB_ENV=production`. Ctrl+C stops the server cleanly; jobs still running are recorded as interrupted.
 `MOVE_OPENLAB_PORT` selects another port; `--check` prepares and checks without starting.
 
+## Browser acceptance run
+
+`scripts/e2e/acceptance.mjs` drives a real headless Chromium (Chrome DevTools Protocol, no npm dependency) through the
+whole workflow — accounts, first use, Help and the tour, Library *Use*, wizard, execution and cancellation, Export and
+staged Import, reproduction, comparison (with the collapsible evidence summary), sample bundle, expanded map, hidden
+records, appearance, phone width, supervision and isolation. It creates accounts and experiments, so run it against a
+server on a **copy** of a data directory:
+
+```bash
+cp -a .openlab-data/dev /tmp/openlab-e2e && MOVE_OPENLAB_DATA_DIR=/tmp/openlab-e2e MOVE_OPENLAB_PORT=8791 ./start-local.sh
+```
+
+```bash
+node scripts/e2e/acceptance.mjs --base http://127.0.0.1:8791 --creds /tmp/openlab-e2e/dev-credentials.json --out /tmp/openlab-e2e-out
+```
+
+It writes numbered screenshots and `acceptance-report.json` into `--out`; exit status 0 only if every check passed and
+no page error occurred. `--only fallback` checks the map without a basemap (start that server with
+`MOVE_OPENLAB_TILE_URL=none`).
+
 ## Installation (manual)
 
 ```bash

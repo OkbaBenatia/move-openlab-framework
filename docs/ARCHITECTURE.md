@@ -71,7 +71,19 @@ right. On first use the demonstration's area is added to the workspace (once; ne
 the baseline opens with a start card (*Compare with the variant*, *Generate your own*, *Try an imported experiment*,
 *Quick tour*). *Import → Try an imported experiment* is a guided cycle on the shipped sample bundle (download,
 integrity report, import, reproduce, add a method, extend, compare; `GET /api/lab/sample/bundle`, `POST
-/api/lab/sample/verify`, `POST /api/lab/sample`).
+/api/lab/sample/verify`, `POST /api/lab/sample`). **Export** opens a dialog that lists what the bundle will contain
+(`GET /api/lab/export/{id}`: lineage, scenarios, references, methods, vehicle and emission parameters, replay geometry
+available) with the required sections fixed and two optional ones — replay geometry (`?geometry=false` leaves it out)
+and a separate evidence report (`GET /api/lab/experiments/{id}/evidence`). **Import** is staged: choose a file, inspect
+it on the server (`POST /api/lab/inspect`: complete verification, nothing written; new / identical / conflicting
+records, methods available here, warnings), see what it contains, then confirm — or, when the records are already
+present, *Reproduce it here*. The comparison workspace's evidence summary can be collapsed to a one-line strip (the
+choice is remembered on the browser) and states claim by claim what is identical, comparable, or not applicable. The
+map has an expanded mode (header and side panels give way, the action bar stays, panels open as overlays, Esc exits).
+Help holds the Quick Tour (shown only on request; *Don't show again* is kept per account) and short definitions of
+Area, Mobility data, Scenario, Library and Hidden records. In the Library, *Use* applies a record to the Workspace: an
+area becomes the working area (preference `area_id`, validated), mobility data opens Generate with that data, a scenario
+starts a new experiment with it.
 Areas, datasets, scenarios and experiments can be hidden from every list (a per-user preference; nothing is deleted)
 and shown again with *Show hidden*. **Generate** opens a five-step wizard
 over the map (`frontend/src/mobility/Wizard.tsx`): Area & Data (choose an area, search a place, pick a point or draw

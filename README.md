@@ -54,12 +54,12 @@ results may be compared.
 | Independent validation | Every solution re-checked by the problem's validator; self-reported values are only compared. Validation, reproducibility and semantic comparability are shown as three separate pieces of evidence |
 | Vehicles and emissions | Vehicle profiles per driver (ICE, HEV, PHEV, BEV, custom); every emission parameter editable and sourced; explicit scope and baseline; CO₂, baseline and avoided CO₂ from validated decisions |
 | Comparison | Concise table, charts of any supported metric (CSV, SVG, PNG export), what each result proves; *Compare with…* lists the directly comparable and conditionally comparable experiments first (incompatible ones under a fold, with the reasons); comparison workspace with synchronised maps, one replay clock, several experiments in one table and a solution diff |
-| Reproducibility | Verified bundles without code; re-execution compared cell by cell; lineage of every experiment |
+| Reproducibility | Verified bundles without code: *Export* says what the bundle contains, *Import* inspects it completely before anything is stored; re-execution compared cell by cell; lineage of every experiment |
 | Semantic comparability | *Directly comparable*, *comparable with conditions* or *not comparable* — for results, runtimes and emissions — with the reasons |
 | Replay and trace | Vehicles, pickups, drop-offs, served and unserved riders over time; the execution timeline of every run |
 | Geography and data | Any area OpenStreetMap covers; RPC open data (France), CSV, GeoJSON, synthetic demand, provider plug-ins |
 | Operations | Background jobs with progress in plain words — runs: Queued → Preparing → Running methods → Validating → Results; road networks: Queued → Downloading → Building → Ready — with cancellation and the execution trace; audit log |
-| Accounts | Administrator, Researcher and Student roles; a researcher may be allowed to supervise their own students (create, reset, deactivate); temporary passwords, forced change at first sign-in, server-side password policy with live strength and match indicators |
+| Accounts | Administrator, Researcher and Student roles; credential store and audit log owner-only (0600); a researcher may be allowed to supervise their own students (create, reset, deactivate); temporary passwords, forced change at first sign-in, server-side password policy with live strength and match indicators |
 
 ## Pipeline
 
