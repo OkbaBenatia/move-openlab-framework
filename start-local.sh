@@ -64,12 +64,17 @@ import move_openlab, uvicorn, highspy  # noqa: F401
 sys.exit(0 if pathlib.Path(move_openlab.__file__).resolve().is_relative_to(pathlib.Path(sys.argv[1]).resolve()) else 1)
 EOF
 }
+pip_install() {      # pip of the environment; an environment created by uv has none: uv itself, or ensurepip
+  if "$PY" -m pip --version >/dev/null 2>&1; then "$PY" -m pip install --disable-pip-version-check -q "$@"
+  elif command -v uv >/dev/null 2>&1; then uv pip install --python "$PY" -q "$@"
+  else "$PY" -m ensurepip -q >/dev/null && "$PY" -m pip install --disable-pip-version-check -q "$@"; fi
+}
 if [[ "$(cat "$STAMP" 2>/dev/null)" != "$WANT" ]] || ! installed_here; then
   if [[ ! -f "$STAMP" ]] && installed_here; then
     : # an existing working installation from this checkout: keep it as it is
   else
     say "Installing Python dependencies (first run or pyproject.toml changed; needs network)"
-    "$PY" -m pip install --disable-pip-version-check -q -e ".[dev]" || fail "installing the Python dependencies failed (see the messages above; network access is needed on the first run)."
+    pip_install -e ".[dev]" || fail "installing the Python dependencies failed (see the messages above; network access is needed on the first run)."
   fi
   installed_here || fail "the move_openlab package is not importable from this checkout after installation."
   echo "$WANT" > "$STAMP"
