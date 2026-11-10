@@ -52,7 +52,8 @@ def environment() -> dict:
                 os=platform.system(), os_release=platform.release(), machine=platform.machine(),
                 cpu_count=os.cpu_count(), cpu_model=runner._cpu_model(), framework=move_openlab.__version__,
                 load_average=os.getloadavg() if hasattr(os, "getloadavg") else None, **versions(),
-                worker_env=runner._worker_env(), worker_memory_mb=runner.DEFAULT_MEMORY_MB)
+                worker_env={k: v for k, v in runner._worker_env().items() if k != "PATH"},   # PATH is local, not recorded
+                worker_memory_mb=runner.DEFAULT_MEMORY_MB)
 
 
 def instances(args) -> list[dict]:
