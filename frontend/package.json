@@ -9,7 +9,7 @@
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "node -e \"require('fs').rmSync('.unit-tests',{recursive:true,force:true})\" && tsc -p tests/tsconfig.json && node --test '.unit-tests/tests/**/*.test.js'",
-    "lint": "eslint ."
+    "lint": "eslint --max-warnings 0 ."
   },
   "dependencies": {
     "leaflet": "^1.9.4",
