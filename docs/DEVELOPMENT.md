@@ -78,6 +78,14 @@ node scripts/e2e/ci_journeys.mjs --base http://127.0.0.1:8791 --creds /tmp/openl
 never printed) and a *Synthetic grid* area whose road network is generated, not downloaded. The report
 (`ci-journeys.json`) and screenshots are the only CI artefacts — never the data directory.
 
+### Workflow acceptance (live demonstration scenarios)
+
+`scripts/e2e/workflow_acceptance.mjs` (same usage as the final acceptance run, on a data copy) runs the team
+demonstration's Scenarios A–C and the workflow checks (compact charts at 100 % / 160 % zoom and on a phone, Compare
+methods, exactly two experiments, Run with this method, Save & Run transition, collapsible metadata, participants added
+from the Workspace, Randomize with a typed seed, marker types, short titles, the public benchmark); it writes
+`workflow-acceptance.json` and the screenshots. Manual version: `docs/MANUAL_ACCEPTANCE.md`.
+
 ## Installation (manual)
 
 ```bash

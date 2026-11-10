@@ -464,13 +464,13 @@ await scenario(23, 'Add a custom method', 'On the demonstration baseline: + Add 
     return { actual: `My Greedy Matching ${m?.version ?? ''} registered (${m?.source ?? 'plugin'}${m?.code_sha256 ? `, code ${m.code_sha256.slice(0, 12)}…` : ''}) and listed with the built-in methods.`, evidence: [s] };
   });
 
-await scenario(24, 'Run and validate the custom method', 'Tick My Greedy Matching on the locked baseline and press Run again.',
+await scenario(24, 'Run and validate the custom method', 'Tick My Greedy Matching on the locked baseline and press Run added methods.',
   'An extension experiment runs the method on the same frozen scenarios in the sandbox; the validator accepts every solution; the baseline stays unchanged.',
   async () => {
     const cs0 = (await api(`/api/campaigns/${demoBase}`)).body;
     await clickCss('.lab-right input[aria-label="My Greedy Matching"]'); await sleep(400);
     await armJob();
-    await p.click('Run again', '.labbar button');
+    await p.click('Run added methods', '.labbar button');   // an added method: the run is an extension
     const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
     await sleep(3500); extension = await cidNow(); expect(extension && extension !== demoBase, 'no extension experiment');
     const e = await experiment(extension);

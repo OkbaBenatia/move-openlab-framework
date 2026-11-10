@@ -106,10 +106,13 @@ it is registered again (under a new version).
 
 1. Open the demonstration experiment (Workspace, experiment picker → *Montbéliard Demo — Baseline*). Its original
    results are frozen.
-2. Tick **My Greedy Matching** in the Methods list and press **Run again**: an *extension* experiment runs the new
-   method (and the original ones) on the same frozen scenarios; the original record is unchanged.
-3. When it finishes, every run shows the validator's verdict; **Compare** puts the extension beside the original
-   experiment — results, runtimes and CO₂, each with its comparability verdict.
+2. **+ Add method → Register my method → Register**, then **Run with this method** (or tick it in the Methods list
+   and press **Run added methods**): an *extension* experiment (*Montbéliard Demo — Extension 1 (My Greedy Matching)*)
+   runs the new method on the same frozen scenarios and shows it with the original methods; the original record is
+   unchanged.
+3. When it finishes, every run shows the validator's verdict; **Compare methods** puts My Greedy Matching, Exact and
+   Greedy side by side (results, runtime, CO₂, custom metrics, charts); **Compare** puts the extension beside another
+   experiment, each claim with its comparability verdict.
 
 The figures obtained this way in the browser acceptance run are in the review package (`reports/`), with
 screenshots; they are recomputed from validated decisions only.

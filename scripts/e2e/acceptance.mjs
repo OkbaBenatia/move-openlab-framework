@@ -224,12 +224,12 @@ if (ONLY === 'fallback') {
     await waitWorkspace();
     await p.waitFor('!!document.querySelector(".start-card") && !!document.querySelector("table.results")', 60000, 'demonstration');
     await sleep(2500);
-    const t = await p.eval('({ title: document.querySelector(".picker")?.innerText, left: document.querySelector(".lab-left")?.innerText, right: document.querySelector(".lab-right")?.innerText, start: document.querySelector(".start-card")?.innerText, hash: location.hash })');
+    const t = await p.eval('({ title: document.querySelector(".picker")?.innerText, left: document.querySelector(".lab-left")?.textContent, right: document.querySelector(".lab-right")?.innerText, start: document.querySelector(".start-card")?.innerText, hash: location.hash })');
     expect(/Baseline/.test(t.title), `opened ${t.title}`);
     expect(/404 trips in the area/.test(t.left) && /Sampled/.test(t.left), 'provenance (observed trips, sampled) missing');
     expect(/18 of 18 runs accepted/.test(t.right), 'validation evidence missing');
     expect(/Compare with the variant/.test(t.start), 'start card lacks Compare with the variant');
-    const icons = await p.eval('({ people: document.querySelectorAll(".people .dicon, .seg .dicon, .fleet .dicon").length, legend: document.querySelectorAll(".legend .dicon").length })');
+    const icons = await p.eval('({ people: document.querySelectorAll(".people .dicon, .seg .dicon, .fleet .dicon").length, legend: document.querySelectorAll(".legend .dicon, .legend .lg-ico").length })');
     expect(icons.people >= 3 && icons.legend >= 2, `mobility icons ${JSON.stringify(icons)}`);
     demoBase = t.hash.split('/').at(-1);
     await shot('first-use-workspace');

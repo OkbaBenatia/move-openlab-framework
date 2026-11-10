@@ -27,14 +27,15 @@ extract gives the same figures; another extract gives other, equally reproducibl
 | # | Min. | Where to click | What you should see | Scientific point (one sentence) |
 |---|---|---|---|---|
 | 1 | 1 | Sign in | The Workspace on the *Montbéliard Demo — Baseline*: map, provenance on the left (area, road network, mobility data, sampled scenario), results on the right | An experiment is a frozen record: scenarios, methods, configuration, runs and environment, identified by hashes |
-| 2 | 2 | Sample 1 in the scenario list; the results table | *Validated 18/18*, *Locked*; **15 / 30** riders served by Exact and by Greedy; CO₂ **28.3 kg avoided (−31.2 %)** against *everyone drives alone*; drivers as squares lettered **E** (electric) and **C** (combustion) | Every solution is re-checked by the problem's own validator; CO₂ is computed by the platform from the validated decisions, never taken from a method |
-| 3 | 3 | **Generate** → area Montbéliard → *Synthetic demand* → Next → drivers **20**, riders **30**, seed **21** → Next → From **07:30**, To **08:00**, max detour **20** min, ratio **1** → Next → Exact and Greedy ticked, repetitions **3** → Next → **Save & Run** | Preview **20 drivers · 30 riders · 63 compatible pairs**; the job's stages; *Validated 6/6*: Exact **13** served (**104.2 min** detour), Greedy **11** (**76.7 min**) | A seed and a road network fully determine the scenario: anyone with the same extract regenerates it exactly |
+| 2 | 2 | Sample 1 in the scenario list; the results table | *Validated 18/18*, *Locked*; **15 / 30** riders served by Exact and by Greedy; CO₂ **28.3 kg avoided (−31.2 %)** against *everyone drives alone*; drivers as squares with a green bolt (electric) or a blue fuel drop (combustion), riders as person icons, pick-ups and drop-offs as arrows; metadata compact (details under *Experiment details*) | Every solution is re-checked by the problem's own validator; CO₂ is computed by the platform from the validated decisions, never taken from a method |
+| 3 | 3 | **Generate** → area Montbéliard → *Synthetic demand* → Next → drivers **20**, riders **30**, seed **21** → Next → From **07:30**, To **08:00**, max detour **20** min, ratio **1** → Next → Exact and Greedy ticked, repetitions **3** → Next → **Save & Run** | Preview **20 drivers · 30 riders · 63 compatible pairs**; the Workspace opens on the new experiment at once with its stages *Queued › Preparing › Running methods › Validating › Results*; *Validated 6/6*: Exact **13** served (**104.2 min** detour), Greedy **11** (**76.7 min**) | A seed and a road network fully determine the scenario: anyone with the same extract regenerates it exactly |
 | 4 | 2 | The results table and *Evidence* (on the demonstration baseline) | Exact is *proven optimal* on **3/3** scenarios; Greedy is a heuristic and claims nothing; the three statements are shown apart: independent validation, reproducibility, semantic comparability | A time limit is never an optimality claim: a solver stopped by its limit is labelled *not proven (time limit)*, even when its solution is feasible |
 | 5 | 2 | CO₂ in the results; *Results › Advanced* → *Tailpipe only* → *New experiment with this calculation* | Exact: **98.2 kg** vs **107.5 kg** for everyone driving alone, **9.3 kg avoided (8.7 %)** (Greedy 99.0 kg, 8.5 kg, 7.9 %); the new experiment has the same decisions, other CO₂ figures and its own fingerprint; the original is unchanged | Changing an emission parameter creates a new, traceable configuration; the results stay directly comparable while the CO₂ figures are not |
+| 5b | 2 | Results → **Compare methods** | The two algorithms of the experiment side by side on its own frozen scenarios: **A** Exact (reference) and **B** Greedy, Δ B − A, status, served riders, detour, runtime, CO₂, fleet, custom metric; **Charts**: compact cards, three per row | Comparing methods needs no other experiment: same scenarios, constraints, objective and validator |
 | 6 | 2 | Back on the demonstration baseline → **Compare** → tick the controlled variant → **Compare selected (2)** | Footer *2 selected · reference A: Montbéliard Demo — Baseline*; exactly two columns, **A (Reference)** and **B**; a verdict per claim (results, runtime, CO₂) with *Why?*; the *Reference* selector changes the deltas | Comparability is decided per claim: two results may be comparable for quality and not for runtime or CO₂ |
-| 7 | 1.5 | In the comparison: **Charts** → Metric **Detour per served rider (min)** | Tooltips on hover, chart types where the data supports them, CSV · PNG · SVG; Exact **0.755 min**, My Greedy Matching (after step 8) **1.081 min** | A custom metric is computed from validated figures only; third-party metric code runs only in the sandbox |
-| 8 | 3 | Demonstration baseline → **+ Add method** → **Register my method** → *My Greedy Matching* → **Register** → tick it → **Run again** | *Registered* (code pinned by its SHA-256, self-test in the sandbox); an **extension**, *Validated 9/9*: My Greedy Matching **48** served with **51.9 min** detour, against **48** and **36.3 min** for Exact and Greedy; no optimality claimed | A new method is compared on exactly the same frozen scenarios, and its solutions are validated like every other method's |
-| 9 | 3 | Generated experiment → **Export** (evidence report ticked) → **Lock and export** → second window, second researcher → **Import ▾ → Import a bundle file…** → **Import experiment** → **Run again** | **One** `.zip` (about 1.4 MB) with *Bundle saved … SHA-256 …*; on import *Integrity verified*, *Importable*, *Reproducible here*, nothing stored before confirmation; the re-execution: *Validated 6/6*, **Reproduced**, comparability with the original: results direct, runtime direct, CO₂ direct | Reproduction means an independent re-execution in another workspace gives the same validated results; runtimes are reported, not required to match |
+| 7 | 1.5 | In the comparison: **Charts** (All metrics: one compact card per metric; or Metric **Detour per served rider (min)**) | Tooltips on hover, chart types where the data supports them, CSV · PNG · SVG, Enlarge; Exact **0.755 min**, My Greedy Matching (after step 8) **1.081 min** | A custom metric is computed from validated figures only; third-party metric code runs only in the sandbox |
+| 8 | 3 | Demonstration baseline → **+ Add method** → **Register my method** → *My Greedy Matching* → **Register** → **Run with this method** → **Compare methods** | *Registered* (code pinned by its SHA-256, self-test in the sandbox); an **extension** titled *Montbéliard Demo — Extension 1 (My Greedy Matching)*, *Validated 9/9*: My Greedy Matching **48** served with **51.9 min** detour, against **48** and **36.3 min** for Exact and Greedy; no optimality claimed | A new method is compared on exactly the same frozen scenarios, and its solutions are validated like every other method's |
+| 9 | 3 | Generated experiment → **Export** (evidence report ticked) → **Lock and export** → second window, second researcher → **Import ▾ → Import a bundle file…** → **Import experiment** → **Run again** | **One** `.zip` (about 1.4 MB) with *Bundle saved … SHA-256 …*; on import *Integrity verified*, *Importable*, *Reproducible here*, nothing stored before confirmation; the re-execution (*… — Reproduction 1*): *Validated 6/6*, **Reproduced**, comparability with the original: results direct, runtime direct, CO₂ direct | Reproduction means an independent re-execution in another workspace gives the same validated results; runtimes are reported, not required to match |
 | 10 | 1 | — | — | Validation, reproducibility and comparability are three separate statements, never merged into one score |
 
 Optional (1 minute, for a technical audience): the registered example metric
@@ -43,6 +44,15 @@ Optional (1 minute, for a technical audience): the registered example metric
 chart's metric selector as *CO₂ avoided per served rider*: on the demonstration's extension, **1.70 kg** per served
 rider for Exact and **1.64 kg** for My Greedy Matching, computed in the sandbox from the validated CO₂ figures.
 
+Optional (1–2 minutes each):
+- **Participants › + Driver / + Rider / Randomize**: the wizard opens on the participants step of a *new* version of the
+  shown scenario; click the start and end points on the map, preview the route (a point off the road network is
+  refused); Randomize locations with a typed seed gives the same places for the same seed. Nothing is saved before Save.
+- **Library › Benchmarks › Run the public benchmark** (about half a minute): 30 synthetic instances, Exact and Greedy,
+  5 repetitions, every result validated and checked against an independent min-cost-flow oracle (Exact: 150/150 runs
+  equal to the oracle optimum; Greedy: 35/150). It is a methodological benchmark with its own results, not the
+  scientific study, which stays *Planned*.
+
 ## Adding a method (if asked how)
 
 1. `.venv/bin/move-openlab method new my_method --problem public-ride-matching --dir plugins --author "Your name"`
@@ -50,7 +60,7 @@ rider for Exact and **1.64 kg** for My Greedy Matching, computed in the sandbox 
 2. Write `solve(instance, config)` returning `decisions` (and optionally a status and declared values).
 3. `.venv/bin/move-openlab method check plugins/my_method --bundle <experiment bundle>` reads the metadata without
    running it, runs the self-test in the sandbox and runs the method on the bundle's frozen scenarios.
-4. In the interface: **+ Add method → Register my method**, tick it, **Run again**.
+4. In the interface: **+ Add method → Register my method → Run with this method**, then **Compare methods**.
 
 The full worked example, with its verified outputs, is [ADD_YOUR_METHOD.md](ADD_YOUR_METHOD.md).
 
@@ -68,6 +78,8 @@ The full worked example, with its verified outputs, is [ADD_YOUR_METHOD.md](ADD_
    optimum. »
 5. « Changer un paramètre d'émission crée une nouvelle configuration traçable : mêmes décisions, autres chiffres de
    CO₂, et l'original reste verrouillé. »
+5b. « Pour comparer les algorithmes, inutile de chercher une autre expérience : « Comparer les méthodes » les met côte à
+   côte sur les mêmes scénarios figés. »
 6. « La comparaison porte exactement sur les expériences cochées, avec une référence explicite. La comparabilité est
    décidée affirmation par affirmation : résultats, temps de calcul, CO₂. »
 7. « Les graphiques et les métriques personnalisées partent des chiffres validés ; le code d'une métrique tierce

@@ -223,7 +223,7 @@ await journey('add-method', 'Add a method and validate it', 'My Greedy Matching 
   await p.click('close', '[role=dialog] button'); await sleep(1500);
   await p.eval(`document.querySelector('.lab-right input[aria-label="My Greedy Matching"]').click()`); await sleep(400);
   await armJob();
-  await p.click('Run again', '.labbar button');
+  await p.click('Run added methods', '.labbar button');   // an added method: the run is an extension
   const st = await waitJob(); expect(st === 'done' || st === 'gone', `job ${st}`);
   await sleep(3000);
   const ext = await cidNow(), e = await experiment(ext);

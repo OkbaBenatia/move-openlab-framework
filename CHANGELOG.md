@@ -5,6 +5,26 @@ interfaces.
 
 ## Unreleased
 
+### Changed — workflow and usability corrections
+- **Compact charts**: equal compact cards (fixed plot height, width following the card), *All metrics* grid, 3 / 2 / 1
+  per row (wide, medium or 160 % zoom, phone), thinned labels, Enlarge; the axis always reaches the largest value.
+- **Compare methods** inside one experiment (`#/methods/<experiment>`), and in the comparison picker; when nothing is
+  comparable the picker says so and offers compare methods, run another method, reproduce.
+- **Run with this method** after registering (or for a built-in method not yet run): an extension, never a change to the
+  locked original. Run is labelled *Run added methods* when it creates an extension; a blocked Run says why.
+- **Save & Run** opens the new experiment at once with its job stages; the server reuses the preview's routing (Save &
+  Run 2.9 s → 0.05 s measured); double submissions are ignored; an experiment opened while running shows its progress.
+- **Workspace**: compact metadata with *Experiment details* (remembered per account); Participants **+ Driver**,
+  **+ Rider**, **Randomize** open the wizard's participants step on a new scenario version; Randomize locations with a
+  typed seed; placement buttons show coordinates.
+- **Markers**: vehicle type by colour and icon, riders as person icons, pick-up / drop-off arrows; legends match.
+- **Titles**: derived experiments get short numbered titles (*… — Reproduction 2*); old nested titles are displayed
+  short (stored titles unchanged).
+- **Benchmarks**: the public synthetic benchmark can be run from Library › Benchmarks, with an independent oracle check
+  (`GET /api/lab/benchmark/public`); the scientific study stays *Planned*.
+- Tests: `test_workflow_fixes.py`, frontend `chartScale.test.ts`, browser `scripts/e2e/workflow_acceptance.mjs`;
+  `docs/MANUAL_ACCEPTANCE.md`.
+
 ### Security — release hardening
 - **Custom metrics are sandboxed.** A third-party metric is a file `<approved plugin directory>/<name>/metric.py`
   (literal `METADATA` + `compute(ctx)`), never imported by the server: read statically, registered per workspace
