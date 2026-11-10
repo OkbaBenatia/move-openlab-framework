@@ -130,12 +130,19 @@ EXACT_META = dict(method_id="exact-matching-highs", name="Exact matching MILP (H
                   default_config=dict(time_limit_s=60.0, threads=1, random_seed=0, mip_rel_gap=0.0, mip_abs_gap=0.0))
 
 
+def _mip_info(h) -> dict:
+    """Search effort of the last HiGHS run (recorded when a stage does not end optimal)."""
+    info = h.getInfo()
+    return {k: getattr(info, k) for k in ("mip_node_count", "mip_dual_bound", "mip_gap", "simplex_iteration_count",
+                                          "objective_function_value") if hasattr(info, k)}
+
+
 def solve_exact(instance, config) -> dict:
     import highspy
     pairs = sorted(instance["pairs"], key=lambda p: (num(p["driver"]), num(p["rider"]), p["driver"], p["rider"]))
     n = len(pairs)
     h = highspy.Highs()
-    h.setOptionValue("output_flag", False)
+    h.setOptionValue("output_flag", True)               # log → worker stderr, kept only on failure/timeout
     for k in ("threads", "random_seed"):
         h.setOptionValue(k, int(config[k]))
     for k in ("mip_rel_gap", "mip_abs_gap"):
@@ -160,7 +167,7 @@ def solve_exact(instance, config) -> dict:
     st1, t1 = h.modelStatusToString(h.getModelStatus()), h.getRunTime()
     if h.getModelStatus() != highspy.HighsModelStatus.kOptimal:
         return dict(decisions=[], status="TIME_LIMIT" if "time" in st1.lower() else "ERROR",
-                    metadata={**meta, "solver_time_s": t1}, diagnostics=dict(stage1_status=st1))
+                    metadata={**meta, "solver_time_s": t1}, diagnostics=dict(stage1_status=st1, stage1_search=_mip_info(h)))
     served = int(round(h.getInfo().objective_function_value))
     h.addRow(float(served), inf, n, list(range(n)), [1.0] * n)
     h.changeColsCost(n, list(range(n)), [float(p["detour_s"]) for p in pairs])
@@ -172,8 +179,9 @@ def solve_exact(instance, config) -> dict:
     ok = h.getModelStatus() == highspy.HighsModelStatus.kOptimal
     return dict(decisions=chosen, status="OPTIMAL" if ok else ("TIME_LIMIT" if "time" in st2.lower() else "FEASIBLE"),
                 declared=dict(served=len(chosen), detour_s=sum(pairs[k]["detour_s"] for k in range(n) if x[k] > 0.5)),
-                metadata={**meta, "solver_time_s": round(t1 + t2, 6)},
-                diagnostics=dict(stage1_status=st1, stage2_status=st2, served_star=served, variables=n))
+                metadata={**meta, "solver_time_s": round(t2, 6)},     # getRunTime() is cumulative: t2 = both stages
+                diagnostics=dict(stage1_status=st1, stage2_status=st2, served_star=served, variables=n,
+                                 **({} if ok else dict(stage2_search=_mip_info(h)))))
 
 
 GREEDY_META = dict(method_id="greedy-min-detour", name="Greedy (smallest detour first)", version="1.0.0", kind="heuristic",

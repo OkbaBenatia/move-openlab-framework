@@ -12,12 +12,19 @@ EXACT_META = dict(
     default_config=dict(time_limit_s=60.0, threads=1, random_seed=0, mip_rel_gap=0.0, mip_abs_gap=0.0, presolve="on"))
 
 
+def _mip_info(h) -> dict:
+    """Search effort of the last HiGHS run (recorded when a stage does not end optimal)."""
+    info = h.getInfo()
+    return {k: getattr(info, k) for k in ("mip_node_count", "mip_dual_bound", "mip_gap", "simplex_iteration_count",
+                                          "objective_function_value") if hasattr(info, k)}
+
+
 def solve_exact(instance, config) -> dict:
     import highspy
     pairs = sorted(instance["compatible_pairs"], key=lambda p: (idnum(p["driver"]), idnum(p["passenger"])))
     n = len(pairs)
     h = highspy.Highs()
-    h.setOptionValue("output_flag", False)
+    h.setOptionValue("output_flag", True)               # log → worker stderr, kept only on failure/timeout
     h.setOptionValue("threads", int(config["threads"]))
     h.setOptionValue("random_seed", int(config["random_seed"]))
     h.setOptionValue("mip_rel_gap", float(config["mip_rel_gap"]))
@@ -47,7 +54,7 @@ def solve_exact(instance, config) -> dict:
     st1 = h.modelStatusToString(h.getModelStatus()); t1 = h.getRunTime()
     if h.getModelStatus() != highspy.HighsModelStatus.kOptimal:
         return dict(decisions=[], status="TIME_LIMIT" if "time" in st1.lower() else "ERROR",
-                    metadata={**meta, "solver_time_s": t1}, diagnostics=dict(stage1_status=st1))
+                    metadata={**meta, "solver_time_s": t1}, diagnostics=dict(stage1_status=st1, stage1_search=_mip_info(h)))
     served_star = int(round(h.getInfo().objective_function_value))
     h.addRow(float(served_star), inf, n, list(range(n)), [1.0] * n)       # stage 2: min cost at optimal service
     h.changeColsCost(n, list(range(n)), [float(p["cost"]) for p in pairs])
@@ -59,7 +66,7 @@ def solve_exact(instance, config) -> dict:
     chosen = [[pairs[k]["driver"], pairs[k]["passenger"]] for k in range(n) if x[k] > 0.5]
     return dict(decisions=chosen, status="OPTIMAL" if ok else ("TIME_LIMIT" if "time" in st2.lower() else "FEASIBLE"),
                 declared=dict(served=len(chosen), cost=int(round(sum(pairs[k]["cost"] for k in range(n) if x[k] > 0.5)))),
-                metadata={**meta, "solver_time_s": round(t1 + t2, 6)},
+                metadata={**meta, "solver_time_s": round(t2, 6)},
                 diagnostics=dict(stage1_status=st1, stage2_status=st2, served_star=served_star, variables=n,
                                  stage1_time_s=round(t1, 6), stage2_time_s=round(t2, 6)))
 
