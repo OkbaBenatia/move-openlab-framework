@@ -18,22 +18,22 @@ import json
 import re
 import threading
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import demo, samples
+from .. import bundles, demo, samples
 from ..analysis.common import SCOPE_FULL, by_cell, med
 from ..analysis.compare import compare
 from ..analysis.reproducibility import reproducibility
 from ..analysis.semantic import semantic_compare
 from ..datasets import DatasetStore
-from ..geo.areas import AreaStore
+from ..geo.areas import AREA_ID, AreaStore
 from ..hashing import sha256_bytes
 from ..integrations import rpc
 from ..mobility import emissions as E
 from ..mobility import vehicles as V
-from ..store import BenchError, _write, problem_for
+from ..store import MAX_BUNDLE_BYTES, BenchError, _write, now, problem_for
 from .experiments import _call, ws
 from .geo import RIDE, ComposeBody, ScenarioBody
 from .geo import store as network_store
@@ -152,6 +152,13 @@ def set_preferences(body: PrefsBody, request: Request):
         raise HTTPException(400, "invalid experiment id")
     if upd.get("hidden_ids") is not None and not all(CID.match(str(x)) for x in upd["hidden_ids"]):
         raise HTTPException(400, "invalid record id")
+    if upd.get("area_id"):                       # the working area (Library › Use, the area filter); "" clears it
+        if not AREA_ID.match(upd["area_id"]):
+            raise HTTPException(400, "invalid area id")
+        try:
+            AreaStore(w.root).get(upd["area_id"])
+        except KeyError:
+            raise HTTPException(404, "area not found") from None
     with _prefs_lock:
         p = _prefs(w)
         p.update(upd)
@@ -569,8 +576,9 @@ def _repro_between(w, ca: dict, cb: dict) -> dict:
         rr = reproducibility(w, repro["campaign_id"])
     except (BenchError, HTTPException):
         return dict(applicable=True, reproduced=None)
+    agree = rr.get("agreement") or {}
     return dict(applicable=True, reproduced=bool(rr["numerically_reproduced"]), cells=rr["cells"],
-                different=(rr.get("agreement") or {}).get("different"))
+                different=agree.get("different"), identical=agree.get("identical_solution"))
 
 
 # ---------------------------------------------------------------- A/B comparison
@@ -664,3 +672,81 @@ def diff(a: str, b: str, request: Request, method_a: str | None = None, method_b
                 metrics=[m.to_dict() for m in problem.metrics], domain_metrics=problem.domain_metric_definitions(),
                 matched=len(rows), unmatched=dict(a=len(ca["scenario_set"]["instance_hashes"]) - len(rows),
                                                   b=len(cb["scenario_set"]["instance_hashes"]) - len(rows)))
+
+
+# ------------------------------------------------------------------ export and import dialogs
+@router.get("/export/{cid}")
+def export_preview(cid: str, request: Request):
+    """What Export would put in the bundle — records, scenarios, references, methods, parameters — without building it."""
+    w = ws(request)
+    _call(w.get, cid)
+    return _call(bundles.preview, w, cid)
+
+
+@router.get("/experiments/{cid}/evidence")
+def evidence_report(cid: str, request: Request):
+    """A readable evidence report to keep next to a bundle: provenance, independent validation, reproducibility (for a
+    re-execution), semantic comparability with the parent, fingerprints and the results table. Computed from the stored
+    records only; it is not part of the bundle and is not needed to verify it."""
+    w = ws(request)
+    e = experiment(cid, request)
+    chain = _call(w.lineage, cid)
+    c = chain[0]
+    fingerprints = None
+    if all(x.get("checksum") for x in chain):
+        problem = problem_for(c)
+        insts = {h: w.inst.get_instance(h) for x in chain for h in x["scenario_set"]["instance_hashes"]}
+        fingerprints = dict(experiment=bundles.experiment_fingerprint(chain), semantic=bundles.semantic_fingerprint(problem, insts, chain))
+    camp = e["campaign"]
+    rep = dict(
+        format="move-openlab-evidence/1", generated_at=now(), generated_by=w.display,
+        note="Evidence summary computed from the stored records. Validation: every solution re-checked by the problem's "
+             "validator. Reproducibility: only for a re-execution of the same experiment. Comparability: whether figures "
+             "may be put side by side (results, runtimes, CO2).",
+        experiment=dict(campaign_id=cid, title=camp["title"], kind=camp["kind"], locked=camp["locked"], checksum=c.get("checksum"),
+                        parent=camp["parent"], problem=e["problem"]["title"], repetitions=camp["repetitions"],
+                        emissions=camp["emissions"], imported_from=camp["imported_from"]),
+        provenance=e["provenance"], context=e["context"], methods=e["methods"], validation=e["validation"],
+        reproducibility=e["reproduction"] or dict(applicable=False, reason="not a re-execution of another experiment"),
+        comparability_with_parent=e["comparability"], fingerprints=fingerprints,
+        results=[dict(method_id=r["method_id"], name=r.get("name"), kind=r.get("kind"), campaign_id=r.get("campaign_id"),
+                      totals=r.get("totals"), proven_optimal=r.get("proven_optimal"), repetitions=r.get("repetitions"),
+                      repetitions_consistent=r.get("repetitions_consistent")) for r in (e["results"] or {}).get("rows", [])])
+    body = json.dumps(rep, indent=1, ensure_ascii=False)
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="move_openlab_evidence_{cid}.json"'})
+
+
+@router.post("/inspect")
+async def inspect_bundle(request: Request, file: UploadFile = File(...)):
+    """Check a bundle completely without importing it, and say what importing it would do here: what it contains, which
+    records are new, already present or in conflict, whether its methods are available for a re-execution, and what can
+    be compared. Nothing is written."""
+    data = await file.read(MAX_BUNDLE_BYTES + 1)
+    w = ws(request)
+    rep = _call(w.verify_bundle, data)[0]
+    present: dict[str, str] = {}
+    for ent in rep["campaigns_verified"]:
+        try:
+            have = w.get(ent["campaign_id"])
+            present[ent["campaign_id"]] = "identical" if have.get("checksum") == ent["checksum"] else "different"
+        except BenchError:
+            present[ent["campaign_id"]] = "new"
+    missing = [m for m in rep["methods"] if not m["available_locally"]]
+    warnings = []
+    if any(v == "different" for v in present.values()):
+        warnings.append("A different experiment with the same identifier is already in your workspace: the import will be refused.")
+    if missing:
+        warnings.append("Not available here: " + ", ".join(f"{m['method_id']} {m['version']}" for m in missing)
+                        + ". The results can be inspected and compared; re-running them needs these methods (Add method).")
+    if rep["networks"] and not rep["geometry_verified"]:
+        warnings.append("No replay geometry in the bundle: routes replay only where the road network is installed.")
+    if present and all(v == "identical" for v in present.values()):
+        warnings.append("Already in your workspace (identical records): importing adds nothing; you can reproduce it directly.")
+    rep.update(filename=file.filename, bytes=len(data), present=present,
+               adds=sum(1 for v in present.values() if v == "new"),
+               importable=not any(v == "different" for v in present.values()), reproducible_here=not missing,
+               comparable="Same problem and validator as this installation: results can be compared with your experiments of "
+                          "this problem; runtimes only with conditions (other hardware and load).",
+               warnings=warnings)
+    return rep

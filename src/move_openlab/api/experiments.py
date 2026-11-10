@@ -193,8 +193,8 @@ def lock(cid: str, request: Request):
 
 
 @router.get("/campaigns/{cid}/export")
-def export(cid: str, request: Request):
-    data, info_ = _call(ws(request).export_bundle, cid)
+def export(cid: str, request: Request, geometry: bool = True):
+    data, info_ = _call(ws(request).export_bundle, cid, geometry)
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="move_openlab_campaign_{cid}.zip"',
         "X-Bundle-SHA256": info_["bundle_sha256"], "X-Manifest-SHA256": info_["manifest_sha256"]})

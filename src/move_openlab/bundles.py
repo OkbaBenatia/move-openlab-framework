@@ -135,7 +135,51 @@ def _network_ref(network_store, nid: str) -> dict:
     return out
 
 
-def export(ws, cid: str) -> tuple[bytes, dict]:
+def preview(ws, cid: str) -> dict:
+    """What an export of ``cid`` would contain, without building it (and without requiring the lock): the records of
+    the lineage, scenarios, references, methods, vehicle and emission parameters, and how many scenarios can carry
+    replay geometry. Used by the export dialog."""
+    from .geo.osm import NetworkStore
+    chain = ws.lineage(cid)
+    problem = problem_for(chain[0])
+    hashes = sorted({h for c in chain for h in c["scenario_set"]["instance_hashes"]})
+    instances = {h: ws.inst.get_instance(h) for h in hashes}
+    nets, gstore = NetworkStore(ws.inst.data), G.GeometryStore(ws.root)
+    net_ids = sorted({(i.get("network") or {}).get("network_id") for i in instances.values()} - {None, ""})
+    stored = {n for n in net_ids if _network_present(nets, n)}
+    geo_ok = sum(1 for h, inst in instances.items() if "pairs" in inst and (inst.get("network") or {}).get("network_id")
+                 and ((inst.get("network") or {}).get("network_id") in stored or gstore.get(h)))
+    datasets = {}
+    for inst in instances.values():
+        prov = inst.get("provenance") or {}
+        if prov.get("dataset_key"):
+            datasets[prov["dataset_key"]] = {k: prov.get(k) for k in DATASET_KEYS if prov.get(k) is not None}
+    methods = sorted({(m["method_id"], m["version"], m["source"]) for c in chain for m in c["methods"]})
+    return dict(
+        campaign_id=cid, locked=all(c.get("checksum") for c in chain), format=FORMAT_V2,
+        problem=dict(problem_id=problem.problem_id, title=problem.title, validator_version=problem.validator_version),
+        campaigns=[dict(campaign_id=c["campaign_id"], title=c["title"], kind=c["kind"], locked=bool(c.get("checksum")),
+                        relation=(c.get("parent") or {}).get("relation"), runs=len(c["runs"]),
+                        accepted=sum(1 for r in c["runs"] if r.get("accepted"))) for c in chain],
+        scenarios=[_scenario_entry(instances[h]) for h in hashes],
+        networks=[_network_ref(nets, n) for n in net_ids], datasets=[datasets[k] for k in sorted(datasets)],
+        methods=[dict(method_id=a, version=b, source=s) for a, b, s in methods],
+        vehicles=len(_vehicle_profiles(instances)),
+        emissions=[dict(campaign_id=c["campaign_id"], **c["config"]["emissions"]) for c in chain if c["config"].get("emissions")],
+        geometry=dict(available=geo_ok, scenarios=len(hashes)))
+
+
+def _network_present(nets, nid: str) -> bool:
+    try:
+        nets.provenance(nid)
+        return True
+    except (KeyError, ValueError, OSError):
+        return False
+
+
+def export(ws, cid: str, geometry: bool = True) -> tuple[bytes, dict]:
+    """Build the bundle of ``cid`` and its lineage. ``geometry=False`` leaves out the optional replay polylines (the
+    importer can still verify, reproduce and compare; routes then replay only where the road network is installed)."""
     from .geo.osm import NetworkStore
     chain = ws.lineage(cid)
     if not all(c.get("checksum") for c in chain):
@@ -152,7 +196,7 @@ def export(ws, cid: str) -> tuple[bytes, dict]:
     loaded = {}
     for h, inst in instances.items():
         nid = (inst.get("network") or {}).get("network_id")
-        if not nid or "pairs" not in inst:
+        if not geometry or not nid or "pairs" not in inst:
             continue
         try:                                            # the installed network first, imported geometry otherwise
             if nid not in loaded:
@@ -319,13 +363,21 @@ def _verify(ws, data: bytes):
         except ContractError as e:
             ok, why = False, str(e)
         avail.append(dict(m, available_locally=ok, reason=why))
+    by_id = {e["campaign_id"]: e for e in man["campaigns"]}
     report = dict(ok=True, bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes),
-                  format=fmt, problem_id=problem.problem_id, exported_by=man["exported_by"],
+                  format=fmt, problem_id=problem.problem_id, problem_title=problem.title, exported_by=man["exported_by"],
+                  created_at=man.get("created_at"), scenarios=man.get("scenarios") or [],
+                  vehicles=len(man.get("vehicles") or []), emissions=(man.get("emissions") or {}).get("configurations") or [],
+                  lineage=man.get("lineage") or [],
                   exporter_installation=man["exporter_installation"], root_campaign_id=man["root_campaign_id"],
                   files_checked=len(man["files"]), instances_verified=len(instances),
                   geometry_verified=len(geometry), fingerprints=fingerprints,
                   networks=man.get("networks") or [], datasets=man.get("datasets") or [],
-                  campaigns_verified=[dict(campaign_id=k, kind=v["kind"], checksum=v["checksum"], title=v["title"])
+                  campaigns_verified=[dict(campaign_id=k, kind=v["kind"], checksum=v["checksum"], title=v["title"],
+                                           owner_display=v.get("owner_display"),
+                                           relation=(v.get("parent") or {}).get("relation"), runs=len(v["runs"]),
+                                           accepted=sum(1 for r in v["runs"] if r.get("accepted")),
+                                           repetitions=(by_id.get(k, {}).get("config") or v["config"]).get("repetitions"))
                                       for k, v in campaigns.items()],
                   spec_match=True, methods=avail, executable_code_in_bundle=False)
     return report, campaigns, instances, problem, geometry
