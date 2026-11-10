@@ -5,6 +5,47 @@ interfaces.
 
 ## Unreleased
 
+### Security — release hardening
+- **Custom metrics are sandboxed.** A third-party metric is a file `<approved plugin directory>/<name>/metric.py`
+  (literal `METADATA` + `compute(ctx)`), never imported by the server: read statically, registered per workspace
+  (`POST /api/lab/metrics/register`) with its SHA-256 pinned and a sandboxed self-test, and evaluated only in the
+  verified bubblewrap sandbox (no network, no server environment, no data directory, credential store or other
+  workspace), with a 20 s timeout and memory/CPU limits. It receives only its declared inputs; every output is
+  validated (invalid values, exceptions and timeouts give no value and are reported in `custom_issues`). Without
+  plug-ins or a verified sandbox a registered metric has no value — no fallback. Built-in metrics are the documented
+  trusted path. **Breaking:** packages declaring the `move_openlab.metrics` entry-point group are no longer loaded; the
+  example moved from `examples/custom_metric/` to `plugins/co2_avoided_per_served_rider/metric.py`.
+- Workers start with `python -I -B`: no bytecode written into the installation (`-I` ignores `PYTHONDONTWRITEBYTECODE`).
+
+### Fixed — release hardening
+- **Comparison values are matched by scenario**: sample *k* of a comparison is the reference's *k*-th scenario, found
+  in every other experiment by its frozen instance hash (it was the other experiment's *k*-th scenario, i.e. possibly
+  another scenario); totals over all scenarios are shown beside the reference's only for the same scenario set (an
+  experiment on a subset showed a misleading delta). The table notes when a side covers other scenarios.
+- **Solver time of the exact methods**: HiGHS's run clock is cumulative over the two lexicographic stages, and the
+  stage-1 time was counted twice in `solver_time_s`; the final reading is now recorded once. Earlier records keep
+  their value (results unaffected).
+- `./start-local.sh` works with a Python environment that has no pip (one created by uv): uv, then `ensurepip`.
+- Clearer refusals for bundles from a newer version (unknown format or section): what this installation reads and what
+  to do; nothing is imported.
+
+### Added — release hardening
+- **Run diagnostics**: worker CPU time and peak memory with every run; a run killed at its timeout records the state
+  and CPU time of its processes, a Python traceback taken one second before the deadline and the tail of the solver
+  log; HiGHS search statistics when a stage does not end optimal.
+- `scripts/solver_stress.py`: controlled repetition and concurrency stress test of the exact ride-matching method.
+- `scripts/benchmark_synthetic_assignment.py`: reproduces the public synthetic capacitated-assignment benchmark from its
+  frozen seeds (validator and oracle checks, JSON and Markdown output, labelled as its own measurements).
+- **Browser journeys in CI** (`.github/workflows/browser.yml`, `scripts/e2e/ci_journeys.mjs`, `scripts/e2e/seed_ci.py`):
+  sign-in, demonstration, Generate and Save & Run, compare two, export, isolation, import, reproduction, add method,
+  phone layout, on a generated road grid and the public demonstration only.
+- **Lint**: ESLint (recommended rules, typescript-eslint, Rules of Hooks; `npm --prefix frontend run lint`) and ruff
+  pinned in the `dev` extra; CI runs both and the frontend unit tests.
+- Tests: `test_metric_security.py`, `test_solver_robustness.py`, `test_bundle_compatibility.py`,
+  `test_scientific_audit.py`; frontend `scenarioMatch.test.ts`.
+- `docs/TEAM_PRESENTATION_GUIDE.md`: a 15–20 minute live demonstration with exact clicks, expected results, a French
+  speaking script, a fallback plan and the claims that may be presented publicly.
+
 ### Added — scientific UX corrections and validation
 - **Comparison selection is exact**: the open experiment is a visible item that can be unticked; *Compare selected (N)*
   compares exactly the ticked experiments (A = reference, then B, C… in tick order); the reference is named and can be
@@ -20,9 +61,9 @@ interfaces.
 - **Traceable CO₂ and vehicle changes** (Results › Advanced): another calculation or baseline runs as a new experiment on
   the same frozen scenarios; edited vehicles or parameters open the wizard on a new scenario version that records the
   frozen scenario it derives from (`from_instance`). Worked emissions examples and unit conversions in tests.
-- **Custom metrics** (`move_openlab.metrics` entry points): contract (id, version, name, unit, direction, problems,
-  required validated inputs, aggregation, provenance), computed by the platform from validated figures only;
-  example `detour-per-served-rider` and the package `examples/custom_metric/`; `GET /api/lab/metrics`.
+- **Custom metrics**: contract (id, version, name, unit, direction, problems, required validated inputs, aggregation,
+  provenance), computed from validated figures only; example `detour-per-served-rider`; `GET /api/lab/metrics`
+  (third-party metrics: see *Security — release hardening* above).
 - **Workspace restore** per account: experiment, scenario, selected result, methods, scope and map view after
   navigation, reload or a new sign-in (`preferences.workspace`).
 - **Randomize locations** in the wizard: a new seed gives new places on the road network inside the area; ids and time

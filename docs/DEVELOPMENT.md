@@ -53,6 +53,31 @@ and three experiments with a changed reference, verdicts, chart tooltips and typ
 permissions. Same usage as above (`--base`, `--creds`, `--out`); it writes `final-acceptance.json` (action, expected,
 actual, PASS/FAIL, evidence per scenario) and the screenshots.
 
+### Browser journeys (CI, synthetic data only)
+
+`scripts/e2e/ci_journeys.mjs` runs the main journeys on a fresh, deterministic data directory: sign-in, first-use
+demonstration, Generate (seeded synthetic demand on a generated road grid) and Save & Run, compare exactly two
+experiments, export one ZIP, workspace isolation, import into a second researcher's workspace, independent
+reproduction, add and validate a method (sandboxed plug-in), phone layout. CI runs it on every push and pull request
+(`.github/workflows/browser.yml`); the same commands run locally:
+
+```bash
+export MOVE_OPENLAB_DATA_DIR=/tmp/openlab-ci MOVE_OPENLAB_PORT=8791 MOVE_OPENLAB_TILE_URL=none
+.venv/bin/python scripts/e2e/seed_ci.py
+```
+
+```bash
+./start-local.sh
+```
+
+```bash
+node scripts/e2e/ci_journeys.mjs --base http://127.0.0.1:8791 --creds /tmp/openlab-ci/dev-credentials.json --out /tmp/openlab-ci-out
+```
+
+`seed_ci.py` creates two researcher accounts with random passwords (in the data directory's 0600 credentials file,
+never printed) and a *Synthetic grid* area whose road network is generated, not downloaded. The report
+(`ci-journeys.json`) and screenshots are the only CI artefacts — never the data directory.
+
 ## Installation (manual)
 
 ```bash
@@ -128,19 +153,28 @@ service.
 | `test_public_safety.py` | confidentiality and hygiene gate |
 | `test_lab.py`, `test_export_import_dialogs.py`, `test_sample_bundle.py` | Workspace API and saved view, demonstration, bundle format 2, one-ZIP export with the evidence report, manifest schema and tampering, sample bundle, extensions as comparison reference |
 | `test_mobility.py`, `test_emissions_examples.py` | vehicles and emissions (worked examples, units, negative avoided CO₂, traceability), wizard composition, Randomize locations, edited-participant provenance |
-| `test_custom_metrics.py`, `test_method_tools.py` | custom-metric contract, aggregation and loading; method template, `method check`, the *My Greedy Matching* example |
+| `test_custom_metrics.py`, `test_method_tools.py` | custom-metric contract, aggregation, declared inputs only, no package loading, the example metric file; method template, `method check`, the *My Greedy Matching* example |
+| `test_metric_security.py` | registered metrics: sandbox isolation (other workspaces, credential store, environment, network), never in the server process, timeout and memory limit, invalid outputs, pinned code, fail closed |
+| `test_solver_robustness.py` | a solver time limit is never an optimality claim, a worker that does not answer is killed with diagnostics, solver / method / end-to-end times, HiGHS's cumulative clock |
+| `test_bundle_compatibility.py` | newer bundle formats and sections refused clearly, a method missing here, complete exchange between two researchers |
+| `test_scientific_audit.py` | claim-dependent verdicts, a CO₂ calculation change as a new traceable configuration, CO₂ units and aggregation, scenario-level matching, the three separate statements |
 
-Frontend unit tests (the comparison selection model; TypeScript compiled by `tsc`, run by `node --test`, no extra
-dependency):
+Frontend unit tests (the comparison selection model and the scenario matching of compared experiments; TypeScript
+compiled by `tsc`, run by `node --test`, no extra dependency):
 
 ```bash
 npm --prefix frontend test
 ```
 
-Other checks run in CI:
+Other checks run in CI (ruff is pinned in the `dev` extra, as in CI; the frontend lint uses ESLint's and
+typescript-eslint's recommended rules plus the Rules of Hooks, `frontend/eslint.config.js`):
 
 ```bash
-ruff check src tests scripts plugins
+.venv/bin/ruff check src tests scripts plugins
+```
+
+```bash
+npm --prefix frontend run lint
 ```
 
 ```bash
@@ -153,6 +187,16 @@ npm --prefix frontend run build
 
 `python scripts/smoke_synthetic.py` runs the complete two-installation workflow on the default synthetic scenario
 set (about a minute).
+
+`python scripts/benchmark_synthetic_assignment.py --out <dir>` reproduces the public synthetic capacitated-assignment
+benchmark from its frozen seeds (30 instances, three methods including the sandboxed example plug-in, five
+repetitions, validator and min-cost-flow oracle checks) and writes a JSON record and a Markdown table — its own
+measured figures, not those of the planned scientific benchmark.
+
+`python scripts/solver_stress.py --out <file>` is the controlled repetition and concurrency stress test of the exact
+ride-matching method used to investigate an intermittent solver stall: deterministic inputs (the sample bundle's frozen
+scenarios, optionally a seeded scenario on a local road network), several concurrency levels, the environment and
+versions, and every run's status, solver / method / end-to-end time, worker CPU time and peak memory.
 
 ## Conventions
 

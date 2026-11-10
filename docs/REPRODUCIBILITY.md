@@ -9,7 +9,7 @@
 | Problem | problem id and specification version, objective and constraint specification ids, instance schema, validator version |
 | Method | id and semantic version; plugins also by the SHA-256 of their code |
 | Configuration | repetitions, timeout, time budget, per-method options; the effective configuration of each run |
-| Run | decisions, independent validation, declared values, status, solver/method/total times, isolation mode |
+| Run | decisions, independent validation, declared values, status, solver/method/total times, worker CPU time and peak memory, isolation mode; for a failed or timed-out run, the diagnostics (process states and CPU time at the deadline, a Python traceback and the tail of the solver log) |
 | Environment | Python, OS, machine, CPU model digest, CPU count, framework and solver versions |
 | Campaign | checksum over all of the above once locked; parent checksum for derived campaigns |
 
@@ -122,6 +122,21 @@ installation. Per scenario × method cell:
 
 Runtimes are reported but never required to match: they depend on the hardware and the load.
 
+## Times and time limits
+
+Three times are recorded separately for every run: `solver_time_s` (reported by the optimisation solver),
+`method_time_s` (the `solve()` call in the worker, model building included) and `total_time_s` (the whole isolated
+execution measured by the platform: process start, input, solve, reply); always `solver ≤ method ≤ total`. HiGHS's
+run clock is cumulative over the two lexicographic stages, so the exact methods report its final reading once (runs
+recorded before revision 0.3.0's release hardening added stage 1 twice and overstate the exact methods' solver time
+by the stage-1 time; their results are unaffected). The HiGHS time limit applies to both stages together.
+
+A time limit is never an optimality claim: a stage stopped by the time limit gives status `TIME_LIMIT` and the scope
+*not proven (time limit)*, even when the returned decisions are feasible (an empty matching is). The run timeout
+(default 120 s) is a separate, outer bound: a worker that has not answered is killed and its run rejected, with the
+diagnostics above. Neither can leave a job running indefinitely; jobs can be cancelled, and jobs interrupted by a
+restart are marked *interrupted*.
+
 ## Semantic comparability
 
 Equal files are not required for a valid comparison, and equal names are not sufficient. Four fingerprints answer
@@ -147,7 +162,10 @@ never make a comparison invalid — comparing methods is the purpose of a benchm
 restricts the other two: the same scenario studied with other emission factors keeps its objective results directly
 comparable while its emission figures are only comparable with conditions (the reasons are listed under *Why?*).
 Scenarios of two experiments are matched by instance hash, by derivation (controlled variants) or by equal problem
-fingerprint (same optimization problem, other vehicle or emission data).
+fingerprint (same optimization problem, other vehicle or emission data). In the comparison views, sample *k* is the
+reference's *k*-th scenario, looked up in every other experiment by its frozen instance (never by position), and
+totals over all scenarios are put side by side only for experiments covering the same scenario set; an experiment
+on other scenarios shows no total rather than a misleading delta.
 
 ## Limits
 
