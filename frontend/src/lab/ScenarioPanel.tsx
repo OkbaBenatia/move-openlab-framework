@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, ChevronDown, CircleDashed, Database, ExternalLink, Eye, EyeOff, Layers, MapPin, Play, Route, User } from 'lucide-react';
+import { CheckCircle2, ChevronDown, CircleDashed, Database, ExternalLink, Eye, EyeOff, Layers, MapPin, Play, Plus, ShieldCheck, Shuffle, User } from 'lucide-react';
 import { CarIcon, ElectricCarIcon, RiderIcon, VehicleIcon } from '../components/DomainIcons';
 import type { Json } from '../api/client';
 import { KIND } from '../components/common';
@@ -26,9 +26,12 @@ function Ctx({ icon, k, v, d, extra }: { icon: React.ReactNode; k: string; v: Re
 
 /** Left panel: the experiment, then Area · Road network · Mobility data (the source) · Scenario (the demand derived from
  *  it) on separate lines, then the participants and vehicles of the scenario shown on the map. */
-export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetails, parentTitle, hidden, onHide }: {
+export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetails, parentTitle, hidden, onHide, onEdit, detailsOpen = false, setDetailsOpen }: {
   exp: Experiment; hash: string; setHash: (h: string) => void; inst: Json | null; plan: Json | null;
   onFocus: (lat: number, lon: number) => void; onDetails: () => void; parentTitle: string | null; hidden: boolean; onHide: () => void;
+  /** + Driver, + Rider, Randomize: always a NEW version of the shown frozen scenario (absent: not a geographic scenario) */
+  onEdit?: (action: 'driver' | 'rider' | 'randomize') => void;
+  detailsOpen?: boolean; setDetailsOpen?: (open: boolean) => void;
 }) {
   const [who, setWho] = useState<'drivers' | 'riders'>('drivers');
   const served = new Set<string>((plan?.vehicles ?? []).filter((v: Json) => v.rider).map((v: Json) => v.rider));
@@ -54,19 +57,22 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
       <span className="eyebrow">{t('ws.experiment')}</span>
       <h2 className="title">{exp.campaign.title}</h2>
       <ExperimentBadges exp={exp} />
-      {exp.campaign.parent && <p className="small muted">{exp.campaign.parent.relation === 'perturbs' ? 'Controlled variant of' : exp.campaign.parent.relation === 'reproduces' ? 'Re-execution of' : 'Extends'} {parentTitle ?? 'its parent experiment'}{exp.campaign.variant ? ` — ${exp.campaign.variant}` : ''}</p>}
+      {exp.validation.runs > 0 && <div className="small muted summary-line"><ShieldCheck size={12} /> {exp.validation.accepted}/{exp.validation.runs} runs validated · {exp.methods.length} method{exp.methods.length === 1 ? '' : 's'} · {exp.scenarios.length} scenario{exp.scenarios.length === 1 ? '' : 's'}</div>}
     </section>
     <section className="sec ctx" aria-label="area, road network, mobility data and scenario">
       <Ctx icon={<MapPin size={15} />} k={t('ws.area')} v={ctx.area.label ?? '—'} />
-      <Ctx icon={<Route size={15} />} k={t('ws.network')} v={network ?? '—'} d={netDetail} />
-      <Ctx icon={<Database size={15} />} k={pv.sampled ? t('ws.dataSource') : 'Mobility data'} v={source} d={sourceDetail} />
+      <Ctx icon={<Database size={15} />} k={pv.sampled ? t('ws.dataSource') : 'Mobility data'} v={source} />
       <Ctx icon={<Layers size={15} />} k={pv.sampled ? t('ws.scenarioSampled') : t('ws.scenario')}
         v={exp.scenarios.length > 1 ? <span className="sel-inline"><select aria-label="scenario" value={hash} onChange={(e) => setHash(e.target.value)}>
           {exp.scenarios.map((s) => <option key={s.instance_hash} value={s.instance_hash}>{s.name ?? s.instance_id}</option>)}</select><ChevronDown size={13} /></span> : (sc?.name ?? ctx.scenario)}
-        d={derived} />
+      />
     </section>
     {inst?.drivers && <section className="sec">
       <div className="row gap"><h3 className="grow">{t('ws.participants')}</h3>
+        {onEdit && <div className="row gap edit-people" role="group" aria-label="edit as new scenario" title="Edit as new scenario: a new version of this frozen scenario; this experiment and its results stay unchanged">
+          <button className="btn sm" onClick={() => onEdit('driver')}><Plus size={12} /> Driver</button><button className="btn sm" onClick={() => onEdit('rider')}><Plus size={12} /> Rider</button>
+          <button className="btn sm" onClick={() => onEdit('randomize')}><Shuffle size={12} /> Randomize</button></div>}</div>
+      <div className="row gap"><span className="grow" />
         <div className="seg" role="group" aria-label="participants"><button className={who === 'drivers' ? 'on' : ''} onClick={() => setWho('drivers')}><CarIcon size={14} />Drivers {inst.drivers.length}</button>
           <button className={who === 'riders' ? 'on' : ''} onClick={() => setWho('riders')}><RiderIcon size={14} />Riders {inst.riders.length}</button></div></div>
       <div className="row gap small muted wrap stats">
@@ -84,9 +90,13 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
           {plan && who === 'riders' && <span className="small">{served.has(p.id) ? <span className="ok-text"><CheckCircle2 size={11} /> matched</span> : <span className="muted"><CircleDashed size={11} /> not matched</span>}</span>}
         </button></li>)}
       </ul></section>}
-    <details className="sec small">
-      <summary>Details</summary>
+    <details className="sec small" open={detailsOpen} onToggle={(e) => { const o = (e.currentTarget as HTMLDetailsElement).open; if (o !== detailsOpen) setDetailsOpen?.(o); }}>
+      <summary>Experiment details</summary>
       <dl className="facts">
+        <dt>{t('ws.network')}</dt><dd>{network ?? '—'}{netDetail ? ` · ${netDetail}` : ''}</dd>
+        {sourceDetail && <><dt>Mobility data</dt><dd>{sourceDetail}</dd></>}
+        <dt>Scenario</dt><dd>{derived}</dd>
+        {exp.campaign.parent && <><dt>Lineage</dt><dd>{exp.campaign.parent.relation === 'perturbs' ? 'Controlled variant of' : exp.campaign.parent.relation === 'reproduces' ? 'Re-execution of' : 'Extends'} {parentTitle ?? 'its parent experiment'}{exp.campaign.variant ? ` — ${exp.campaign.variant}` : ''} <span className="mono">{exp.campaign.parent.campaign_id}</span></dd></>}
         {pv.attribution && <><dt>Source</dt><dd>{pv.attribution}</dd></>}
         {pv.method && <><dt>Derivation</dt><dd>{pv.method}{pv.pool_size ? ` · sampling pool of ${pv.pool_size} trips` : ''}{pv.window ? ` · departures ${hhmm(pv.window[0])}–${hhmm(pv.window[1])}` : ''}</dd></>}
         {prov.seed != null && <><dt>Seed</dt><dd>{prov.seed}{prov.edited_agents ? ` · edited: ${prov.edited_agents.join(', ')}` : ''}</dd></>}

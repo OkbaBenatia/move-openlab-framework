@@ -458,7 +458,9 @@ table.results tbody tr { cursor: pointer; }
 .table-card { overflow-x: auto; padding: 0; }
 .cmp-table { margin: 0; border: 0; } .cmp-table th.grp-l, .cmp-table td.grp-l { border-left: 1px solid var(--line); }
 .cmp-table tr.grp td { background: var(--panel-2); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+/* compact chart cards of equal size: 3 per row on wide screens, 2 on medium ones, 1 on phones (also at 160 % zoom) */
+.charts-grid { display: grid; gap: 12px; align-items: stretch;
+  grid-template-columns: repeat(auto-fill, minmax(max(min(100%, 320px), calc((100% - 24px) / 3)), 1fr)); }
 .chart-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; box-shadow: var(--sh-1); }
 .btn-group { display: inline-flex; } .btn-group .btn { border-radius: 0; margin-left: -1px; box-shadow: none; } .btn-group .btn:first-child { border-radius: 8px 0 0 8px; margin-left: 0; } .btn-group .btn:last-child { border-radius: 0 8px 8px 0; }
 .lgd { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; } .lgd i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
@@ -623,7 +625,10 @@ svg [role=img]:focus-visible rect, svg [role=img]:focus-visible circle { stroke:
 .mk-icon { background: none; border: 0; }
 .mk { display: block; box-sizing: border-box; border: 2px solid var(--c); border-radius: 50%; background: color-mix(in srgb, var(--c) 85%, transparent); }
 .mk.mk-hollow { background: #fff; }
-.mk.mk-sq { border-radius: 4px; border-color: #fff; background: var(--c); color: #fff; font: 700 9.5px/12px var(--font, system-ui), sans-serif; text-align: center; box-shadow: 0 0 0 1px var(--c); }
+.mk.mk-sq { border-radius: 4px; border-color: #fff; background: var(--c); color: #fff; font: 700 9.5px/12px var(--font, system-ui), sans-serif; text-align: center; box-shadow: 0 0 0 1px var(--c), 0 1px 2px rgba(0,0,0,.35); display: grid; place-items: center; }
+.mk.mk-svg { border: 0; border-radius: 0; background: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+.mk.mk-svg svg, .mk.mk-sq svg { display: block; }
+.mk-letter { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* the vehicle letter: for screen readers and tests */
 .lg-sq { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 .lg-sq.glyph { width: 13px; height: 13px; background: #1f5fd1; color: #fff; font: 700 9px/13px var(--font, system-ui), sans-serif; text-align: center; font-style: normal; }
 .lg-pt { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
@@ -641,3 +646,23 @@ svg [role=img]:focus-visible rect, svg [role=img]:focus-visible circle { stroke:
 .overlay > .drawer { min-width: 0; max-width: 100%; }
 .veh-grid > * { min-width: 0; }
 .veh-grid table { width: 100%; table-layout: auto; } .veh-grid table input:not([type=number]) { width: 100%; min-width: 0; }
+
+/* compact chart cards: fixed plot height, the width follows the card; titles, legends and actions stay on one or two lines */
+.chart-card { min-width: 0; align-content: start; }
+.chart-head { align-items: flex-start; min-width: 0; } .chart-titles { min-width: 0; }
+.chart-titles h3 { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-titles .small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chart-card .lgd { gap: 4px 12px; max-height: 38px; overflow: hidden; }
+.chart-card .lgd span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-plot { min-width: 0; overflow: hidden; }
+.chart-card .btn-group { flex: none; }
+.chart-overlay { justify-content: center; align-items: center; padding: 24px; }
+.chart-overlay > div { width: min(1100px, 100%); }
+.chart-card.big { box-shadow: var(--sh-3); }
+.chart-card.big .lgd { max-height: none; }
+.chart-placeholder { min-height: 320px; }
+.empty-compare { display: grid; gap: 8px; }
+.summary-line { display: flex; gap: 5px; align-items: center; margin-top: 4px; }
+.edit-people { flex-wrap: wrap; gap: 4px; } .edit-people .btn { padding-inline: 7px; }
+.lg-sq.glyph { display: inline-grid; place-items: center; } .lg-sq.glyph svg { display: block; }
+.lg-ico { display: inline-flex; font-style: normal; vertical-align: -3px; margin-right: 2px; } .lg-ico svg { display: block; }

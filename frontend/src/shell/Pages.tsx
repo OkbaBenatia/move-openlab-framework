@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, EyeOff, KeyRound, LogOut, Moon, Sigma, Sun } from 'lucide-react';
-import { api, type Json, type User } from '../api/client';
+import { Eye, EyeOff, KeyRound, LogOut, Moon, Play, Sigma, Sun } from 'lucide-react';
+import { api, call, post, type Json, type User } from '../api/client';
 import { errText } from '../components/common';
 import { geo } from '../geo/api';
 import { t } from '../i18n';
@@ -63,14 +63,49 @@ export function HiddenPage({ setErr }: { setErr: (s: string | null) => void }) {
   </div>;
 }
 
-/** Benchmarks: kept apart from the geographic demonstration. The synthetic scientific benchmark stays "Planned" until a
- *  reproducible, publishable version is integrated; the framework's own synthetic problem remains usable for tests. */
+/** Benchmarks, kept apart from the geographic demonstration. The public synthetic benchmark (methodological, its own
+ *  measured results) can be run here; every result is checked by the validator and, here, against an independent
+ *  min-cost-flow oracle. The synthetic scientific study stays "Planned" until its protocol is published and reproduced. */
 export function BenchmarksPage({ go }: { go: (s: Section, arg?: string) => void }) {
   const [mine, setMine] = useState<Json[]>([]);
-  useEffect(() => { lab.experiments().then((r) => setMine(r.experiments.filter((x) => x.group === 'benchmark' && !x.hidden))).catch(() => { /* optional */ }); }, []);
+  const [pb, setPb] = useState<Json | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => { call('/lab/benchmark/public').then(setPb).catch((e) => setErr(errText(e))); }, []);
+  useEffect(() => { load(); lab.experiments().then((r) => setMine(r.experiments.filter((x) => x.group === 'benchmark' && !x.hidden))).catch(() => { /* optional */ }); }, [load]);
+  const d = pb?.definition;
+  const run = async () => {
+    if (!d || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const c = await post<Json>('/campaigns', { problem_id: d.problem_id, title: d.title, scenario_params: d.scenario_params, methods: d.methods.map((m: Json) => [m.method_id, m.version]), repetitions: d.repetitions });
+      await post(`/campaigns/${c.campaign_id}/execute`);
+      go('workspace', c.campaign_id);
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const sizes = d ? Object.entries(d.generator.sizes as Record<string, Json>).map(([k, v]) => `${k} ${v.drivers}×${v.passengers}`).join(' · ') : '';
   return <div className="col-page">
-    <section className="card pad planned"><div className="row gap"><Sigma size={18} /><h3 className="grow">Synthetic scientific benchmark</h3><span className="tag-planned">Planned</span></div>
-      <p className="small">Not available yet. It will appear here once a reproducible, publishable version is integrated — separate from the geographic demonstration and never mixed with its results.</p></section>
+    {err && <p className="note warn" role="alert">{err}</p>}
+    {d && <section className="card pad" aria-label="public synthetic benchmark"><div className="row gap"><Sigma size={18} /><h3 className="grow">{d.title}</h3><span className="badge ok">Available</span></div>
+      <p className="small">{d.description}</p>
+      <dl className="facts small">
+        <dt>Inputs</dt><dd>generator {d.generator.name} {d.generator.version} · sizes {sizes} (drivers × passengers) · seeds {d.generator.seeds[0]}–{d.generator.seeds[d.generator.seeds.length - 1]} · {d.generator.sizes ? Object.keys(d.generator.sizes).length * d.generator.seeds.length : ''} frozen scenarios</dd>
+        <dt>Objective</dt><dd>{d.objective.map((o: Json) => `${o.sense} ${o.metric}`).join(', then ')}</dd>
+        <dt>Methods</dt><dd>{d.methods.map((m: Json) => m.name ?? m.method_id).join(' · ')} · {d.repetitions} repetitions ({d.optional_plugin.note})</dd>
+        <dt>Checks</dt><dd>independent validator {d.validator} · {d.oracle}</dd>
+        <dt>Reproduce</dt><dd><span className="mono">{d.command}</span> · or export a run (one ZIP) and import it in another workspace, then Run again</dd>
+      </dl>
+      <p className="tiny muted">{d.scope}</p>
+      <div className="row gap"><button className="btn primary" onClick={run} disabled={busy}><Play size={14} /> {busy ? 'Starting…' : 'Run the public benchmark'}</button>
+        <span className="small muted">about half a minute; opens in the Workspace with its progress</span></div>
+      {pb.runs.length > 0 && <div className="table-scroll"><table className="compact" aria-label="benchmark runs"><thead><tr><th>Run</th><th>Method</th><th className="n">Validated</th><th className="n">Equal to the oracle optimum</th><th /></tr></thead>
+        <tbody>{pb.runs.flatMap((r: Json) => r.methods.map((m: Json, i: number) => <tr key={r.campaign_id + m.method_id}>
+          <td>{i === 0 ? <><b>{r.title}</b><span className="tiny muted block">{r.created_at.slice(0, 16).replace('T', ' ')} · {r.scenarios} scenarios{r.locked ? ' · locked' : ''}</span></> : ''}</td>
+          <td>{m.method_id}</td><td className="n">{m.accepted}/{m.runs}</td><td className="n">{m.oracle_optimal}/{m.runs} runs</td>
+          <td>{i === 0 && <button className="btn sm" onClick={() => go('workspace', r.campaign_id)}>Open</button>}</td></tr>))}</tbody></table></div>}
+    </section>}
+    <section className="card pad planned"><div className="row gap"><Sigma size={18} /><h3 className="grow">Synthetic scientific benchmark (semantic comparability study)</h3><span className="tag-planned">Planned</span></div>
+      <p className="small">Not available yet. Its protocol and several components are not published; it will appear here once they are, and once it is independently reproduced — separate from the geographic demonstration and from the public benchmark above.</p></section>
     {mine.length > 0 && <section className="card pad"><h3>Your experiments on problems without geography</h3>
       <ul className="plain">{mine.map((x) => <li key={x.campaign_id}><button className="btn link" onClick={() => go('workspace', x.campaign_id)}>{x.title}</button> <span className="small muted">· {x.problem} · {x.validation.accepted}/{x.validation.runs} validated</span></li>)}</ul></section>}
   </div>;

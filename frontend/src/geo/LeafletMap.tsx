@@ -8,6 +8,32 @@ export interface MapPoint { lat: number; lon: number; color: string; label?: str
 
 /** One letter per powertrain on driver markers (the legend spells them out). */
 export const POWERTRAIN_GLYPH: Record<string, string> = { ICE: 'C', HEV: 'H', PHEV: 'P', BEV: 'E' };
+/** Driver markers: colour AND icon per vehicle type (never colour alone): combustion blue with a fuel drop, hybrid
+ *  indigo with a leaf, plug-in hybrid teal with a plug, electric green with a bolt; no vehicle data: plain blue. */
+export const GLYPH_STYLE: Record<string, { color: string; icon: string; name: string }> = {
+  C: { color: '#1f5fd1', name: 'Combustion', icon: '<path d="M6 1.5C6 1.5 2.5 5.6 2.5 7.7a3.5 3.5 0 0 0 7 0C9.5 5.6 6 1.5 6 1.5z" fill="#fff"/>' },
+  H: { color: '#4f46e5', name: 'Hybrid', icon: '<path d="M2 10.5C2 5 5.6 2 10.5 1.5 10.5 6.6 7.6 10.5 2 10.5z" fill="#fff"/><path d="M2 10.5 7 5.5" stroke="#4f46e5" stroke-width="1.2"/>' },
+  P: { color: '#0e7490', name: 'Plug-in hybrid', icon: '<path d="M4 1v3M8 1v3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M2.5 4h7v2.2a3.5 3.5 0 0 1-7 0z" fill="#fff"/><path d="M6 9.6V11.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>' },
+  E: { color: '#15803d', name: 'Electric', icon: '<path d="M7 .8 2.4 6.9h3.1L4.8 11.2 9.6 5H6.4z" fill="#fff"/>' },
+  '': { color: '#1f5fd1', name: 'Driver', icon: '<rect x="2" y="4" width="8" height="4.5" rx="1.4" fill="#fff"/><circle cx="4" cy="9" r="1" fill="#fff"/><circle cx="8" cy="9" r="1" fill="#fff"/>' },
+};
+const PERSON = (c: string, hollow = false) => `<svg viewBox="0 0 14 16" width="14" height="16" aria-hidden="true"><circle cx="7" cy="4" r="3" fill="${hollow ? '#fff' : c}" stroke="${hollow ? c : '#fff'}" stroke-width="1.4"/><path d="M1.6 15c0-3.4 2.4-5.6 5.4-5.6s5.4 2.2 5.4 5.6z" fill="${hollow ? '#fff' : c}" stroke="${hollow ? c : '#fff'}" stroke-width="1.4"${hollow ? ' stroke-dasharray="2 1.6"' : ''}/></svg>`;
+const ARROW = (up: boolean, c: string, filled: boolean) => `<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="${filled ? c : '#fff'}" stroke="${filled ? '#fff' : c}" stroke-width="1.6"/><path d="${up ? 'M4 8.2 7 5l3 3.2' : 'M4 5.8 7 9l3-3.2'}" fill="none" stroke="${filled ? '#fff' : c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+/** The marker icon of a kind, for legends (the same drawing as on the map). */
+export const legendIcon = (kind: 'rider' | 'unserved' | 'pickup' | 'dropoff', color: string) =>
+  kind === 'rider' ? PERSON(color) : kind === 'unserved' ? PERSON(color, true) : ARROW(kind === 'pickup', color, kind === 'pickup');
+/** Inline marker content for the kinds that have an icon (null: a plain circle). */
+function markerHtml(p: MapPoint): { html: string; size: [number, number] } | null {
+  if (p.glyph !== undefined && (p.kind === 'driver' || p.kind === undefined)) {
+    const st = GLYPH_STYLE[p.glyph] ?? GLYPH_STYLE[''];
+    return { html: `<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">${st.icon}</svg><span class="mk-letter">${p.glyph}</span>`, size: [18, 18] };
+  }
+  if (p.kind === 'rider') return { html: PERSON(p.color), size: [14, 16] };
+  if (p.kind === 'unserved') return { html: PERSON(p.color, true), size: [14, 16] };
+  if (p.kind === 'pickup') return { html: ARROW(true, p.color, true), size: [14, 14] };
+  if (p.kind === 'dropoff') return { html: ARROW(false, p.color, false), size: [14, 14] };
+  return null;
+}
 export interface MapLine { coords: [number, number][]; color: string; weight?: number; dash?: string; label?: string; opacity?: number }
 export type BBox = [number, number, number, number];
 export interface MapRect { bbox: BBox; color: string }
@@ -163,20 +189,23 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
       const k = at(p), n = count.get(k) ?? 1, i = seen.get(k) ?? 0;
       seen.set(k, i + 1);
       all.push([p.lat, p.lon]);
-      if (n === 1 && p.glyph === undefined) {
+      const icon0 = markerHtml(p);
+      if (n === 1 && !icon0) {
         const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 6, color: p.color, weight: 2, fillColor: p.color, fillOpacity: p.fill === false ? 0 : 0.85 }).addTo(g);
         if (p.label) c.bindTooltip(text(p.label));
         continue;
       }
-      const size = p.glyph !== undefined ? 16 : 2 * (p.radius ?? 6) + 2;
+      const [sw, sh] = icon0 ? icon0.size : [2 * (p.radius ?? 6) + 2, 2 * (p.radius ?? 6) + 2];
       const off = n > 1 ? Math.max(9, 3 + 2.4 * n) : 0, ang = n > 1 ? (2 * Math.PI * i) / n - Math.PI / 2 : 0;
       const el = document.createElement('span');
-      el.className = `mk${p.glyph !== undefined ? ' mk-sq' : ''}${p.fill === false ? ' mk-hollow' : ''}`;
-      el.style.setProperty('--c', p.color); el.style.width = el.style.height = `${size}px`;
-      if (p.glyph) el.textContent = p.glyph;
+      const sq = p.glyph !== undefined && (p.kind === 'driver' || p.kind === undefined);
+      el.className = `mk${sq ? ' mk-sq' : icon0 ? ' mk-svg' : ''}${!icon0 && p.fill === false ? ' mk-hollow' : ''}`;
+      el.style.setProperty('--c', sq ? (GLYPH_STYLE[p.glyph!] ?? GLYPH_STYLE['']).color : p.color); el.style.width = `${sw}px`; el.style.height = `${sh}px`;
+      if (icon0) el.innerHTML = icon0.html;
       if (p.kind) el.dataset.kind = p.kind;
-      const icon = L.divIcon({ className: 'mk-icon', html: el, iconSize: [size, size],
-        iconAnchor: [size / 2 - off * Math.cos(ang), size / 2 - off * Math.sin(ang)], tooltipAnchor: [off * Math.cos(ang), off * Math.sin(ang) - size / 2] });
+      if (sq) el.dataset.glyph = p.glyph;
+      const icon = L.divIcon({ className: 'mk-icon', html: el, iconSize: [sw, sh],
+        iconAnchor: [sw / 2 - off * Math.cos(ang), sh / 2 - off * Math.sin(ang)], tooltipAnchor: [off * Math.cos(ang), off * Math.sin(ang) - sh / 2] });
       const mk = L.marker([p.lat, p.lon], { icon, keyboard: false }).addTo(g);
       if (p.label) mk.bindTooltip(text(n > 1 ? `${p.label} · ${n} at this place` : p.label), { direction: 'top' });
       if (n > 1 && i === 0) L.circleMarker([p.lat, p.lon], { radius: 2, color: '#6b7a8c', weight: 1, fillColor: '#6b7a8c', fillOpacity: 1, interactive: false }).addTo(g);

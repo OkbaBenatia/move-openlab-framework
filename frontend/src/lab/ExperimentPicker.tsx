@@ -63,7 +63,7 @@ export function ExperimentPicker({ experiments, current, areaFilter, setAreaFilt
               <span className="row gap chips">{status(x)}<span className="badge outline">{KIND[x.kind] ?? x.kind}</span>{x.hidden && <span className="badge">hidden</span>}</span>
               {x.campaign_id === current?.campaign_id ? <Check size={15} className="accent" /> : <span style={{ width: 15 }} />}</button>)}
             {g === 'benchmark' && <div className="pick planned" aria-disabled="true"><span className="ico sm"><Sigma size={14} /></span>
-              <span className="grow t"><b>Synthetic scientific benchmark</b><span>Appears here once a reproducible version is integrated · no map · never mixed with the demonstration</span></span>
+              <span className="grow t"><b>Synthetic scientific study (semantic comparability)</b><span>Appears once its protocol is published and reproduced · the public synthetic benchmark runs from Library › Benchmarks</span></span>
               <span className="tag-planned">Planned</span></div>}
           </section>;
         })}

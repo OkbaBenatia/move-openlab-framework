@@ -4,7 +4,7 @@ import type { Domain, EmissionsConfig } from '../mobility/api';
 export interface SampleState { available: boolean; title?: string; filename?: string; bytes?: number; sha256?: string; format?: string; runs?: number; scenarios?: number;
   check?: { checked_at: string; reproduction: { cells: number; agreement: Record<string, number>; reproduced: boolean; rule: string } }; imported?: boolean; campaign_id?: string }
 export interface LabState {
-  preferences: { tour_dismissed: boolean | null; start_dismissed: boolean | null; theme: 'light' | 'dark' | null; last_experiment: string | null; area_id: string | null; hidden_ids: string[];
+  preferences: { tour_dismissed: boolean | null; start_dismissed: boolean | null; details_open?: boolean | null; theme: 'light' | 'dark' | null; last_experiment: string | null; area_id: string | null; hidden_ids: string[];
     workspace?: WorkspaceView | null };
   demo: { available: boolean; installed: boolean; campaigns: string[]; area: string | null }; sample: SampleState;
 }

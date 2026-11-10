@@ -24,7 +24,10 @@ const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 export interface WizardProps {
   cfg: GeoConfig; areas: Area[]; datasets: DatasetItem[]; methods: MethodRef[]; areaId?: string; datasetKey?: string;   // datasetKey: start from this mobility data (Library › Use)
-  initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string; fromInstance?: string } | null;
+  initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string; fromInstance?: string;
+    /** opened from the Workspace's Participants panel: straight to the participants step, adding a driver or a rider (placed by
+     *  clicks on the map) or randomizing the locations */
+    action?: 'driver' | 'rider' | 'randomize' } | null;
   onClose: () => void; onSaved: (rec: Json) => void; onRun: (r: { campaign_id: string; job: Json }) => void;
   reloadAreas: () => void; setErr: (s: string | null) => void; onAddMethod?: () => void;
 }
@@ -35,7 +38,7 @@ const dsLabel = (d?: DatasetItem) => !d ? '' : d.provider === 'rpc'
   ? `RPC ${d.release ?? ''} · ${d.rows_kept != null ? `${d.rows_kept} observed trips in this area` : d.name}` : d.name;
 
 export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, datasetKey: datasetKey0, initial, onClose, onSaved, onRun, reloadAreas, setErr, onAddMethod }: WizardProps) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initial?.action ? 2 : 1);
   const [areaId, setAreaId] = useState(() => initial ? (areas.find((a) => a.network_id === initial.scenario.network_id)?.area_id ?? '') : (areaId0 && areas.some((a) => a.area_id === areaId0) ? areaId0 : areas.find((a) => a.network_id)?.area_id ?? ''));
   const [source, setSource] = useState<Source>(initial ? 'manual' : datasetKey0 ? 'dataset' : 'synthetic');
   const [datasetKey, setDatasetKey] = useState(datasetKey0 ?? '');
@@ -109,15 +112,18 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   // "Randomize locations": a new seed gives new places on the road network, inside the area; counts, ids and time
   // windows stay. Placed by hand, the participants get new places drawn by the server (recorded with the seed).
   const newSeed = (cur: number | null) => { let s: number; do s = 1 + Math.floor(Math.random() * 999_999); while (s === cur); return s; };
-  const randomize = () => act(async () => {
+  const [relocSeed, setRelocSeed] = useState<number | null>(null);   // a seed typed by the researcher (reproducible)
+  const randomize = (given?: number | null) => act(async () => {
     if (source !== 'manual') { setF((x) => ({ ...x, seed: newSeed(x.seed) })); return; }
     const body = compose(); if (!body) return;
-    const seed = newSeed(reloc);
+    const seed = given ?? newSeed(reloc);
     const p = await mob.preview({ ...body, relocate_seed: seed });
     setManual({ drivers: p.scenario.drivers, riders: p.scenario.riders }); setRoutes({}); setPick(null); setReloc(seed);
   });
   const basis = (): Compose | null => { const b = compose(); return !b ? null : source !== 'manual' ? b : reloc != null ? { ...b, relocate_seed: reloc } : null; };
   // manual placement
+  const at = (p?: [number, number]) => (p ? `${p[0].toFixed(5)}, ${p[1].toFixed(5)}` : '');
+  const started = useRef(false);
   const nextId = (prefix: string, list: Agent[]) => `${prefix}${list.reduce((m, a) => Math.max(m, Number(a.id.slice(1)) || 0), 0) + 1}`;
   const add = (role: Role) => {
     if (!area) return;
@@ -126,6 +132,11 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
     setManual({ ...manual, [role]: [...list, { id, origin: c, destination: c, earliest: 7 * 3600 + 30 * 60, latest: role === 'drivers' ? 7 * 3600 + 45 * 60 : 7 * 3600 + 50 * 60 }] });
     setPick({ role, id, field: 'origin' });
   };
+  useEffect(() => {                                     // the Workspace's + Driver / + Rider / Randomize
+    if (started.current || !initial?.action || !area?.network_id) return;
+    started.current = true;
+    if (initial.action === 'randomize') randomize(newSeed(null)); else add(initial.action === 'driver' ? 'drivers' : 'riders');
+  }, [area]);                                                               // eslint-disable-line react-hooks/exhaustive-deps
   const update = (role: Role, id: string, patch: Partial<Agent>) => setManual({ ...manual, [role]: manual[role].map((a) => (a.id === id ? { ...a, ...patch } : a)) });
   const remove = (role: Role, id: string) => { setManual({ ...manual, [role]: manual[role].filter((a) => a.id !== id) }); setRoutes((r) => { const n = { ...r }; delete n[id]; return n; }); };
   const placed = (a: Agent) => a.origin[0] !== a.destination[0] || a.origin[1] !== a.destination[1];
@@ -159,7 +170,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   };
 
   // areas: search, pick on map, road network download
-  const act = async (fn: () => Promise<unknown>) => { setBusy(true); setErr(null); try { await fn(); } catch (e) { setErr(errText(e)); } finally { setBusy(false); } };
+  const inFlight = useRef(false);                           // synchronous guard: a double click submits once
+  const act = async (fn: () => Promise<unknown>) => { if (inFlight.current) return; inFlight.current = true; setBusy(true); setErr(null);
+    try { await fn(); } catch (e) { setErr(errText(e)); } finally { inFlight.current = false; setBusy(false); } };
   const auto = !!cfg.geocoding?.autocomplete, minChars = cfg.geocoding?.min_chars ?? 2;
   const sTimer = useRef<number | null>(null);
   const search = (text = q) => act(async () => { try { const r = await geo.geocode(text); setResults(r.results); if (!r.results.length && !auto) setErr(`no place found for “${text}”`); } catch (e) { if (!auto) throw e; setResults(null); } });
@@ -215,8 +228,8 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   const drivers = source === 'manual' ? manual.drivers : preview?.scenario.drivers ?? [];
   const row = (role: Role, a: Agent) => { const r = routes[a.id]; return <tr key={a.id} className={pick?.id === a.id ? 'hl' : ''}>
     <td className="mono">{a.id}</td>
-    <td><button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'origin' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'origin' })}>Start point</button>{' '}
-      <button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'destination' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'destination' })}>End point</button></td>
+    <td><button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'origin' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'origin' })} title={`start ${at(a.origin)}`} data-at={at(a.origin)}>Start point</button>{' '}
+      <button type="button" className={`btn sm ${pick?.id === a.id && pick.field === 'destination' ? 'primary' : ''}`} onClick={() => setPick({ role, id: a.id, field: 'destination' })} title={`end ${at(a.destination)}`} data-at={at(a.destination)}>End point</button></td>
     <td><input aria-label={`${a.id} earliest`} className="time" defaultValue={hhmm(a.earliest)} onBlur={(e) => { const v = toSec(e.target.value); if (!Number.isNaN(v)) update(role, a.id, { earliest: v }); }} /></td>
     <td><input aria-label={`${a.id} latest`} className="time" defaultValue={hhmm(a.latest)} onBlur={(e) => { const v = toSec(e.target.value); if (!Number.isNaN(v)) update(role, a.id, { latest: v }); }} /></td>
     <td><button type="button" className="btn sm" disabled={!placed(a)} title={placed(a) ? '' : 'place the start and end points first'} onClick={() => route(a)}>Route</button>
@@ -268,7 +281,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
             <label>Drivers <CountInput min={1} max={100} value={f.n_drivers} onChange={(n) => setF((x) => ({ ...x, n_drivers: n }))} aria-label="drivers" /></label>
             <label>Riders <CountInput min={1} max={100} value={f.n_riders} onChange={(n) => setF((x) => ({ ...x, n_riders: n }))} aria-label="riders" /></label>
             <label>Seed <CountInput min={0} max={1000000} value={f.seed} onChange={(n) => setF((x) => ({ ...x, seed: n }))} aria-label="seed" /></label>
-            <button type="button" className="btn sm self-end" onClick={randomize} title="A new seed: new places, same counts and time window"><Shuffle size={12} /> Randomize locations</button>
+            <button type="button" className="btn sm self-end" onClick={() => randomize()} title="A new seed: new places, same counts and time window"><Shuffle size={12} /> Randomize locations</button>
             {source === 'dataset' && <label>Date <input value={f.date} placeholder="YYYY-MM-DD" onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="date" /></label>}
           </div>}
           {source === 'manual' && <>
@@ -276,8 +289,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
             {(['drivers', 'riders'] as const).map((role) => <fieldset key={role}><legend>{role === 'drivers' ? 'Drivers' : 'Riders'} ({manual[role].length})</legend>
               {manual[role].length > 0 && <div className="table-scroll"><table className="compact" aria-label={role}><thead><tr><th>Id</th><th>Place</th><th>Earliest</th><th>Latest</th><th>Route</th><th /></tr></thead><tbody>{manual[role].map((a) => row(role, a))}</tbody></table></div>}
               <button type="button" className="btn sm" onClick={() => add(role)}><Plus size={12} /> Add {role === 'drivers' ? 'driver' : 'rider'}</button></fieldset>)}
-            <div className="row gap"><button type="button" className="btn sm" disabled={busy || !manual.drivers.length || !manual.riders.length} onClick={randomize}
-              title="New start and end points on the road network, inside the area, with a new seed; ids and time windows stay"><Shuffle size={12} /> Randomize locations</button>
+            <div className="row gap"><label className="row small gap">Seed <CountInput min={1} max={999999} value={relocSeed ?? reloc ?? 1} aria-label="locations seed" onChange={(n) => setRelocSeed(n)} style={{ width: '6.5em' }} /></label>
+              <button type="button" className="btn sm" disabled={busy || !manual.drivers.length || !manual.riders.length} onClick={() => randomize(relocSeed)}
+              title="New start and end points on the road network, inside the area, drawn with this seed (a typed seed gives the same places again); ids and time windows stay"><Shuffle size={12} /> Randomize locations</button>
               {reloc != null && <span className="small muted">seed {reloc} · times kept</span>}</div>
           </>}
           <fieldset><legend>Vehicle</legend>
@@ -332,7 +346,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
         <span className="grow" /><span className="small muted">Step {step} of 5</span>
         {step < 5 && <button className="btn primary" disabled={!ready} onClick={() => setStep(step + 1)}>Next <ChevronRight size={14} /></button>}
         {step === 5 && <><button className="btn" disabled={busy} onClick={save}><Save size={14} /> Save Scenario</button>
-          <button className="btn primary" disabled={busy} onClick={run}><Play size={14} /> Save &amp; Run</button></>}
+          <button className="btn primary" disabled={busy} onClick={run} aria-busy={busy}><Play size={14} /> {busy ? 'Saving…' : <>Save &amp; Run</>}</button></>}
       </div>
     </div>
     <div className="wizard-map">
