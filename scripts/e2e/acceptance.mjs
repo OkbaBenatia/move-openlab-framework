@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { launch, sleep } from './cdp.mjs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
@@ -198,8 +199,9 @@ if (ONLY === 'fallback') {
     await p.click('Export', '.labbar button');
     await p.waitFor('!!document.querySelector(".exportd .exlist")', 20000, 'export dialog');
     await p.click('xport', '.exportd .drawer-foot button.primary');          // "Export bundle" or "Lock and export"
-    await p.waitDownload(before, 60000); await p.waitDownload(before + 1, 60000);
+    await p.waitDownload(before, 60000);
     await p.waitFor('/Bundle saved/.test(document.querySelector(".exportd")?.innerText)', 20000, 'confirmation');
+    await sleep(3000); expect(p.downloadCount() === before + 1, `one ZIP expected, ${p.downloadCount() - before} downloads`);
     await p.click('Done', '.exportd button');
     exported = readdirSync(DL).filter((f) => f.endsWith('.zip')).map((f) => join(DL, f)).at(-1);
     expect(exported, 'no bundle file');
@@ -289,8 +291,8 @@ if (ONLY === 'fallback') {
     await p.waitFor('location.hash.startsWith("#/compare/") && !!document.querySelector(".evgrid")', 30000, 'comparison');
     await sleep(2500);
     demoVariant = (await p.eval('decodeURIComponent(location.hash)')).split('|')[1];
-    const ev = await text('.evgrid');
-    expect(/18 of 18/.test(ev) && /Not applicable/.test(ev) && /Directly comparable/i.test(ev), `evidence: ${ev.slice(0, 200)}`);
+    const ev = `${await text('.evgrid')}\n${await p.eval(`[...document.querySelectorAll('.evsum')].map((x) => x.innerText).join('\\n')`)}`;
+    expect(/18 of 18/.test(ev) && /not applicable/i.test(ev) && /Directly comparable/i.test(ev), `evidence: ${ev.slice(0, 300)}`);
     await shot('compare-results');
     await p.click('Charts', '.tabs button'); await sleep(1200);
     expect((await p.eval('document.querySelectorAll(".chart-card svg rect").length')) > 0, 'no chart bars');
@@ -473,13 +475,14 @@ if (ONLY === 'fallback') {
     await shot('export-dialog');
     const before = p.downloadCount();
     await p.click('Export bundle', '.exportd button');
-    await p.waitDownload(before, 60000); await p.waitDownload(before + 1, 60000);
+    await p.waitDownload(before, 60000);
     await p.waitFor('/Bundle saved/.test(document.querySelector(".exportd")?.innerText)', 20000, 'confirmation');
+    await sleep(3000); expect(p.downloadCount() === before + 1, `one ZIP expected, ${p.downloadCount() - before} downloads`);
     const files = readdirSync(DL);
-    const zip = files.find((f) => f.includes('demo_baseline') && f.endsWith('.zip')), ev = files.find((f) => f.includes('demo_baseline') && f.endsWith('_evidence.json'));
-    expect(zip && ev, `downloads: ${files.join(', ')}`);
+    const zip = files.find((f) => f.includes('demo_baseline') && f.endsWith('.zip')), ev = 'evidence/report.json (inside the ZIP)';
+    expect(zip, `downloads: ${files.join(', ')}`);
     demoBundle = join(DL, zip);
-    const e = JSON.parse(readFileSync(join(DL, ev), 'utf8'));
+    const e = JSON.parse(execFileSync('python3', ['-I', '-c', 'import sys,zipfile; sys.stdout.write(zipfile.ZipFile(sys.argv[1]).read("evidence/report.json").decode())', demoBundle], { encoding: 'utf8' }));
     expect(e.validation.accepted === e.validation.runs && e.fingerprints?.experiment && e.reproducibility.applicable === false, 'evidence report content');
     await shot('export-saved');
     await p.click('Done', '.exportd button');
@@ -508,7 +511,9 @@ if (ONLY === 'fallback') {
     await goHash(`#/workspace/${demoRepro}`, 3500);
     await p.click('Compare', '.labbar button');
     await p.waitFor('!!document.querySelector(".cand")', 20000, 'candidates'); await sleep(600);
-    await clickInRow('.cand', 'Montbéliard Demo — Baseline', 'checkbox');
+    // tick the baseline by its exact title (the open re-execution is already ticked as "This experiment")
+    const ok = await p.eval(`(() => { const i = [...document.querySelectorAll('.picker-drawer input[type=checkbox]')].find((x) => x.getAttribute('aria-label') === 'Montbéliard Demo — Baseline' && !x.disabled); if (!i) return false; i.click(); return true; })()`);
+    expect(ok, 'baseline not offered'); await sleep(300);
     await p.click('Compare selected', '[role=dialog] button');
     await p.waitFor('location.hash.startsWith("#/compare/") && !!document.querySelector(".evsum")', 30000, 'comparison'); await sleep(2500);
     const ev = await text('.evgrid'), shows = await text('.evsum');
@@ -563,7 +568,7 @@ if (ONLY === 'fallback') {
       await p.waitFor('!!document.querySelector(".addm")', 15000, 'add method');
       await p.click('Register my method', '.addm button'); await sleep(800);
       await shot('add-method');
-      await p.click('Register', '.addm .plug button', true);
+      await clickInRow('.addm .plug', 'Nearest Pickup First', 'Register');      // the folder also holds My Greedy Matching
       await p.waitFor('/Registered/.test(document.querySelector(".addm")?.innerText)', 120000, 'registration');
       await p.key('Escape'); await sleep(800);
       await ensureGuide();
@@ -576,9 +581,10 @@ if (ONLY === 'fallback') {
     await p.waitFor('location.hash.startsWith("#/compare/") && !!document.querySelector(".evgrid")', 30000, 'comparison');
     await sleep(2500);
     const t = await text('main, body');
-    expect(/Nearest Pickup/i.test(t), 'the registered method is not in the comparison');
+    const added = (t.match(/Nearest Pickup First/i) ?? [])[0];
+    expect(added, 'the registered method is not in the comparison');
     await shot('sample-extension-compare');
-    return 'nearest pickup in the comparison';
+    return `${added} in the comparison`;
   });
 
   // ---- 9. bundle from another researcher: import file → verify → reproduce -------------------------------------
@@ -639,7 +645,9 @@ if (ONLY === 'fallback') {
     const before = await p.eval('document.querySelectorAll("table[aria-label=\'scenario library\'] tbody tr").length');
     await p.click(`hide ${name}`, 'table[aria-label="scenario library"] button'); await sleep(800);
     const after = await p.eval('document.querySelectorAll("table[aria-label=\'scenario library\'] tbody tr").length');
-    expect(after === before - 1 && /Show hidden \(1\)/.test(await text('.areabar')), `list ${before} → ${after}`);
+    await p.click('Filters', '.areabar button'); await sleep(300);
+    const filt = await text('.areabar .filters-pop'); await p.key('Escape');
+    expect(after === before - 1 && /Show hidden \(1\)/.test(filt), `list ${before} → ${after}; filters “${filt}”`);
     await goHash('#/hidden', 2500);
     const page = await text('main');
     expect(/Hide items from normal lists without deleting them\. You can restore them later\./.test(page) && page.includes(name), 'purpose or record missing');

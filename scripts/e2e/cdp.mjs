@@ -92,6 +92,8 @@ export async function launch(chrome, { width = 1440, height = 900 } = {}) {
           return ${exact ? 't === want || a === want' : 't.includes(want) || a.includes(want)'}; });
         if (!hit) return null; hit.scrollIntoView({ block: 'center', inline: 'center' }); const r = hit.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, disabled: !!hit.disabled }; })()`);
     },
+    /** Move the mouse only (hover: tooltips, :hover styles). */
+    async hover(x, y) { await s('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); },
     async clickAt(x, y) {
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await s('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     },
