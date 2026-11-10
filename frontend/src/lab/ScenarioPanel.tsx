@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Car, CheckCircle2, ChevronDown, CircleDashed, Database, ExternalLink, Eye, EyeOff, Fuel, Layers, MapPin, Play, Route, User, Zap } from 'lucide-react';
+import { CheckCircle2, ChevronDown, CircleDashed, Database, ExternalLink, Eye, EyeOff, Layers, MapPin, Play, Route, User } from 'lucide-react';
+import { CarIcon, ElectricCarIcon, RiderIcon, VehicleIcon } from '../components/DomainIcons';
 import type { Json } from '../api/client';
 import { KIND } from '../components/common';
 import { hhmm } from '../geo/api';
@@ -66,18 +67,19 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
     </section>
     {inst?.drivers && <section className="sec">
       <div className="row gap"><h3 className="grow">{t('ws.participants')}</h3>
-        <div className="seg" role="group" aria-label="participants"><button className={who === 'drivers' ? 'on' : ''} onClick={() => setWho('drivers')}>Drivers {inst.drivers.length}</button>
-          <button className={who === 'riders' ? 'on' : ''} onClick={() => setWho('riders')}>Riders {inst.riders.length}</button></div></div>
+        <div className="seg" role="group" aria-label="participants"><button className={who === 'drivers' ? 'on' : ''} onClick={() => setWho('drivers')}><CarIcon size={14} />Drivers {inst.drivers.length}</button>
+          <button className={who === 'riders' ? 'on' : ''} onClick={() => setWho('riders')}><RiderIcon size={14} />Riders {inst.riders.length}</button></div></div>
       <div className="row gap small muted wrap stats">
         {pv.sampled && <span className="badge outline"><Database size={11} /> Sampled · sample {k + 1}</span>}
         {(sc?.edited?.length ?? 0) > 0 && <span className="badge warn" title={sc!.edited.join(', ')}>Edited: {sc!.edited.length}</span>}
-        {vehicles && <span><Car size={12} /> {fleetCount(['ICE', 'HEV'])} combustion/hybrid · {fleetCount(['BEV', 'PHEV'])} plug-in/electric</span>}
+        {vehicles && <span className="fleet"><span title="Combustion and hybrid cars"><CarIcon size={14} /> {fleetCount(['ICE', 'HEV', 'custom'])} combustion/hybrid</span>
+          <span title="Battery-electric and plug-in hybrid cars"><ElectricCarIcon size={14} /> {fleetCount(['BEV', 'PHEV'])} plug-in/electric</span></span>}
         {plan && <span><CheckCircle2 size={12} /> {served.size} of {inst.riders.length} riders matched</span>}</div>
       <ul className="people" aria-label={who}>
         {people.map((p) => <li key={p.id}><button onClick={() => onFocus(p.origin[0], p.origin[1])}>
           <span className={`pid ${who === 'drivers' ? 'drv' : 'rdr'}`}>{p.id}</span>
           <span className="grow"><span className="strong">{hhmm(p.earliest)}</span><span className="muted"> – {hhmm(p.latest)}</span>
-            {who === 'drivers' && p.vehicle && <span className="small muted block">{p.vehicle.powertrain === 'BEV' ? <Zap size={11} /> : <Fuel size={11} />} {POWERTRAIN_LABEL[p.vehicle.powertrain] ?? p.vehicle.powertrain}</span>}</span>
+            {who === 'drivers' && p.vehicle && <span className="small muted block vline"><VehicleIcon powertrain={p.vehicle.powertrain} size={14} /> {POWERTRAIN_LABEL[p.vehicle.powertrain] ?? p.vehicle.powertrain}</span>}</span>
           {plan && who === 'drivers' && <span className="small">{matched.get(p.id) ? <>carries <b>{matched.get(p.id)}</b></> : <span className="muted">drives alone</span>}</span>}
           {plan && who === 'riders' && <span className="small">{served.has(p.id) ? <span className="ok-text"><CheckCircle2 size={11} /> matched</span> : <span className="muted"><CircleDashed size={11} /> not matched</span>}</span>}
         </button></li>)}
@@ -90,7 +92,7 @@ export function ScenarioPanel({ exp, hash, setHash, inst, plan, onFocus, onDetai
         {prov.seed != null && <><dt>Seed</dt><dd>{prov.seed}{prov.edited_agents ? ` · edited: ${prov.edited_agents.join(', ')}` : ''}</dd></>}
         {net && <><dt>Road network</dt><dd>{net.attribution} ({net.licence}) · OSM data {net.osm_timestamp ?? 'n/a'} · {net.travel_model}</dd></>}
         {inst?.params && <><dt>Limits</dt><dd>detour ≤ {Math.round(inst.params.max_detour_s / 60)} min and ≤ {Math.round(100 * inst.params.max_detour_ratio)} % of the direct trip</dd></>}
-        {vehicles && <><dt>Vehicles</dt><dd>{vehicles.fleet.map((f) => <div key={f.id}>{f.name} ×{f.drivers} · {POWERTRAIN_LABEL[f.powertrain] ?? f.powertrain} · {f.passenger_capacity} seats · {f.provenance}
+        {vehicles && <><dt>Vehicles</dt><dd>{vehicles.fleet.map((f) => <div key={f.id}><VehicleIcon powertrain={f.powertrain} size={13} /> {f.name} ×{f.drivers} · {POWERTRAIN_LABEL[f.powertrain] ?? f.powertrain} · {f.passenger_capacity} seats · {f.provenance}
           {Object.entries(f.parameters as Record<string, Json>).filter(([, r]) => r.value != null).map(([key, r]) => <div key={key} className="muted">{key.replace(/_/g, ' ')}: {r.value} {r.unit}{r.basis ? ` ${r.basis}` : ''}{r.source ? ` — ${r.source}${r.source_version ? ` (${r.source_version})` : ''}` : ''}</div>)}</div>)}
           {vehicles.default && <div>riders' baseline vehicle: {vehicles.default.name}</div>}</dd></>}
         {emis && <><dt>CO₂ calculation</dt><dd>{SCOPE_LABEL[emis.scope] ?? emis.scope} · baseline: {BASELINE_LABEL[emis.baseline] ?? emis.baseline}</dd></>}

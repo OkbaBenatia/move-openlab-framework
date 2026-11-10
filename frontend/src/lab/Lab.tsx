@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck, GitCompareArrows, PackageOpen, Play, Plus, X } from 'lucide-react';
-import { call, download, post, type Json } from '../api/client';
+import { BadgeCheck, GitCompareArrows, Maximize2, Minimize2, PackageOpen, Play, Plus, X } from 'lucide-react';
+import { post, type Json } from '../api/client';
+import { CarIcon, RiderIcon } from '../components/DomainIcons';
 import { TraceDrawer } from '../components/TraceDrawer';
 import { ErrorNote, errText } from '../components/common';
 import { COLORS, LeafletMap, type MapPoint } from '../geo/LeafletMap';
@@ -14,6 +15,8 @@ import type { Section } from '../router';
 import { lab, rowKey, scopeMethods, type Experiment, type LabState } from './api';
 import { Charts } from './Charts';
 import { ALL_AREAS } from './ExperimentPicker';
+import { ExportDialog } from './ExportDialog';
+import { ImportDialog } from './ImportDialog';
 import { ImportGuide } from './ImportGuide';
 import { MAP, planLayers, planPositions } from './layers';
 import { ReplayBar, useReplay } from './ReplayBar';
@@ -21,17 +24,22 @@ import { ResultPanel, methodKey, type RunOptions, type Scope } from './ResultPan
 import { NewExperimentPanel, ScenarioPanel } from './ScenarioPanel';
 import { NEW, TopBar } from './TopBar';
 import { Tour } from './Tour';
+import { OPEN_NEW, OPEN_WIZARD, takeHandOff } from './handoff';
 import { RIDE, useLabData, useMethods } from './useLabData';
 
-export const OPEN_WIZARD = 'move-openlab.open-wizard';
+export { OPEN_WIZARD } from './handoff';
 const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 /** The Workspace: choose or load an experiment, inspect it on the map, run methods, see validated results in an explicit
  *  scope, compare, replay, share. The Generate wizard, the comparison selection, Add method and the sample-bundle guide
  *  open over it. */
-export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, arg?: string, replace?: boolean) => void; tourKey?: number }) {
+export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go: (s: Section, arg?: string, replace?: boolean) => void; tourRequest?: number; onTourShown?: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // a notice belongs to the experiment it was written for; opening another experiment clears it
+  const noticeFor = useRef<string | null>(null);
+  const notify = (text: string, forCid: string) => { noticeFor.current = forCid; setNotice(text); };
+  useEffect(() => { if (noticeFor.current !== cid) { noticeFor.current = null; setNotice((n) => (n?.startsWith('Loading') ? n : null)); } }, [cid]);
   const { cfg, areas, datasets, experiments, lib, problems, reloadExperiments, reloadLists } = useLabData(setErr);
   const [st, setSt] = useState<LabState | null>(null);
   const [areaFilter, setAreaFilter] = useState(ALL_AREAS);
@@ -45,10 +53,22 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
   const [jobTarget, setJobTarget] = useState('');
   const [opts, setOpts] = useState<RunOptions>({ repetitions: 3, variant: '' });
   const [picked, setPicked] = useState<string[]>([]);
+  const [wizardData, setWizardData] = useState<{ area_id?: string; dataset_key?: string } | null>(null);
   const [title, setTitle] = useState(`Experiment ${stamp()}`);
   const [picker, setPicker] = useState(false);
   const [addMethod, setAddMethod] = useState(false);
   const [guide, setGuide] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  // expanded map: the header and side panels give way to the map; the action bar stays, panels open as overlays
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    document.documentElement.classList.toggle('map-expanded', expanded);
+    if (!expanded) return () => document.documentElement.classList.remove('map-expanded');
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('.overlay, .wizard, .tour, [role=menu], .picker-panel')) setExpanded(false); };
+    window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('keydown', key); document.documentElement.classList.remove('map-expanded'); };
+  }, [expanded]);
   const [methodsKey, setMethodsKey] = useState(0);
   const [replaying, setReplaying] = useState(false);
   const [tour, setTour] = useState(false);
@@ -83,13 +103,21 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
       const list = await reloadExperiments();
       const last = list.find((x) => x.campaign_id === s.preferences.last_experiment && !x.hidden)
         ?? list.find((x) => x.demo && x.kind === 'baseline' && !x.hidden) ?? list[list.length - 1];
-      setAreaFilter(last?.area ?? list.find((x) => x.demo)?.area ?? ALL_AREAS);
-      if (!cid && last) go('workspace', last.campaign_id, true);
+      // the working area chosen in the Library (Use) or with the area filter wins over the last experiment's area
+      // (a hidden area never becomes the working area by itself: an older preference may point to one)
+      const working = s.preferences.area_id && !s.preferences.hidden_ids.includes(s.preferences.area_id)
+        ? (await geo.areas().catch(() => ({ areas: [] }))).areas.find((a: Json) => a.area_id === s.preferences.area_id) : null;
+      setAreaFilter(working?.name ?? last?.area ?? list.find((x) => x.demo)?.area ?? ALL_AREAS);
+      const fresh = takeHandOff<{ hashes: string[]; label: string }>(OPEN_NEW);
+      if (fresh?.hashes?.length) { setPicked(fresh.hashes); notify(`${fresh.label} selected for a new experiment. Choose the methods on the right and press Run.`, NEW); go('workspace', NEW, true); }
+      else if (!cid && last) go('workspace', last.campaign_id, true);
       setSt(s);
-      try { if (sessionStorage.getItem(OPEN_WIZARD)) { sessionStorage.removeItem(OPEN_WIZARD); setWizard(true); } } catch { /* storage unavailable */ }
+      const w = takeHandOff<{ area_id?: string; dataset_key?: string }>(OPEN_WIZARD);
+      if (w) { setWizardData(w); setWizard(true); }
     });
   }, []);                                                                    // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (tourKey > 0) setTour(true); }, [tourKey]);
+  // the tour opens only when asked (Help → Quick tour, or the start card); the request is acknowledged at once
+  useEffect(() => { if (tourRequest > 0) { setTour(true); onTourShown?.(); } }, [tourRequest, onTourShown]);
   // the Workspace always shows an experiment: without one in the address, reopen the last one (or the demonstration)
   useEffect(() => {
     if (cid || !st || !experiments.length) return;
@@ -134,6 +162,12 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
 
   const hiddenIds = useMemo(() => st?.preferences.hidden_ids ?? [], [st]);
   const current = experiments.find((x) => x.campaign_id === cid) ?? null;
+  // choosing an area in the picker makes it the working area (kept for the account, shared with the Library)
+  const chooseArea = (name: string) => {
+    setAreaFilter(name);
+    const a = areas.find((x) => x.name === name);
+    lab.prefs({ area_id: a?.area_id ?? '' }).then(setSt).catch(() => { /* preference only */ });
+  };
   const area = areas.find((a) => a.name === areaFilter) ?? null;
   const shownLib = useMemo(() => (area ? lib.filter((s) => s.network_id === area.network_id) : lib).filter((s) => !hiddenIds.includes(s.scenario_id)), [lib, area, hiddenIds]);
   const toggleHidden = () => act(async () => {
@@ -170,23 +204,11 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
     const now = cidRef.current;
     if (jobTarget && jobTarget !== now) go('workspace', jobTarget); else if (now && now !== NEW) loadExp(now);
   };
-  const exportBundle = () => act(async () => {
-    if (!exp) return;
-    if (!exp.campaign.locked) {
-      if (!window.confirm('Export locks this experiment: its results can no longer change. Continue?')) return;
-      await post(`/campaigns/${cid}/lock`); await loadExp(cid);
-    }
-    await download(`/campaigns/${cid}/export`, `move_openlab_${exp.campaign.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}.zip`);
+  // Export and Import open dialogs that say what will happen before anything is written
+  const imported = (root: string, note: string) => act(async () => {
+    setImporting(false); await reloadExperiments(); reloadLists(); notify(note, root); go('workspace', root);
   });
-  const importBundle = (f: File) => act(async () => {
-    const fd = new FormData(); fd.append('file', f);
-    try {
-      const rep = await call('/import', { method: 'POST', body: fd });
-      await reloadExperiments(); reloadLists();
-      setNotice(`${t('ev.integrity')}: ${rep.files_checked} files from ${rep.exported_by}, no executable code. Run again to reproduce it here.`);
-      go('workspace', rep.root_campaign_id);
-    } catch (e) { throw new Error(`Bundle rejected: ${errText(e)}`); }
-  });
+  const reproduceHere = (root: string) => { setImporting(false); setNotice(null); once(async () => { const r = await post(`/campaigns/${root}/reproduce`); await execute(r.campaign_id); }); };
   const variant = () => once(async () => { const r = await post(`/campaigns/${cid}/variant`, { variant: opts.variant }); await execute(r.campaign_id); });
   const parentTitle = exp?.campaign.parent ? experiments.find((x) => x.campaign_id === exp.campaign.parent!.campaign_id)?.title ?? null : null;
   const geographic = !exp || exp.campaign.problem_id === RIDE;
@@ -196,12 +218,12 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
   const dismissStart = () => lab.prefs({ start_dismissed: true }).then(setSt).catch(() => { /* preference only */ });
   if (!cfg) return <ErrorNote text={err} />;
 
-  return <div className="lab">
-    <TopBar experiments={experiments} current={current} areaFilter={areaFilter} setAreaFilter={setAreaFilter} setExp={(id) => go('workspace', id)}
+  return <div className={`lab ${expanded ? 'expanded' : ''}`}>
+    <TopBar experiments={experiments} current={current} areaFilter={areaFilter} setAreaFilter={chooseArea} setExp={(id) => go('workspace', id)}
       onGenerate={() => setWizard(true)} onRun={run} runLabel={exp?.campaign.locked ? 'again' : 'run'} runDisabled={runBlocked} runTitle={runTitle}
       onCompare={() => setPicker(true)} canCompare={!!exp?.results} comparePrimary={!!exp?.results && !isNew && exp.campaign.status !== 'draft'}
-      onImportFile={importBundle} onTrySample={() => setGuide(true)} sampleAvailable={!!st?.sample.available}
-      onExport={exportBundle} canExport={!!exp && (exp.campaign.locked || exp.campaign.status === 'completed')}
+      onImport={() => setImporting(true)} onTrySample={() => setGuide(true)} sampleAvailable={!!st?.sample.available}
+      onExport={() => setExporting(true)} canExport={!!exp && (exp.campaign.locked || exp.campaign.status === 'completed')}
       onPanel={(p) => setPanel(panel === p ? null : p)} onLibrary={() => go('data', 'library')} />
     {(err || notice) && <div className="lab-notes">{err && <ErrorNote text={err} />}{notice && <p className="note ok row gap" role="status">{notice}<span className="grow" /><button className="btn sm" onClick={() => setNotice(null)}>OK</button></p>}</div>}
     <div className="lab-grid">
@@ -224,11 +246,15 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
             {variantOf(cid) && <button className="btn primary sm" onClick={() => go('compare', `${cid}|${variantOf(cid)!.campaign_id}`)}><GitCompareArrows size={14} /> {t('ws.start.compare')}</button>}
             <button className="btn sm" onClick={() => setWizard(true)}><Plus size={14} /> {t('ws.start.generate')}</button>
             <button className="btn sm" disabled={!st?.sample.available} onClick={() => setGuide(true)}><PackageOpen size={14} /> {t('ws.start.import')}</button>
-            <button className="btn sm ghost" onClick={() => { dismissStart(); setTour(true); }}>Quick tour</button></div></div>}
+            {!st?.preferences.tour_dismissed && <button className="btn sm ghost" onClick={() => { dismissStart(); setTour(true); }}>Quick tour</button>}</div></div>}
         {geographic && plan && <div className="mapcard legend" aria-label="legend">
           <span><i className="lg-line" style={{ borderColor: MAP.shared }} />Shared ride</span><span><i className="lg-dash" style={{ borderColor: MAP.alone }} />Drives alone</span>
-          <span><i className="dot" style={{ background: MAP.stop }} />Pick-up / drop-off</span><span><i className="dot hollow" style={{ borderColor: MAP.unmatched }} />Not matched</span></div>}
+          <span><i className="dot" style={{ background: MAP.start }} /><CarIcon size={14} />Driver start</span>
+          <span><i className="dot" style={{ background: MAP.stop }} /><RiderIcon size={14} />Pick-up / drop-off</span><span><i className="dot hollow" style={{ borderColor: MAP.unmatched }} />Rider not matched</span></div>}
         {geographic && plan && !replaying && <button className="mapcard replay-pill" onClick={() => setReplaying(true)} data-tour="replay"><Play size={14} /> Replay routes</button>}
+        {geographic && <button className={`mapcard map-expand ${expanded ? 'on' : ''}`} aria-pressed={expanded} aria-label={expanded ? 'Exit expanded map' : 'Expand the map'}
+          title={expanded ? 'Back to the workspace layout (Esc)' : 'Expand the map: panels open on demand, actions stay in the bar above'} onClick={() => { setPanel(null); setExpanded(!expanded); }}>
+          {expanded ? <><Minimize2 size={15} /> Exit expanded map <kbd>Esc</kbd></> : <Maximize2 size={15} />}</button>}
         {replaying && plan && <ReplayBar plan={plan} replay={replay} onClose={() => setReplaying(false)} />}
       </main>
       <aside className={`lab-right ${panel === 'right' ? 'open' : ''}`} aria-label="results">
@@ -242,15 +268,17 @@ export function Lab({ cid, go, tourKey = 0 }: { cid: string; go: (s: Section, ar
     </div>
     {picker && exp && <ComparePicker a={cid} onClose={() => setPicker(false)} onCompare={(ids) => go('compare', `${cid}|${ids.join(',')}`)} />}
     {addMethod && <AddMethod problemId={problemId} onClose={() => setAddMethod(false)} onChanged={() => setMethodsKey((k) => k + 1)} setErr={setErr} />}
+    {exporting && exp && <ExportDialog cid={cid} title={exp.campaign.title} setErr={setErr} onClose={() => setExporting(false)} onDone={() => { loadExp(cid); reloadExperiments().catch(() => { /* list refresh only */ }); }} />}
+    {importing && <ImportDialog sampleAvailable={!!st?.sample.available} setErr={setErr} onClose={() => setImporting(false)} onImported={imported} onReproduce={reproduceHere} />}
     {guide && st?.sample.available && <ImportGuide sample={st.sample} experiments={experiments} methods={methods} onClose={() => { setGuide(false); lab.state().then(setSt).catch(() => { /* */ }); }}
       onOpen={(id) => { setGuide(false); go('workspace', id); }} onCompare={(a, b) => { setGuide(false); go('compare', `${a}|${b}`); }}
       onAddMethod={() => setAddMethod(true)} reload={reloadExperiments} setErr={setErr} />}
     {trace && <TraceDrawer jobId={trace} onClose={() => setTrace(null)} />}
-    {wizard && <Wizard cfg={cfg} areas={areas.filter((a) => !hiddenIds.includes(a.area_id))} datasets={datasets.filter((d) => !hiddenIds.includes(d.dataset_key))} methods={methods}
-      areaId={area?.area_id ?? areas.find((a) => a.name === current?.area)?.area_id} setErr={setErr} reloadAreas={reloadLists} onAddMethod={() => setAddMethod(true)}
-      onClose={() => setWizard(false)}
-      onSaved={(rec) => { setWizard(false); reloadLists(); setPicked([rec.instance_hash]); setNotice('Scenario saved. Choose the methods on the right and press Run.'); go('workspace', NEW); }}
-      onRun={(r) => { setWizard(false); setNotice(null); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}
-    {tour && <Tour onClose={(never) => { setTour(false); if (never) lab.prefs({ tour_dismissed: true }).catch(() => { /* preference only */ }); }} />}
+    {wizard && (!wizardData?.area_id || areas.length > 0) && <Wizard cfg={cfg} areas={areas.filter((a) => !hiddenIds.includes(a.area_id) || a.area_id === wizardData?.area_id)} datasets={datasets.filter((d) => !hiddenIds.includes(d.dataset_key) || d.dataset_key === wizardData?.dataset_key)} methods={methods}
+      areaId={wizardData?.area_id ?? area?.area_id ?? areas.find((a) => a.name === current?.area)?.area_id} datasetKey={wizardData?.dataset_key} setErr={setErr} reloadAreas={reloadLists} onAddMethod={() => setAddMethod(true)}
+      onClose={() => { setWizard(false); setWizardData(null); }}
+      onSaved={(rec) => { setWizard(false); setWizardData(null); reloadLists(); setPicked([rec.instance_hash]); notify('Scenario saved. Choose the methods on the right and press Run.', NEW); go('workspace', NEW); }}
+      onRun={(r) => { setWizard(false); setWizardData(null); setNotice(null); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}
+    {tour && <Tour onClose={(never) => { setTour(false); if (never) lab.prefs({ tour_dismissed: true }).then(setSt).catch(() => { /* preference only */ }); }} />}
   </div>;
 }

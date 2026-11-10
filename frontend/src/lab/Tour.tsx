@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
+import { t } from '../i18n';
 
 export const TOUR_STEPS: { anchor: string; title: string; text: string }[] = [
   { anchor: 'scenario', title: 'Public demonstration', text: 'Opens first: demand sampled from RPC observed trips on the Montbéliard road network, with validated results.' },
@@ -48,6 +49,7 @@ export function Tour({ onClose }: { onClose: (dontShowAgain: boolean) => void })
       <h3>{step.title}</h3>
       <p>{step.text}</p>
       <label className="row small"><input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Don't show again</label>
+      <p className="tiny muted">{t('tour.reopen')}</p>
       <div className="row gap">
         <button className="btn sm" onClick={() => onClose(never)}>Skip</button><span className="grow" />
         {i > 0 && <button className="btn sm" onClick={() => setI(i - 1)}>Back</button>}

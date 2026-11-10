@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, ChevronDown, CircleHelp, Database, EyeOff, FlaskConical, GraduationCap, KeyRound, Layers, LayoutGrid, ListChecks,
+import { Activity, ChevronDown, CircleHelp, Compass, Database, EyeOff, FlaskConical, GraduationCap, KeyRound, Layers, LayoutGrid, ListChecks,
   LogOut, MapPin, Moon, Route, Shield, Sigma, Sun, UserRound } from 'lucide-react';
 import { api, call, type Json, type User } from '../api/client';
 import { t } from '../i18n';
@@ -39,8 +39,8 @@ function Menu({ label, button, children, align = 'left', wide }: { label: string
   </div>;
 }
 
-function Item({ icon, children, onClick, active, hint }: { icon: ReactNode; children: ReactNode; onClick: () => void; active?: boolean; hint?: string }) {
-  return <button role="menuitem" className={`mi ${active ? 'on' : ''}`} onClick={onClick}>{icon}<span className="grow">{children}</span>{hint && <span className="hint">{hint}</span>}</button>;
+function Item({ icon, children, onClick, active, hint, tip }: { icon: ReactNode; children: ReactNode; onClick: () => void; active?: boolean; hint?: string; tip?: string }) {
+  return <button role="menuitem" className={`mi ${active ? 'on' : ''}`} onClick={onClick} title={tip}>{icon}<span className="grow">{children}</span>{hint && <span className="hint">{hint}</span>}</button>;
 }
 
 const initials = (s: string) => s.split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('') || '?';
@@ -74,11 +74,11 @@ export function Header({ user, section, go, onTour, theme, setTheme }: {
   user: User; section: Section; go: (s: Section, arg?: string) => void; onTour: () => void; theme: Theme; setTheme: (t: Theme) => void;
 }) {
   const role = user.role === 'admin' ? t('role.admin') : user.role === 'student' ? t('role.student') : t('role.researcher');
-  const lib: [string, ReactNode, Section, string][] = [
-    [t('lib.areas'), <MapPin size={15} />, 'data', 'areas'], [t('lib.networks'), <Route size={15} />, 'data', 'areas'],
-    [t('lib.datasets'), <Database size={15} />, 'data', 'datasets'], [t('lib.scenarios'), <Layers size={15} />, 'data', 'library'],
-    [t('lib.experiments'), <FlaskConical size={15} />, 'experiments', ''], [t('lib.benchmarks'), <Sigma size={15} />, 'benchmarks', ''],
-    [t('lib.jobs'), <ListChecks size={15} />, 'jobs', ''], [t('lib.hidden'), <EyeOff size={15} />, 'hidden', '']];
+  const lib: [string, ReactNode, Section, string, string][] = [
+    [t('lib.areas'), <MapPin size={15} />, 'data', 'areas', t('lib.areas.tip')], [t('lib.networks'), <Route size={15} />, 'data', 'areas', t('lib.networks.tip')],
+    [t('lib.datasets'), <Database size={15} />, 'data', 'datasets', t('lib.datasets.tip')], [t('lib.scenarios'), <Layers size={15} />, 'data', 'library', t('lib.scenarios.tip')],
+    [t('lib.experiments'), <FlaskConical size={15} />, 'experiments', '', t('lib.experiments.tip')], [t('lib.benchmarks'), <Sigma size={15} />, 'benchmarks', '', t('lib.benchmarks.tip')],
+    [t('lib.jobs'), <ListChecks size={15} />, 'jobs', '', t('lib.jobs.tip')], [t('lib.hidden'), <EyeOff size={15} />, 'hidden', '', t('lib.hidden.tip')]];
   const inLibrary = ['data', 'experiments', 'benchmarks', 'jobs', 'hidden'].includes(section);
   return <header className="hdr">
     <a className="brand" href="#/workspace" onClick={(e) => { e.preventDefault(); go('workspace'); }} aria-label="MOVE OpenLab — workspace">
@@ -86,11 +86,21 @@ export function Header({ user, section, go, onTour, theme, setTheme }: {
     <span className="hsep" />
     <button className={`navbtn ${section === 'workspace' || section === 'compare' ? 'on' : ''}`} onClick={() => go('workspace')}><LayoutGrid size={16} />{t('nav.workspace')}</button>
     <Menu label={t('nav.library')} button={<span className={`navlabel ${inLibrary ? 'on' : ''}`}><Database size={16} />{t('nav.library')}<ChevronDown size={14} /></span>}>
-      {(close) => lib.map(([label, icon, s, arg]) => <Item key={label} icon={icon} onClick={() => { close(); go(s, arg); }}>{label}</Item>)}
+      {(close) => <><div className="mtip">{t('lib.intro')}</div>
+        {lib.map(([label, icon, s, arg, tip]) => <Item key={label} icon={icon} tip={tip} onClick={() => { close(); go(s, arg); }}>{label}</Item>)}</>}
     </Menu>
     <span className="grow" />
     <Jobs go={go} />
-    <button className="navbtn" aria-label={t('nav.help')} title={t('nav.help')} onClick={onTour}><CircleHelp size={17} /></button>
+    <Menu label={t('nav.help')} align="right" wide button={<CircleHelp size={17} />}>
+      {(close) => <>
+        <Item icon={<Compass size={15} />} hint={t('help.tourHint')} onClick={() => { close(); onTour(); }}>{t('help.tour')}</Item>
+        <div className="msep" />
+        <div className="mh">{t('help.terms')}</div>
+        <dl className="gloss">{(['gloss.area', 'gloss.data', 'gloss.scenario', 'gloss.library', 'gloss.hidden'] as const).map((k) => {
+          const [term, def] = t(k).split(' — ');
+          return <div key={k}><dt>{term}</dt><dd>{def}</dd></div>; })}</dl>
+      </>}
+    </Menu>
     <Menu label="profile" align="right" button={<span className="userbtn"><span className="avatar">{initials(user.display || user.username)}</span>
       <span className="who"><b>{user.display}</b><span>{role}</span></span><ChevronDown size={14} /></span>}>
       {(close) => <>

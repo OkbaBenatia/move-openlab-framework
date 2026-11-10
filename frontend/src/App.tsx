@@ -28,9 +28,9 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const [route, go] = useRoute();
   const [err, setErr] = useState<string | null>(null);
-  const [preset, setPreset] = useState<string[] | null>(null);
   const [version, setVersion] = useState('');
-  const [tourKey, setTourKey] = useState(0);
+  // one-shot request from Help: consumed by the workspace once, so returning to the workspace never reopens the tour
+  const [tourRequest, setTourRequest] = useState(0);
   useEffect(() => { api.info().then((i) => setVersion(i.version)).catch(() => { /* optional */ }); }, []);
   // the scenario wizard opens over the workspace only: the old Data › Generate address leads there
   useEffect(() => {
@@ -41,17 +41,17 @@ export default function App() {
   const supervises = user.role === 'researcher' && !!user.can_supervise;
   return <div className={`app ${full ? 'app-lab' : ''}`}>
     <Header user={user} section={route.section} go={open} theme={theme} setTheme={setTheme}
-      onTour={() => { if (route.section !== 'workspace') go('workspace'); setTourKey((k) => k + 1); }} />
+      onTour={() => { if (route.section !== 'workspace') go('workspace'); setTourRequest((k) => k + 1); }} />
     <ErrorBoundary resetKey={`${route.section}/${route.arg}`}>
-    {route.section === 'workspace' && <Lab key="lab" cid={route.arg} go={go} tourKey={tourKey} />}
+    {route.section === 'workspace' && <Lab key="lab" cid={route.arg} go={go} tourRequest={tourRequest} onTourShown={() => setTourRequest(0)} />}
     {route.section === 'compare' && <CompareAB key={route.arg} arg={route.arg} go={(a, b) => go('compare', `${a}|${b}`)} back={() => go('workspace', route.arg.split('|')[0])} />}
     {!full && <main className={route.section === 'experiments' ? 'page' : 'content page'}>
       <div className="page-head row gap"><button className="btn ghost sm" onClick={() => go('workspace')}><ChevronLeft size={14} />{t('nav.workspace')}</button>
         <h1 className="grow">{TITLES[route.section] ?? ''}</h1></div>
       {route.section !== 'experiments' && <ErrorNote text={err} />}
       {route.section === 'data' && route.arg !== 'generate' && <GeoWorkbench initialView={route.arg} onView={(v) => go('data', v)} setErr={setErr}
-        onUseInCampaign={(hashes) => { setPreset(hashes); open('experiments', 'new'); }} onRun={(cid) => go('workspace', cid)} />}
-      {route.section === 'experiments' && <ExperimentsSection view={route.arg} go={(v) => open('experiments', v)} preset={preset} clearPreset={() => setPreset(null)} />}
+        onOpenWorkspace={() => go('workspace')} onRun={(cid) => go('workspace', cid)} />}
+      {route.section === 'experiments' && <ExperimentsSection view={route.arg} go={(v) => open('experiments', v)} preset={null} clearPreset={() => { /* scenarios from the Library open in the workspace */ }} />}
       {route.section === 'jobs' && <JobsPage setErr={setErr} />}
       {route.section === 'students' && supervises && <AdminPage me={user.username} supervisorMode setErr={setErr} />}
       {route.section === 'admin' && user.role === 'admin' && <AdminPage me={user.username} setErr={setErr} />}

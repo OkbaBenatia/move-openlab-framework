@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Database, Eye, EyeOff, Map as MapIcon, MapPinned, Pencil, Plus, Shuffle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Database, Eye, EyeOff, Info, Layers, MapPinned, Pencil, Plus, Shuffle } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import type { DatasetItem } from '../lab/useLabData';
 import { lab } from '../lab/api';
+import { handOff, OPEN_NEW, OPEN_WIZARD } from '../lab/handoff';
+import { t } from '../i18n';
 import { RIDE, useMethods } from '../lab/useLabData';
 import { Wizard } from '../mobility/Wizard';
 import { COLORS, LeafletMap, type MapLine, type MapPoint } from './LeafletMap';
@@ -16,9 +18,18 @@ const CURRENT_KEY = 'move-openlab.area';
 
 const VIEWS: View[] = ['areas', 'datasets', 'library', 'generate'];
 
-/** Data section: areas and road networks, trip datasets, the scenario library; Generate opens the same five-step
- *  wizard as the workspace (the only scenario-creation workflow). */
-export function GeoWorkbench({ setErr, onUseInCampaign, onRun, initialView, onView }: { setErr: (s: string | null) => void; onUseInCampaign: (hashes: string[]) => void; onRun: (cid: string) => void; initialView?: string; onView?: (v: string) => void }) {
+/** Short explanation of each Library view, for first-time users. */
+const VIEW_HELP: Record<View, string> = {
+  areas: 'An area is a geographic zone — a box on the map with its road network. Use makes it your working area: the Workspace lists its experiments and Generate starts there.',
+  datasets: 'Mobility data is where trips come from: observed trips (RPC open data, your CSV or GeoJSON files) or synthetic demand. Scenarios sample their participants from it. Use starts Generate with this data.',
+  library: 'Scenarios are frozen sets of drivers, riders and travel times, ready to run. Use starts a new experiment with the selected scenario in the Workspace.',
+  generate: 'Generate creates a scenario in five steps; nothing is saved before the last step.',
+};
+
+/** Library (data section): areas and road networks, mobility data, the scenario library; Generate opens the same
+ *  five-step wizard as the workspace (the only scenario-creation workflow). "Use" applies a record to the work in the
+ *  Workspace: an area becomes the working area, mobility data starts Generate, a scenario starts a new experiment. */
+export function GeoWorkbench({ setErr, onOpenWorkspace, onRun, initialView, onView }: { setErr: (s: string | null) => void; onOpenWorkspace: () => void; onRun: (cid: string) => void; initialView?: string; onView?: (v: string) => void }) {
   const [cfg, setCfg] = useState<GeoConfig | null>(null);
   const [view, setView] = useState<View>(VIEWS.includes(initialView as View) ? (initialView as View) : 'library');
   const [lib, setLib] = useState<Json[]>([]);
@@ -30,7 +41,9 @@ export function GeoWorkbench({ setErr, onUseInCampaign, onRun, initialView, onVi
   // hidden records (areas, datasets, scenarios) stay out of the lists unless "Show hidden" is on; nothing is deleted
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
-  useEffect(() => { lab.state().then((s) => setHiddenIds(s.preferences.hidden_ids ?? [])).catch(() => { /* preference only */ }); }, []);
+  const [used, setUsed] = useState<string | null>(null);         // confirmation of the last Use
+  const [workingId, setWorkingId] = useState('');                  // the working area chosen explicitly (Use or the area list)
+  useEffect(() => { lab.state().then((s) => { setHiddenIds(s.preferences.hidden_ids ?? []); if (s.preferences.area_id && !(s.preferences.hidden_ids ?? []).includes(s.preferences.area_id)) { setCurrentId(s.preferences.area_id); setWorkingId(s.preferences.area_id); } }).catch(() => { /* preference only */ }); }, []);
   const toggleHidden = (id: string) => {
     const next = hiddenIds.includes(id) ? hiddenIds.filter((x) => x !== id) : [...hiddenIds, id];
     setHiddenIds(next); lab.prefs({ hidden_ids: next }).then((s) => setHiddenIds(s.preferences.hidden_ids ?? next)).catch((e) => setErr(errText(e)));
@@ -48,25 +61,42 @@ export function GeoWorkbench({ setErr, onUseInCampaign, onRun, initialView, onVi
   useEffect(load, [load]);
   const shownAreas = showHidden ? areas : areas.filter((a) => !hiddenIds.includes(a.area_id) || a.area_id === currentId);
   const current = areas.find((a) => a.area_id === currentId) ?? shownAreas.find((a) => a.network_id) ?? shownAreas[0] ?? null;
-  const setCurrent = (id: string) => { setCurrentId(id); try { localStorage.setItem(CURRENT_KEY, id); } catch { /* storage unavailable */ } };
+  // the current area here is the working area of the account: kept on the server and shared with the Workspace
+  const setCurrent = (id: string) => {
+    setCurrentId(id); setWorkingId(id); try { localStorage.setItem(CURRENT_KEY, id); } catch { /* storage unavailable */ }
+    lab.prefs({ area_id: id }).catch((e) => setErr(errText(e)));
+  };
+  const useArea = (id: string) => { setCurrent(id); setUsed(`${areas.find((a) => a.area_id === id)?.name ?? 'This area'} is now your working area: the Workspace lists its experiments and Generate starts there.`); };
+  const useDataset = (d: DatasetItem) => {
+    const covering = (a: Area) => !d.bbox || (a.bbox[0] < d.bbox[2] && a.bbox[2] > d.bbox[0] && a.bbox[1] < d.bbox[3] && a.bbox[3] > d.bbox[1]);
+    const a = (current && covering(current) ? current : null) ?? areas.find(covering);
+    if (!a) { setErr(`No area covers ${d.name} yet: create one under Areas first.`); return; }
+    setCurrent(a.area_id); handOff(OPEN_WIZARD, { area_id: a.area_id, dataset_key: d.dataset_key }); onOpenWorkspace();
+  };
+  const useScenarios = (hashes: string[], label: string) => { handOff(OPEN_NEW, { hashes, label }); onOpenWorkspace(); };
+  const hiddenHere = view === 'areas' ? areas.filter((a) => hiddenIds.includes(a.area_id)).length
+    : view === 'datasets' ? datasets.filter((d) => hiddenIds.includes(d.dataset_key)).length : lib.filter((s) => hiddenIds.includes(s.scenario_id)).length;
   if (!cfg) return null;
-  const tabs: [View, string, typeof MapIcon][] = [['areas', 'Areas', MapPinned], ['datasets', 'Datasets', Database], ['library', 'Library', MapIcon], ['generate', 'Generate', Shuffle]];
+  const tabs: [View, string, typeof MapPinned][] = [['areas', 'Areas', MapPinned], ['datasets', 'Mobility data', Database], ['library', 'Scenarios', Layers], ['generate', 'Generate', Shuffle]];
   const closeWizard = () => { setEditing(null); setView('library'); onView?.('library'); };
   return <div>
     <div className="areabar">
-      <label className="row gap"><span className="small muted">Area</span>
+      <label className="row gap" title="Your working area: the Workspace and Generate start here"><span className="small muted">Working area</span>
         <select value={current?.area_id ?? ''} onChange={(e) => setCurrent(e.target.value)} aria-label="current area" disabled={!areas.length}>
           {!areas.length && <option value="">no area yet</option>}
           {shownAreas.map((a) => <option key={a.area_id} value={a.area_id}>{a.name}{a.network_id ? '' : ' (no network)'}</option>)}</select></label>
       {current && <span className="small muted">{current.profile} · {num(current.km2, 0)} km²</span>}
       <span className="grow" />
-      {hiddenIds.length > 0 && <button className="btn sm" aria-pressed={showHidden} onClick={() => setShowHidden(!showHidden)}>{showHidden ? <><EyeOff size={12} /> Hide hidden</> : <><Eye size={12} /> Show hidden ({hiddenIds.length})</>}</button>}
+      {hiddenHere > 0 && <button className="btn sm" aria-pressed={showHidden} title={t('hidden.purpose')} onClick={() => setShowHidden(!showHidden)}>{showHidden ? <><EyeOff size={12} /> Hide hidden</> : <><Eye size={12} /> Show hidden ({hiddenHere})</>}</button>}
     </div>
+    {used && <p className="note ok row gap" role="status"><CheckCircle2 size={15} /><span className="grow">{used}</span>
+      <button className="btn sm primary" onClick={onOpenWorkspace}>Open the Workspace <ArrowRight size={13} /></button><button className="btn sm ghost" onClick={() => setUsed(null)}>OK</button></p>}
     <nav className="subtabs" aria-label="geographic sections">{tabs.map(([v, label, Icon]) =>
-      <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setView(v); onView?.(v); }}><Icon size={13} /> {label}</button>)}</nav>
-    {view === 'areas' && <Areas cfg={cfg} areas={shownAreas} current={current} setCurrent={setCurrent} setErr={setErr} onChanged={load} {...hide} />}
-    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} {...hide} />}
-    {(view === 'library' || view === 'generate') && <Library cfg={cfg} lib={showHidden ? lib : lib.filter((s) => !hiddenIds.includes(s.scenario_id))} setErr={setErr} {...hide} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('generate'); onView?.('generate'); }} onUse={onUseInCampaign} />}
+      <button key={v} className={`btn ${view === v ? 'primary' : ''}`} onClick={() => { setErr(null); setUsed(null); setView(v); onView?.(v); }}><Icon size={13} /> {label}</button>)}</nav>
+    <p className="small muted view-help"><Info size={13} /> {VIEW_HELP[view]}</p>
+    {view === 'areas' && <Areas cfg={cfg} areas={shownAreas} current={current} workingId={workingId} setCurrent={setCurrent} onUse={useArea} setErr={setErr} onChanged={load} {...hide} />}
+    {view === 'datasets' && <Datasets cfg={cfg} areas={areas} current={current} setErr={setErr} onChanged={load} onUse={(key) => { const d = datasets.find((x) => x.dataset_key === key); if (d) useDataset(d); }} {...hide} />}
+    {(view === 'library' || view === 'generate') && <Library cfg={cfg} lib={showHidden ? lib : lib.filter((s) => !hiddenIds.includes(s.scenario_id))} hiddenCount={showHidden ? 0 : lib.filter((s) => hiddenIds.includes(s.scenario_id)).length} setErr={setErr} {...hide} onEdit={(sc, parent) => { setEditing({ scenario: sc, parent }); setView('generate'); onView?.('generate'); }} onUse={useScenarios} />}
     {view === 'generate' && <Wizard cfg={cfg} areas={shownAreas} datasets={datasets.filter((d) => showHidden || !hiddenIds.includes(d.dataset_key))} methods={methods} areaId={current?.area_id} initial={editing} setErr={setErr} reloadAreas={load}
       onClose={closeWizard} onSaved={() => { load(); closeWizard(); }} onRun={(r) => { closeWizard(); onRun(r.campaign_id); }} />}
     <p className="small muted attribution">Road data {cfg.osm_licence}. Map tiles: {cfg.tile_attribution.replace(/<[^>]+>/g, '').replace(/&copy;/g, '©').replace(/&amp;/g, '&')}.</p>
@@ -100,7 +130,7 @@ function provText(p?: Json): string {
 
 export interface HideProps { hiddenIds: string[]; showHidden: boolean; onToggleHidden: (id: string) => void }
 
-function Library({ cfg, lib, setErr, onEdit, onUse, hiddenIds, onToggleHidden }: { cfg: GeoConfig; lib: Json[]; setErr: (s: string | null) => void; onEdit: (s: Scenario, parent: string) => void; onUse: (h: string[]) => void } & HideProps) {
+function Library({ cfg, lib, hiddenCount, setErr, onEdit, onUse, hiddenIds, onToggleHidden }: { cfg: GeoConfig; lib: Json[]; hiddenCount: number; setErr: (s: string | null) => void; onEdit: (s: Scenario, parent: string) => void; onUse: (h: string[], label: string) => void } & HideProps) {
   const [sel, setSel] = useState<Json | null>(null);
   const [pairs, setPairs] = useState(true);
   const [chosen, setChosen] = useState<string[]>([]);
@@ -109,14 +139,15 @@ function Library({ cfg, lib, setErr, onEdit, onUse, hiddenIds, onToggleHidden }:
   const veh = sel?.instance?.vehicles?.default;
   return <div className="split">
     <div>
-      {lib.length === 0 ? <p className="muted">The library is empty. Generate a scenario.</p> :
+      {lib.length === 0 ? <p className="muted">{hiddenCount ? `No visible scenario: ${hiddenCount} hidden (Show hidden, above, lists them again).` : 'The library is empty. Generate a scenario.'}</p> :
         <div className="table-scroll"><table aria-label="scenario library"><thead><tr><th /><th>Scenario</th><th>Category</th><th>Drivers</th><th>Riders</th><th>Created</th><th /></tr></thead>
           <tbody>{lib.map((s) => <tr key={s.scenario_id} className={sel?.scenario_id === s.scenario_id ? 'hl' : hiddenIds.includes(s.scenario_id) ? 'dim' : ''}>
             <td><input type="checkbox" aria-label={`select ${s.name}`} checked={chosen.includes(s.instance_hash)} onChange={(e) => setChosen(e.target.checked ? [...chosen, s.instance_hash] : chosen.filter((x) => x !== s.instance_hash))} /></td>
             <td><b>{s.name}</b>{s.parent && <div className="small muted">edited from {s.parent}</div>}</td><td><span className="badge">{s.category ?? s.source}</span></td><td>{s.drivers}</td><td>{s.riders}</td>
             <td className="small">{s.created_at.slice(0, 16).replace('T', ' ')}</td><td><div className="row gap"><button className="btn sm" onClick={() => open(s.scenario_id)}>Open</button>
+              <button className="btn sm" title="Start a new experiment with this scenario in the Workspace" onClick={() => onUse([s.instance_hash], `Scenario “${s.name}”`)}>Use</button>
               <button className="btn icon" aria-label={hiddenIds.includes(s.scenario_id) ? `show ${s.name}` : `hide ${s.name}`} title={hiddenIds.includes(s.scenario_id) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(s.scenario_id)}>{hiddenIds.includes(s.scenario_id) ? <Eye size={12} /> : <EyeOff size={12} />}</button></div></td></tr>)}</tbody></table></div>}
-      <button className="btn primary" disabled={chosen.length === 0} onClick={() => onUse(chosen)}><Plus size={13} /> New campaign with {chosen.length} scenario(s)</button>
+      <button className="btn primary" disabled={chosen.length === 0} onClick={() => onUse(chosen, `${chosen.length} scenario${chosen.length === 1 ? '' : 's'}`)}><Plus size={13} /> New experiment with {chosen.length} scenario{chosen.length === 1 ? '' : 's'}</button>
       {sel && <><h3>{sel.name}</h3>
         <table className="kv"><tbody>
           <tr><th>Drivers · riders</th><td>{sel.summary.drivers} · {sel.summary.riders}</td></tr>

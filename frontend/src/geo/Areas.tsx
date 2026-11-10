@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Download, Eye, EyeOff, MousePointerClick, Ruler, Save, Search, Square, Trash2 } from 'lucide-react';
+import { CheckCircle2, Crosshair, Download, Eye, EyeOff, MousePointerClick, Ruler, Save, Search, Square, Trash2 } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import { JobProgress } from '../components/JobProgress';
@@ -17,8 +17,8 @@ const around = (lat: number, lon: number, halfKm = 2.5): BBox => {
 
 /** Named areas of the workspace: place search, map selection, box drawing and resizing, road-network profile,
  *  network download (background job) with coverage, distances and travel times. */
-export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged, hiddenIds, onToggleHidden }: {
-  cfg: GeoConfig; areas: Area[]; current: Area | null; setCurrent: (id: string) => void; setErr: (s: string | null) => void; onChanged: () => void;
+export function Areas({ cfg, areas, current, workingId, setCurrent, onUse, setErr, onChanged, hiddenIds, onToggleHidden }: {
+  cfg: GeoConfig; areas: Area[]; current: Area | null; workingId: string; setCurrent: (id: string) => void; onUse: (id: string) => void; setErr: (s: string | null) => void; onChanged: () => void;
 } & HideProps) {
   const [draft, setDraft] = useState<{ id?: string; name: string; bbox: BBox | null; profile: string; origin?: Json }>({ name: '', bbox: null, profile: 'car' });
   const [q, setQ] = useState('');
@@ -133,7 +133,8 @@ export function Areas({ cfg, areas, current, setCurrent, setErr, onChanged, hidd
           <tbody>{areas.map((a) => <tr key={a.area_id} className={current?.area_id === a.area_id ? 'hl' : hiddenIds.includes(a.area_id) ? 'dim' : ''}>
             <td><b>{a.name}</b></td><td className="small">{a.profile}</td><td>{num(a.km2, 0)}</td>
             <td className="small">{a.network_id ? <span className="badge ok">ready</span> : a.cached_network ? <span className="badge">stored</span> : <span className="badge warn">not downloaded</span>}</td>
-            <td><div className="row gap"><button className="btn sm" onClick={() => setCurrent(a.area_id)}>Use</button><button className="btn sm" onClick={() => edit(a)}>Edit</button>
+            <td><div className="row gap">{workingId === a.area_id ? <span className="badge ok" title="Your working area: the Workspace and Generate start here"><CheckCircle2 size={11} /> In use</span>
+              : <button className="btn sm" title="Make this your working area (Workspace and Generate)" onClick={() => onUse(a.area_id)}>Use</button>}<button className="btn sm" onClick={() => edit(a)}>Edit</button>
               <button className="btn icon" aria-label={hiddenIds.includes(a.area_id) ? `show ${a.name}` : `hide ${a.name}`} title={hiddenIds.includes(a.area_id) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(a.area_id)}>{hiddenIds.includes(a.area_id) ? <Eye size={12} /> : <EyeOff size={12} />}</button>
               <button className="btn icon" aria-label={`delete ${a.name}`} title="Delete the area (a downloaded network stays available)" onClick={() => remove(a)}><Trash2 size={12} /></button></div></td></tr>)}</tbody></table></div>}
 

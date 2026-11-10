@@ -12,7 +12,7 @@ const FIELDS: [string, string][] = [['origin_lat', 'Origin latitude'], ['origin_
 const GEO_FIELDS: [string, string][] = [['departure', 'Departure time'], ['date', 'Date (optional)'], ['role', 'Role (optional)']];
 
 /** Trip datasets: shared RPC open-data subsets (France) and the researcher's own CSV / GeoJSON uploads. */
-export function Datasets({ cfg, areas, current, setErr, onChanged, hiddenIds, showHidden, onToggleHidden }: { cfg: GeoConfig; areas: Area[]; current: Area | null; setErr: (s: string | null) => void; onChanged: () => void } & HideProps) {
+export function Datasets({ cfg, areas, current, setErr, onChanged, onUse, hiddenIds, showHidden, onToggleHidden }: { cfg: GeoConfig; areas: Area[]; current: Area | null; setErr: (s: string | null) => void; onChanged: () => void; onUse: (datasetKey: string) => void } & HideProps) {
   const [list, setList] = useState<Json | null>(null);
   const [sel, setSel] = useState<Json | null>(null);
   const load = useCallback(() => { geo.datasets().then(setList).catch((e) => setErr(errText(e))); }, [setErr]);
@@ -40,6 +40,7 @@ export function Datasets({ cfg, areas, current, setErr, onChanged, hiddenIds, sh
               {d.provider === 'rpc' && <div className="small muted">{d.licence}</div>}</td>
             <td className="small">{d.provider === 'rpc' ? 'RPC open data · shared' : `${d.provider.toUpperCase()} upload · private`}</td><td>{d.rows_kept}</td>
             <td><div className="row gap"><button className="btn sm" onClick={() => open(d.dataset_key)}>Open</button>
+              <button className="btn sm" title="Start Generate with this mobility data in the Workspace" onClick={() => onUse(d.dataset_key)}>Use</button>
               <button className="btn icon" aria-label={hiddenIds.includes(d.dataset_key) ? `show ${d.name}` : `hide ${d.name}`} title={hiddenIds.includes(d.dataset_key) ? 'Show in lists' : 'Hide from lists (nothing is deleted)'} onClick={() => onToggleHidden(d.dataset_key)}>{hiddenIds.includes(d.dataset_key) ? <Eye size={12} /> : <EyeOff size={12} />}</button>
               {d.provider !== 'rpc' && <button className="btn icon" aria-label={`delete ${d.name}`} onClick={() => remove(d.dataset_key)}><Trash2 size={12} /></button>}</div></td></tr>)}</tbody></table></div>}
       {sel && <DatasetSummary sel={sel} />}

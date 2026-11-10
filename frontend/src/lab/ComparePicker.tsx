@@ -8,7 +8,7 @@ import { type Validation, type Verdict } from './api';
 export interface Candidate {
   campaign_id: string; title: string; kind: string; owner_display: string; imported: boolean; hidden: boolean; category: string; relation: string;
   methods: string[]; created_at: string; quality: Verdict; runtime: Verdict; emissions: Verdict | null; overall: Verdict; reasons: string[];
-  validation: Validation; reproducibility: { applicable: boolean; reproduced?: boolean | null; cells?: number; different?: number };
+  validation: Validation; reproducibility: { applicable: boolean; reproduced?: boolean | null; cells?: number; different?: number; identical?: number };
 }
 interface Compatible { a: { campaign_id: string; title: string; validation: Validation }; candidates: Candidate[]; counts: Record<Verdict, number>; hidden: number }
 

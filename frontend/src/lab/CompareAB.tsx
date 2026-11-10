@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Download, Pause, Play, Plus, RotateCcw, Scale, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronUp, Download, Pause, Play, Plus, RotateCcw, Scale, ShieldCheck } from 'lucide-react';
 import type { Json } from '../api/client';
 import { ErrorNote, errText, num } from '../components/common';
 import { LeafletMap, type MapView } from '../geo/LeafletMap';
@@ -12,6 +12,8 @@ import { MetricChart } from './MetricChart';
 import { planLayers, planPositions } from './layers';
 import { useReplay } from './ReplayBar';
 import { runtime } from './ResultPanel';
+
+const SUMMARY_KEY = 'move-openlab.compare-summary';   // collapsed / open, remembered on this browser
 
 type Tab = 'results' | 'charts' | 'maps' | 'replay' | 'diff';
 const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', '#9085e9', '#e87ba4'];
@@ -55,6 +57,7 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
   const [view, setView] = useState<MapView | null>(null);
   const [playing, setPlaying] = useState(false);
   const [why, setWhy] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === 'collapsed'; } catch { return false; } });
   const [adding, setAdding] = useState(false);
   const [chartMethod, setChartMethod] = useState('');
   useEffect(() => { geo.config().then(setCfg).catch((e) => setErr(errText(e))); }, []);
@@ -178,6 +181,19 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
 
   const verdictChip = (v: Verdict | null | undefined, label: string) => v ? <span className={`badge ${VERDICT[v].cls}`}>{label}</span> : null;
   const rep = cand?.reproducibility;
+  const toggleSummary = () => { const n = !collapsed; setCollapsed(n); try { localStorage.setItem(SUMMARY_KEY, n ? 'collapsed' : 'open'); } catch { /* storage unavailable */ } };
+  // what this comparison establishes, claim by claim: identical (re-execution), comparable (per claim), not applicable
+  const claims = cand ? ([['results', cand.quality], ['runtime', cand.runtime], ['CO₂', cand.emissions]] as [string, Verdict | null][]).filter(([, v]) => v) : [];
+  const byVerdict = (v: Verdict) => claims.filter(([, x]) => x === v).map(([k]) => k).join(', ');
+  const notRepro = cand?.relation.startsWith('Controlled variant') ? 'B is a controlled variant, not a re-execution' : cand?.relation.startsWith('Extension') ? 'B adds methods, it is not a re-execution' : 'B is not a re-execution of A';
+  const shows = cand && <p className="evsum small" aria-label="what this comparison shows">
+    {rep?.applicable && rep.reproduced && <span><b>Identical:</b> every validated result ({rep.cells} of {rep.cells} cells{rep.identical != null ? `; identical solutions in ${rep.identical}` : ''})</span>}
+    {rep?.applicable && rep.reproduced === false && <span><b>Different:</b> {rep.different} of {rep.cells} cells</span>}
+    {byVerdict('direct') && <span><b>{VERDICT.direct.label}:</b> {byVerdict('direct')}</span>}
+    {byVerdict('conditional') && <span><b>{VERDICT.conditional.label}:</b> {byVerdict('conditional')}</span>}
+    {byVerdict('incompatible') && <span><b>{VERDICT.incompatible.label}:</b> {byVerdict('incompatible')}</span>}
+    {rep?.applicable && <span><b>Reported, not required to match:</b> runtimes (measured again)</span>}
+    {!rep?.applicable && <span><b>Not applicable:</b> reproducibility — {notRepro}</span>}</p>;
   return <div className="ab">
     <div className="cmp-head">
       <div className="row gap"><button className="btn ghost icon" aria-label="back to the workspace" onClick={back}><ChevronLeft size={17} /></button>
@@ -185,9 +201,16 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
         {bs.map((x, i) => <button key={x} className={`bchip ${i === Math.min(bi, bs.length - 1) ? 'on' : ''}`} onClick={() => { setBi(i); setMb(undefined); }}>
           <span className="badge" style={{ background: SERIES[i + 1], color: '#fff' }}>{bLabel(i)}</span><span className="ellipsis">{ebs[i]?.campaign.title ?? '…'}</span></button>)}
         <span className="grow" />
+        <button className="btn ghost sm" aria-expanded={!collapsed} aria-controls="cmp-evidence" onClick={toggleSummary} title={collapsed ? 'Show the evidence summary' : 'Hide the evidence summary to give the table, charts and maps more room'}>
+          {collapsed ? <><ChevronDown size={14} /> Show summary</> : <><ChevronUp size={14} /> Hide summary</>}</button>
         <button className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Add experiment</button>
         <button className="btn" onClick={csvTable}><Download size={14} /> Export table</button></div>
-      <div className="evgrid">
+      {collapsed ? <div className="evstrip row gap wrap" id="cmp-evidence" aria-label="evidence summary (collapsed)">
+        <span className="badge ok"><ShieldCheck size={12} /> Validated A {ea?.validation.accepted ?? '—'}/{ea?.validation.runs ?? '—'}{sides.slice(1).map((s) => ` · ${s.label} ${s.e?.validation.accepted ?? '—'}/${s.e?.validation.runs ?? '—'}`).join('')}</span>
+        <span className={`badge ${rep?.applicable && rep.reproduced ? 'ok' : ''}`}><RotateCcw size={12} /> {rep?.applicable ? (rep.reproduced ? `${t('ev.reproduced')} ${rep.cells}/${rep.cells}` : rep.reproduced === false ? `${rep.different} of ${rep.cells} differ` : 'not analysed') : 'Reproducibility: not applicable'}</span>
+        {cand && <span className="row gap"><Scale size={13} className="muted" />{verdictChip(cand.quality, 'Results')}{verdictChip(cand.runtime, 'Runtime')}{verdictChip(cand.emissions, 'CO₂')}</span>}
+      </div> : <>
+      <div className="evgrid" id="cmp-evidence">
         <div className="evcard"><span className="evi ok"><ShieldCheck size={16} /></span><div><div className="evh">{t('ev.validation')}</div>
           <b>A {ea?.validation.accepted ?? '—'} of {ea?.validation.runs ?? '—'}{sides.slice(1).map((s) => ` · ${s.label} ${s.e?.validation.accepted ?? '—'} of ${s.e?.validation.runs ?? '—'}`).join('')} runs accepted</b>
           <div className="small muted">every solution checked by validator {ea?.validation.validator_version ?? ''}, not by the method</div></div></div>
@@ -199,7 +222,9 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
           {cand ? <><div className="row gap wrap">{verdictChip(cand.quality, 'Results')}{verdictChip(cand.runtime, 'Runtime')}{verdictChip(cand.emissions, 'CO₂')}<button className="btn link small" aria-expanded={why} onClick={() => setWhy(!why)}>{t('ev.why')}</button></div>
             <div className="small muted">{VERDICT[cand.quality].label} for results{cand.reasons.length ? ` · ${cand.reasons.length} qualification${cand.reasons.length === 1 ? '' : 's'}` : ''}</div></> : <span className="small muted">…</span>}</div></div>
       </div>
+      {shows}
       {why && cand && <ul className="note small reasons">{cand.reasons.length ? cand.reasons.map((x) => <li key={x}>{x}</li>) : <li>Same problem, objective, validator and comparable environment.</li>}</ul>}
+      </>}
       <div className="row gap tabsrow"><nav className="tabs" aria-label="comparison views">{(['results', 'charts', 'maps', 'replay', 'diff'] as Tab[]).map((x) => <button key={x} className={tab === x ? 'on' : ''} aria-pressed={tab === x} onClick={() => setTab(x)}>{t(`cmp.tab.${x}` as 'cmp.tab.results')}</button>)}</nav>
         <span className="grow" />
         {(tab === 'results') && nScen > 1 && <div className="seg" role="group" aria-label="scope"><button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All {nScen} scenarios</button>

@@ -334,6 +334,9 @@ legend.row { gap: 8px; align-items: center; }
 .menu .mi .hint, .job-line .hint { color: var(--muted); font-size: 12px; }
 .menu .msep { height: 1px; background: var(--line); margin: 5px 4px; }
 .menu .mh { padding: 6px 10px 3px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.menu .mtip { padding: 4px 10px 6px; font-size: 12px; color: var(--muted); max-width: 260px; line-height: 1.35; }
+.menu .gloss { margin: 0; padding: 0 10px 6px; display: grid; gap: 6px; max-width: 330px; }
+.menu .gloss dt { font-weight: 600; font-size: 12.5px; color: var(--text); } .menu .gloss dd { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.35; }
 .menu .menu-seg { margin: 2px 10px 6px; display: flex; } .menu .menu-seg button { flex: 1; justify-content: center; }
 .menu-user { padding: 8px 10px 10px; }
 .job-line { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12.5px; }
@@ -413,7 +416,7 @@ table.results tbody tr { cursor: pointer; }
 /* map overlays */
 .leaflet-tile-pane { filter: var(--tile-filter); }
 .mapcard { position: absolute; z-index: 600; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-2); }
-.start-card { left: 58px; right: 16px; top: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+.start-card { left: 58px; right: 64px; top: 12px; padding: 12px 14px; display: grid; gap: 10px; }
 .start-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--ok-bg); color: var(--ok); display: grid; place-items: center; flex: none; }
 .start-actions { margin-left: 44px; flex-wrap: wrap; }
 .legend { left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 7px 12px; font-size: 12px; color: var(--text-2); max-width: calc(100% - 200px); }
@@ -546,3 +549,50 @@ table.accounts td { vertical-align: middle; padding: 9px 10px; } table.accounts 
 .col { display: flex; flex-direction: column; } .gap-s { gap: 8px; }
 .row-choice { align-items: center; } .row-choice input { margin: 0; }
 .secret { display: grid; gap: 10px; } .secret .pw { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; letter-spacing: 1px; }
+
+/* polish pass: Library explanations, hidden records */
+.view-help { display: flex; gap: 6px; align-items: flex-start; max-width: 880px; margin: 2px 0 12px; line-height: 1.45; }
+.view-help svg { flex: none; margin-top: 2px; }
+.hidden-intro h3 { margin: 0; font-size: 15px; } .card-head { padding: 12px 14px 4px; } .card-head h3 { margin: 0; font-size: 14px; }
+
+/* export and import dialogs */
+.drawer.exportd { width: min(640px, 100vw); }
+.drawer.importd { width: min(940px, 100vw); }
+.exsum h3 { margin: 0 0 6px; font-size: 15px; }
+.exlist { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.exrow { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; background: var(--panel); border-bottom: 1px solid var(--line); cursor: pointer; }
+.exrow:last-child { border-bottom: 0; } .exrow.fixed { cursor: default; background: var(--panel-2); }
+.exrow input { margin-top: 3px; } .exrow b { font-weight: 600; margin-right: 6px; } .exrow .badge { margin-right: 6px; }
+.exrow .req { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); }
+.dropzone { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: var(--panel-2); }
+.dropzone.has { border-style: solid; }
+.importd .facts dd .badge { margin: 0 4px 4px 0; }
+
+/* comparison: collapsible evidence summary */
+.evstrip { padding: 2px 0 6px; } .evstrip .badge { gap: 4px; }
+.evsum { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 2px 0 6px; color: var(--text-2); }
+.evsum b { font-weight: 600; color: var(--text); }
+
+/* expanded map: header and side panels give way; the action bar stays; panels open as overlays */
+.map-expand { all: unset; box-sizing: border-box; position: absolute; z-index: 650; top: 12px; right: 16px; display: inline-flex; align-items: center; gap: 7px;
+  min-width: 36px; height: 36px; justify-content: center; padding: 0 10px; border-radius: 9px; background: var(--panel); color: var(--text); border: 1px solid var(--line); box-shadow: var(--sh-2); cursor: pointer; font-weight: 550; }
+.map-expand:hover { background: var(--panel-2); } .map-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.map-expand.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.map-expand kbd { font: 600 10.5px/1 Inter, sans-serif; padding: 3px 5px; border-radius: 4px; background: rgba(255, 255, 255, .22); }
+html.map-expanded .hdr { display: none; }
+.lab.expanded .lab-grid { grid-template-columns: minmax(0, 1fr); position: relative; }
+.lab.expanded .lab-left, .lab.expanded .lab-right { position: absolute; top: 0; bottom: 0; width: min(390px, 92vw); z-index: 700; display: none; background: var(--panel); box-shadow: var(--sh-3); overflow-y: auto; }
+.lab.expanded .lab-left { left: 0; } .lab.expanded .lab-right { right: 0; }
+.lab.expanded .lab-left.open, .lab.expanded .lab-right.open { display: block; }
+.lab.expanded .only-narrow { display: inline-flex; }
+
+/* mobility icons */
+.dicon { flex: none; vertical-align: -2px; }
+.fleet { display: inline-flex; gap: 12px; flex-wrap: wrap; } .fleet > span { display: inline-flex; align-items: center; gap: 4px; }
+.vline { display: inline-flex !important; align-items: center; gap: 4px; }
+.seg button .dicon { margin-right: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; } .legend .dicon { color: var(--text-2); }
+dd.iconed { display: flex; align-items: center; gap: 6px; } dd.iconed .dicon { color: var(--muted); }
+
+.exportd .drawer-foot, .importd .drawer-foot { position: sticky; bottom: -14px; background: var(--panel); padding-bottom: 12px; z-index: 2; }
+.lab.expanded .picker { flex: 0 1 400px; min-width: 0; }

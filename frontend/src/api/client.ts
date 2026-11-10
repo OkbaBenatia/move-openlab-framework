@@ -36,13 +36,16 @@ export async function call<T = Json>(path: string, init?: RequestInit): Promise<
 
 export const post = <T = Json>(path: string, body?: unknown) => call<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
-export async function download(path: string, filename: string) {
+/** Save a server file through the browser. Returns its size and, for bundles, the SHA-256 the server announced. */
+export async function download(path: string, filename: string): Promise<{ bytes: number; sha256: string | null } | undefined> {
   const r = await fetch(BASE + path, { credentials: 'same-origin' });
   if (r.status === 401) { toLogin(); return; }
   if (!r.ok) { let m = `${r.status}`; try { m = (await r.json()).detail ?? m; } catch { /* */ } throw new Error(m); }
+  const blob = await r.blob();
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(await r.blob()); a.download = filename; a.click();
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return { bytes: blob.size, sha256: r.headers.get('X-Bundle-SHA256') };
 }
 
 export const api = {

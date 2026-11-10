@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, Square, Trash2, X } from 'lucide-react';
+import { CarIcon, RiderIcon, VehicleIcon } from '../components/DomainIcons';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { errText, num } from '../components/common';
@@ -21,7 +22,7 @@ const overlaps = (a: BBox | null | undefined, b: BBox | null | undefined) => !!a
 const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 export interface WizardProps {
-  cfg: GeoConfig; areas: Area[]; datasets: DatasetItem[]; methods: MethodRef[]; areaId?: string;
+  cfg: GeoConfig; areas: Area[]; datasets: DatasetItem[]; methods: MethodRef[]; areaId?: string; datasetKey?: string;   // datasetKey: start from this mobility data (Library › Use)
   initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string } | null;
   onClose: () => void; onSaved: (rec: Json) => void; onRun: (r: { campaign_id: string; job: Json }) => void;
   reloadAreas: () => void; setErr: (s: string | null) => void; onAddMethod?: () => void;
@@ -32,11 +33,11 @@ export interface WizardProps {
 const dsLabel = (d?: DatasetItem) => !d ? '' : d.provider === 'rpc'
   ? `RPC ${d.release ?? ''} · ${d.rows_kept != null ? `${d.rows_kept} observed trips in this area` : d.name}` : d.name;
 
-export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial, onClose, onSaved, onRun, reloadAreas, setErr, onAddMethod }: WizardProps) {
+export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, datasetKey: datasetKey0, initial, onClose, onSaved, onRun, reloadAreas, setErr, onAddMethod }: WizardProps) {
   const [step, setStep] = useState(1);
   const [areaId, setAreaId] = useState(() => initial ? (areas.find((a) => a.network_id === initial.scenario.network_id)?.area_id ?? '') : (areaId0 && areas.some((a) => a.area_id === areaId0) ? areaId0 : areas.find((a) => a.network_id)?.area_id ?? ''));
-  const [source, setSource] = useState<Source>(initial ? 'manual' : 'synthetic');
-  const [datasetKey, setDatasetKey] = useState('');
+  const [source, setSource] = useState<Source>(initial ? 'manual' : datasetKey0 ? 'dataset' : 'synthetic');
+  const [datasetKey, setDatasetKey] = useState(datasetKey0 ?? '');
   const [f, setF] = useState({ name: initial?.scenario.name ?? '', n_drivers: 10, n_riders: 15, seed: 1, start: '07:00', end: '09:00', date: '', detour: Math.round((initial?.scenario.params.max_detour_s ?? 900) / 60), ratio: initial?.scenario.params.max_detour_ratio ?? 0.5, min_trip_km: 1.5 });
   const [manual, setManual] = useState<{ drivers: Agent[]; riders: Agent[] }>({ drivers: initial?.scenario.drivers ?? [], riders: initial?.scenario.riders ?? [] });
   const [pick, setPick] = useState<{ role: Role; id: string; field: 'origin' | 'destination' } | null>(null);
@@ -289,9 +290,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, initial
           <dt>Road network</dt><dd>OpenStreetMap · {cfg.profiles.find((p) => p.id === area?.profile)?.label ?? area?.profile ?? 'car'} profile</dd>
           <dt>Mobility data</dt><dd>{source === 'synthetic' ? 'synthetic demand (seeded)' : source === 'manual' ? 'placed on the map' : `${dsLabel(shownDatasets.find((d) => d.dataset_key === datasetKey))} — participants sampled from the observed trips, not replayed one-to-one`}</dd>
           <dt>Scenario</dt><dd>{f.name}</dd>
-          <dt>Drivers</dt><dd>{drivers.length}</dd>
-          <dt>Riders</dt><dd>{(source === 'manual' ? manual.riders : preview?.scenario.riders ?? []).length}{summary ? ` · ${summary.pairs} compatible pairs` : ''}</dd>
-          <dt>Vehicles</dt><dd>{profile ? fleet(drivers, profile, assign, allProfiles) : 'none'}</dd>
+          <dt>Drivers</dt><dd className="iconed"><CarIcon size={14} />{drivers.length}</dd>
+          <dt>Riders</dt><dd className="iconed"><RiderIcon size={14} />{(source === 'manual' ? manual.riders : preview?.scenario.riders ?? []).length}{summary ? ` · ${summary.pairs} compatible pairs` : ''}</dd>
+          <dt>Vehicles</dt><dd className="iconed">{profile && <VehicleIcon powertrain={profile.powertrain} size={14} />}{profile ? fleet(drivers, profile, assign, allProfiles) : 'none'}</dd>
           <dt>Time horizon</dt><dd>{f.start}–{f.end}</dd>
           <dt>Constraints</dt><dd>detour ≤ {f.detour} min and ≤ {Math.round(f.ratio * 100)} % of the direct trip · one rider per driver</dd>
           <dt>Repetitions and seed</dt><dd>{reps} repetition{reps === 1 ? '' : 's'} · seed {source === 'manual' ? '—' : f.seed}</dd>

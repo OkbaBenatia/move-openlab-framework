@@ -61,12 +61,19 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     dyn.current = L.layerGroup().addTo(m);
     m.on('click', (e: L.LeafletMouseEvent) => click.current?.(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6))));
     const report = () => {
+      if (map.current !== m) return;               // Leaflet can fire a debounced moveend after the map was removed
       const b = m.getBounds(); bounds.current?.([b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map((x) => Number(x.toFixed(5))) as [number, number, number, number]);
       const c = m.getCenter(); viewCb.current?.({ center: [Number(c.lat.toFixed(6)), Number(c.lng.toFixed(6))], zoom: m.getZoom() });
     };
     m.on('moveend', report);
     map.current = m;
-    return () => { m.remove(); map.current = null; fitted.current = undefined; focused.current = undefined; };
+    // the container can change size without a window resize (expanded map, side panels): keep tiles and layers right
+    let alive = true;
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      if (alive && map.current === m && m.getPane('mapPane')) m.invalidateSize({ pan: false, animate: false });
+    });
+    ro?.observe(el.current);
+    return () => { alive = false; ro?.disconnect(); m.remove(); map.current = null; fitted.current = undefined; focused.current = undefined; };
   }, [tileUrl, attribution]);
 
   // synchronised view: applied only when it differs from the map's own (no feedback loop between two maps)
