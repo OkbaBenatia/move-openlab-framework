@@ -24,4 +24,5 @@ export const cellOf = (r: ResultRow | undefined, k: number | 'all', e: Experimen
   return c ? { obj: c.metrics, time: c.median_total_time_s, gap: c.gap_pct, dom: c.domain, custom: c.custom ?? {}, runs: c.runs ?? [] } : null;
 };
 /** One compared experiment: its column letter, record and rows by method. */
-export interface Side { label: string; e: Experiment | null; rows: Map<string, ResultRow> }
+/** One compared side: an experiment (its methods as rows), or — when methods of one experiment are compared — one method. */
+export interface Side { label: string; e: Experiment | null; rows: Map<string, ResultRow>; name?: string }
