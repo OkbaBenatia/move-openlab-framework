@@ -364,7 +364,10 @@ def _verify(ws, data: bytes):
     man = json.loads(mbytes)
     fmt = man.get("format") if isinstance(man, dict) else None
     if fmt not in FORMATS:
-        raise IntegrityError(f"unsupported bundle format {fmt!r}")
+        newer = isinstance(fmt, str) and fmt.startswith("move-openlab-bundle/")
+        raise IntegrityError(f"unsupported bundle format {fmt!r}: this installation reads {', '.join(FORMATS)}"
+                             + ("; the bundle comes from a newer version of MOVE OpenLab — update this installation"
+                                if newer else ""))
     errs = check_manifest(man)
     if errs:
         raise IntegrityError("malformed manifest: " + "; ".join(errs[:3]))
@@ -382,7 +385,10 @@ def _verify(ws, data: bytes):
         if name not in names:
             raise IntegrityError(f"listed file missing: {name}")
         if (not name.startswith(prefixes) or not name.endswith(".json")) and not (fmt == FORMAT_V2 and name == EVIDENCE):
-            raise IntegrityError(f"unexpected member {name}")
+            known = ", ".join(prefixes) + (f", {EVIDENCE}" if fmt == FORMAT_V2 else "")
+            raise IntegrityError(f"unexpected member {name}: this installation knows only {known} in {fmt} bundles; a newer "
+                                 "version of MOVE OpenLab may have added this section — update this installation, or export "
+                                 "without it. Nothing was imported.")
         if sha256_bytes(z.read(name)) != digest:
             raise IntegrityError(f"file checksum mismatch: {name}")
     instances = {}
