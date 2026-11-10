@@ -10,10 +10,10 @@ Usage: python scripts/dev_provision.py [--admin] [--temporary] researcher1 [...]
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import sys
 
+from move_openlab import privatefiles
 from move_openlab.auth import Auth, hash_password
 from move_openlab.settings import Settings
 
@@ -40,9 +40,7 @@ def main(args: list[str]) -> int:
         creds[n] = pw
         print(f"{n}: created as {'admin' if admin else 'researcher'}{', temporary password' if temporary else ''} "
               f"(password stored in {f})")
-    s.data_dir.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(creds, indent=1))
-    os.chmod(f, 0o600)
+    privatefiles.write(f, json.dumps(creds, indent=1))      # 0600 from the start, replaced atomically
     return 0
 
 

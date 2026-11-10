@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from .. import privatefiles
 from ..auth.store import ROLE_LABELS, ROLES
 
 router = APIRouter(prefix="/api/admin")
@@ -32,9 +33,8 @@ def _admin(request: Request):
 
 def audit(request: Request, actor: str, action: str, target: str) -> None:
     f = request.app.state.settings.data_dir / "audit.log"
-    f.parent.mkdir(parents=True, exist_ok=True)
-    with _audit_lock, f.open("a") as fh:
-        fh.write(json.dumps(dict(t=int(time.time()), actor=actor, action=action, target=target)) + "\n")
+    with _audit_lock:                                # owner-only (0600): who did what to which account
+        privatefiles.append(f, json.dumps(dict(t=int(time.time()), actor=actor, action=action, target=target)) + "\n")
 
 
 def no_store(body: dict) -> JSONResponse:

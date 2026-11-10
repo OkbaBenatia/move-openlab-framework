@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .. import privatefiles
+
 ROLES = ("admin", "researcher", "student")
 ROLE_LABELS = {"admin": "Administrator", "researcher": "Researcher", "student": "Student"}
 SCHEMA_VERSION = 2
@@ -76,7 +78,10 @@ class UserStore:
         self.persistent = path is not None
         self._lock = threading.Lock()
         if path is not None:
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            # owner-only from the start (0600), and an existing wider file is tightened: it holds password hashes
+            privatefiles.ensure(path)
+            for side in ("-journal", "-wal", "-shm"):
+                privatefiles.tighten(f"{path}{side}")
             self._uri, self._is_uri, self._keeper = str(path), False, None
         else:                                       # shared in-process DB kept alive by one open connection
             self._uri, self._is_uri = f"file:move_openlab_auth_{id(self)}?mode=memory&cache=shared", True

@@ -78,6 +78,20 @@ The credential store's schema is versioned (`PRAGMA user_version`); a store writ
 and an older store is migrated in place (schema 2 adds the supervision columns, guarded so that a partially migrated
 store is completed rather than broken).
 
+### Owner-only files
+
+Files that hold secrets or personal data are readable and writable by the server's user only (mode `0600`), whatever
+the process umask (`move_openlab.privatefiles`):
+
+| File | Content | Creation | Existing wider file |
+|---|---|---|---|
+| `<data>/auth.sqlite3` (or `MOVE_OPENLAB_AUTH_DB`) | accounts, scrypt hashes | created empty with `0600` before SQLite opens it; SQLite gives its `-journal` / `-wal` / `-shm` files the database's mode | tightened when the store is opened (side files too) |
+| `<data>/audit.log` | who did what to which account | appended through a descriptor opened with `0600` | tightened at server start and at the next entry |
+| `<data>/dev-credentials.json` | development passwords (`scripts/dev_provision.py`, `start-local.sh`) | written to a `0600` temporary file, then renamed atomically | tightened at server start; replaced by a `0600` file when rewritten |
+
+Only the group and other permission bits are removed; contents are never touched. Research data (workspaces,
+networks, datasets) keeps the directory's normal permissions.
+
 ### Roles and supervision
 
 Three roles: **Administrator**, **Researcher** and **Student**. Every account works in its own isolated workspace;
