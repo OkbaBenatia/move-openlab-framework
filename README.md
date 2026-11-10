@@ -203,7 +203,9 @@ flowchart LR
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). A fully synthetic problem (capacitated assignment, certified
 against brute force and an independent min-cost-flow oracle) is included for methodological tests. A separate
 synthetic scientific benchmark is planned: it will appear under *Library → Benchmarks* once a reproducible,
-publishable version is integrated, and is never mixed with the geographic demonstration.
+publishable version is integrated, and is never mixed with the geographic demonstration. The included synthetic
+problem can be re-run from its frozen seeds with `python scripts/benchmark_synthetic_assignment.py --out <dir>`
+(its own figures, with validator and oracle checks).
 
 ## Documentation
 
@@ -214,7 +216,7 @@ publishable version is integrated, and is never mixed with the geographic demons
 | [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Bundles, fingerprints, determinism, semantic comparability |
 | [docs/EXTENDING.md](docs/EXTENDING.md) | Your own methods, custom metrics, problem packages, dataset providers |
 | [docs/ADD_YOUR_METHOD.md](docs/ADD_YOUR_METHOD.md) | Worked example: create, check, register, run and compare a method |
-| [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md) | A short, repeatable demonstration: where to click, what you should see |
+| [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md) · [docs/TEAM_PRESENTATION_GUIDE.md](docs/TEAM_PRESENTATION_GUIDE.md) | A short, repeatable demonstration: where to click, what you should see; a timed 15–20 minute version with a French script |
 | [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | Sandbox, accounts and roles, password policy, bundles, uploads, external services |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | `start-local.sh`, installation, configuration, tests |
 | [examples/README.md](examples/README.md) | The sample bundle: where it is, how to download, check and rebuild it |

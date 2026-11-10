@@ -4,7 +4,9 @@ A short, repeatable demonstration on the shipped Montbéliard experiment (RPC 20
 The demonstration's figures are fixed: they come from its frozen scenarios. The generated scenario (step 3) is
 seeded: with the same road-network extract the same seed gives the same participants and the same results — the
 figures below were obtained on the extract of 9 November 2026; another extract gives other, equally reproducible
-figures.
+figures. Every figure was checked again in a fresh run on 10 November 2026 (new account, copy of a local installation).
+A longer, timed version for a team meeting, with a French script and a fallback plan:
+[TEAM_PRESENTATION_GUIDE.md](TEAM_PRESENTATION_GUIDE.md).
 
 | # | Where to click | What you should see |
 |---|---|---|
@@ -18,7 +20,7 @@ figures.
 | 8 | **Compare** → the open experiment is ticked → tick exactly one other → **Compare selected (2)** | Exactly two columns, **A (Reference)** and **B**; verdicts per claim (results, runtime, CO₂) with *Why?*; *Reference* selector changes the deltas |
 | 9 | In the comparison: **Charts** | Metric and chart-type selectors, tooltips on hover; *CO₂: baseline, solution and savings* (baseline vs solution, avoided kg and %, per rider and per vehicle) with the calculation, baseline and vehicle parameters; CSV · PNG · SVG |
 | 10 | Montbéliard Demo — Baseline → **+ Add method → Register my method → My Greedy Matching → Register**, tick it, **Run again** | An extension, *Validated 9/9*: My Greedy Matching **48** served with **51.9 min** detour (Exact and Greedy: 48, 36.3 min). Tutorial: [ADD_YOUR_METHOD.md](ADD_YOUR_METHOD.md) |
-| 11 | Comparison → Charts → Metric **Detour per served rider (min)** | A custom metric computed from validated figures: 0.755 min for Exact, 1.081 min for My Greedy Matching. Your own: [EXTENDING.md › A custom metric](EXTENDING.md#a-custom-metric) |
+| 11 | Comparison → Charts → Metric **Detour per served rider (min)** | A built-in custom metric computed from validated figures: 0.755 min for Exact, 1.081 min for My Greedy Matching. A registered one, computed in the sandbox: `plugins/co2_avoided_per_served_rider` (`POST /api/lab/metrics/register`) gives 1.70 kg CO₂ avoided per served rider for Exact and 1.64 kg for My Greedy Matching. Your own: [EXTENDING.md › A custom metric](EXTENDING.md#a-custom-metric) |
 | 12 | Choose a sample and a result, zoom the map → **Library** → back to **Workspace** (or sign out and in) | The same experiment, sample, selected result, methods and map view |
 
 Say it in one sentence each: **validation** — every solution re-checked by the problem's validator; **reproducibility**

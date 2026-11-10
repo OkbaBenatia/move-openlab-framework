@@ -75,7 +75,11 @@ Branch `hotfix/X.Y.Z+1` from `main`, fix with a regression test, then follow ste
 - [x] Approved logo lockup integrated (header, sign-in and password pages, README banner)
 - [ ] Clean square icon from the approved source (favicon, touch icon); until then a neutral letter-mark favicon is used, not presented as the logo
 - [x] Sample bundle shipped and independently re-checked in a second installation (`scripts/check_sample_bundle.py`)
-- [ ] Synthetic scientific benchmark: integrated only once a reproducible, publishable version exists (shown as *Planned*)
+- [ ] Synthetic scientific benchmark: integrated only once a reproducible, publishable version exists (shown as *Planned*); needs the maintainer's decision on publishing its protocol and the missing public components
+- [x] Third-party custom metrics sandboxed (no metric code in the server process)
+- [x] Browser journeys, frontend lint and unit tests in CI (`.github/workflows/browser.yml`, `ci.yml`)
+- [ ] Software citation metadata (`CITATION.cff`) once the citation and author identifiers are verified
+- [ ] Solver pinned for the published figures (HiGHS / highspy version stated with any reported number)
 - [x] Default demonstration on Montbéliard rebuilt from one frozen RPC release (2026-10) with full provenance
 - [x] Roles (Administrator, Researcher, Student), supervision and the server-side password policy
 - [ ] Version set to `1.0.0` in both places; `display_version()` then shows the number
