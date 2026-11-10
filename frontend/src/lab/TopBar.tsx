@@ -17,10 +17,19 @@ export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp
 }) {
   const [imp, setImp] = useState(false);
   const impRef = useRef<HTMLDivElement>(null);
+  const impBtn = useRef<HTMLButtonElement>(null);
+  // keyboard: the first item takes the focus, arrows move between items, Escape closes and returns to the button
+  const items = () => Array.from(impRef.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ?? []);
+  useEffect(() => { if (imp) items()[0]?.focus(); }, [imp]);
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    const list = items(), i = list.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); list[(i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus(); }
+    if (e.key === 'Tab') setImp(false);
+  };
   useEffect(() => {
     if (!imp) return;
     const down = (e: MouseEvent) => { if (impRef.current && !impRef.current.contains(e.target as Node)) setImp(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setImp(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setImp(false); impBtn.current?.focus(); } };
     document.addEventListener('mousedown', down); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', key); };
   }, [imp]);
@@ -30,15 +39,15 @@ export function TopBar({ experiments, current, areaFilter, setAreaFilter, setExp
     <ExperimentPicker experiments={experiments} current={current} areaFilter={areaFilter} setAreaFilter={setAreaFilter} onPick={setExp} onNew={() => setExp(NEW)} onLibrary={onLibrary} />
     <span className="row gap state-chips">
       {current && current.status !== 'draft' && v && v.runs > 0 && <span className={`badge ${v.accepted === v.runs ? 'ok' : 'warn'}`} title="Independent validation: solutions accepted by the validator"><ShieldCheck size={13} />{t('ev.validated')} {v.accepted}/{v.runs}</span>}
-      {current?.locked && <span className="badge"><Lock size={12} />Locked</span>}
+      {current?.locked && <span className="badge has-tip" tabIndex={0} data-tip={t('ws.locked.tip')} aria-label={`Locked. ${t('ws.locked.tip')}`}><Lock size={12} />Locked</span>}
       {current?.status === 'draft' && <span className="badge info">Ready to run</span>}
     </span>
     <span className="grow" />
     <div className="row gap actions-bar">
       <button className="btn" onClick={onGenerate} data-tour="generate"><Plus size={15} />{t('ws.generate')}</button>
       <div className="menu-wrap" ref={impRef}>
-        <button className="btn" aria-haspopup="menu" aria-expanded={imp} onClick={() => setImp(!imp)}><Upload size={15} />{t('ws.import')}<ChevronDown size={13} /></button>
-        {imp && <div className="menu left" role="menu">
+        <button ref={impBtn} className="btn" aria-haspopup="menu" aria-expanded={imp} onClick={() => setImp(!imp)}><Upload size={15} />{t('ws.import')}<ChevronDown size={13} /></button>
+        {imp && <div className="menu left" role="menu" aria-label="import" onKeyDown={onMenuKey}>
           <button role="menuitem" className="mi" onClick={() => { setImp(false); onImport(); }}><FileUp size={15} /><span className="grow">Import a bundle file…</span></button>
           <button role="menuitem" className="mi" disabled={!sampleAvailable} onClick={() => { setImp(false); onTrySample(); }}><PackageOpen size={15} /><span className="grow">{t('sample.title')}</span>{!sampleAvailable && <span className="tag-planned">Unavailable</span>}</button>
         </div>}

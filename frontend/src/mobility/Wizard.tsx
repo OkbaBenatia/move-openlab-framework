@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, Square, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Play, Plus, Save, Search, Shuffle, Square, Trash2, X } from 'lucide-react';
 import { CarIcon, RiderIcon, VehicleIcon } from '../components/DomainIcons';
 import type { Json, MethodRef } from '../api/client';
 import { JobProgress } from '../components/JobProgress';
 import { errText, num } from '../components/common';
-import { COLORS, LeafletMap, type BBox, type MapLine, type MapPoint } from '../geo/LeafletMap';
+import { COLORS, LeafletMap, POWERTRAIN_GLYPH, type BBox, type MapLine, type MapPoint } from '../geo/LeafletMap';
 import { geo, hhmm, km, mins, toSec, type Agent, type Area, type GeoConfig, type Scenario } from '../geo/api';
 import type { DatasetItem } from '../lab/useLabData';
 import { methodKey } from '../lab/ResultPanel';
@@ -23,7 +23,7 @@ const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 export interface WizardProps {
   cfg: GeoConfig; areas: Area[]; datasets: DatasetItem[]; methods: MethodRef[]; areaId?: string; datasetKey?: string;   // datasetKey: start from this mobility data (Library › Use)
-  initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string } | null;
+  initial?: { scenario: Scenario & { vehicles?: Json; emissions?: EmissionsConfig }; parent?: string; fromInstance?: string } | null;
   onClose: () => void; onSaved: (rec: Json) => void; onRun: (r: { campaign_id: string; job: Json }) => void;
   reloadAreas: () => void; setErr: (s: string | null) => void; onAddMethod?: () => void;
 }
@@ -61,10 +61,14 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   const [job, setJob] = useState<Json | null>(null);
   const [focus, setFocus] = useState<{ key: string; bbox: BBox } | null>(null);
   const [boxKm, setBoxKm] = useState(5);
+  const [reloc, setReloc] = useState<number | null>(null);      // seed of the last "Randomize locations" (manual)
   const area = areas.find((a) => a.area_id === areaId) ?? null;
   const netReady = !!area?.network_id;
   const shownDatasets = useMemo(() => datasets.filter((d) => overlaps(d.bbox, area?.bbox)), [datasets, area]);
-  const allProfiles: VehicleProfile[] = useMemo(() => veh ? [...veh.mine, ...veh.presets.filter((p) => !veh.mine.some((m) => m.id === p.id))] : [], [veh]);
+  // the profiles frozen in an edited scenario stay available (e.g. a demonstration vehicle that is not a preset)
+  const frozen: VehicleProfile[] = useMemo(() => ((initial?.scenario.vehicles?.profiles ?? []) as VehicleProfile[]), [initial]);
+  const allProfiles: VehicleProfile[] = useMemo(() => { const base = veh ? [...veh.mine, ...veh.presets.filter((p) => !veh.mine.some((m) => m.id === p.id))] : [];
+    return [...base, ...frozen.filter((f) => !base.some((b) => b.id === f.id))]; }, [veh, frozen]);
   const profile = allProfiles.find((p) => p.id === vehicleId) ?? null;
   const loadVehicles = useCallback(() => mob.vehicles().then((v) => { setVeh(v); setVehicleId((id) => id || (initial ? '' : v.default?.id ?? '')); }).catch((e) => setErr(errText(e))), [setErr, initial]);
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
@@ -99,6 +103,17 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
     return () => { if (timer.current) window.clearTimeout(timer.current); };
   }, [composeKey]);                                                          // eslint-disable-line react-hooks/exhaustive-deps
 
+  // "Randomize locations": a new seed gives new places on the road network, inside the area; counts, ids and time
+  // windows stay. Placed by hand, the participants get new places drawn by the server (recorded with the seed).
+  const newSeed = (cur: number | null) => { let s = cur ?? 0; while (s === cur) s = 1 + Math.floor(Math.random() * 999_999); return s; };
+  const randomize = () => act(async () => {
+    if (source !== 'manual') { setF((x) => ({ ...x, seed: newSeed(x.seed) })); return; }
+    const body = compose(); if (!body) return;
+    const seed = newSeed(reloc);
+    const p = await mob.preview({ ...body, relocate_seed: seed });
+    setManual({ drivers: p.scenario.drivers, riders: p.scenario.riders }); setRoutes({}); setPick(null); setReloc(seed);
+  });
+  const basis = (): Compose | null => { const b = compose(); return !b ? null : source !== 'manual' ? b : reloc != null ? { ...b, relocate_seed: reloc } : null; };
   // manual placement
   const nextId = (prefix: string, list: Agent[]) => `${prefix}${list.reduce((m, a) => Math.max(m, Number(a.id.slice(1)) || 0), 0) + 1}`;
   const add = (role: Role) => {
@@ -166,11 +181,14 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   const layers = useMemo(() => {
     const points: MapPoint[] = [], lines: MapLine[] = [];
     const sc = source === 'manual' ? manual : preview?.scenario;
-    for (const d of sc?.drivers ?? []) { points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, label: `${d.id} start · ${hhmm(d.earliest)}–${hhmm(d.latest)}` }); if (placed(d)) points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, label: `${d.id} end` }); }
-    for (const r of sc?.riders ?? []) { points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, label: `${r.id} start · ${hhmm(r.earliest)}–${hhmm(r.latest)}` }); if (placed(r)) points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, label: `${r.id} end` }); }
+    const vOf = (id: string) => (vehicleId ? allProfiles.find((p) => p.id === (assign[id] ?? vehicleId)) : undefined);
+    for (const d of sc?.drivers ?? []) { const v = vOf(d.id);
+      points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, kind: 'driver', glyph: POWERTRAIN_GLYPH[v?.powertrain ?? ''] ?? '', label: `${d.id} driver start · ${hhmm(d.earliest)}–${hhmm(d.latest)}${v ? ` · ${v.name}` : ''}` });
+      if (placed(d)) points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, kind: 'driver-end', label: `${d.id} driver end` }); }
+    for (const r of sc?.riders ?? []) { points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, kind: 'rider', label: `${r.id} rider start · ${hhmm(r.earliest)}–${hhmm(r.latest)}` }); if (placed(r)) points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, kind: 'rider-end', label: `${r.id} rider end` }); }
     for (const r of Object.values(routes)) if (r.line) lines.push(r.line);
     return { points, lines };
-  }, [source, manual, preview, routes]);
+  }, [source, manual, preview, routes, vehicleId, assign, allProfiles]);
 
   // saving
   const scenarioToSave = (): Json | null => {
@@ -180,10 +198,10 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
     if (!base) return null;
     return { name: body.name, network_id: body.network_id, params: body.params, drivers: base.drivers, riders: base.riders, ...(body.vehicles ? { vehicles: body.vehicles } : {}), ...(body.emissions ? { emissions: body.emissions } : {}) };
   };
-  const save = () => act(async () => { const sc = scenarioToSave(); if (!sc) return; onSaved(await mob.saveScenario(sc, source === 'manual' ? null : compose(), initial?.parent)); });
+  const save = () => act(async () => { const sc = scenarioToSave(); if (!sc) return; onSaved(await mob.saveScenario(sc, basis(), initial?.parent, initial?.fromInstance)); });
   const run = () => act(async () => {
     const sc = scenarioToSave(); if (!sc) return;
-    onRun(await mob.run({ title: title.trim(), methods: checked.map((k) => k.split('@')), repetitions: reps, emissions: profile ? emis : undefined, scenario: sc, basis: source === 'manual' ? undefined : compose(), parent: initial?.parent }));
+    onRun(await mob.run({ title: title.trim(), methods: checked.map((k) => k.split('@')), repetitions: reps, emissions: profile ? emis : undefined, scenario: sc, basis: basis() ?? undefined, parent: initial?.parent, from_instance: initial?.fromInstance }));
   });
 
   const ready = [netReady && (source !== 'dataset' || !!datasetKey),
@@ -247,6 +265,7 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
             <label>Drivers <input type="number" min={1} max={100} value={f.n_drivers} onChange={(e) => setF({ ...f, n_drivers: Number(e.target.value) })} aria-label="drivers" /></label>
             <label>Riders <input type="number" min={1} max={100} value={f.n_riders} onChange={(e) => setF({ ...f, n_riders: Number(e.target.value) })} aria-label="riders" /></label>
             <label>Seed <input type="number" min={0} value={f.seed} onChange={(e) => setF({ ...f, seed: Number(e.target.value) })} aria-label="seed" /></label>
+            <button type="button" className="btn sm self-end" onClick={randomize} title="A new seed: new places, same counts and time window"><Shuffle size={12} /> Randomize locations</button>
             {source === 'dataset' && <label>Date <input value={f.date} placeholder="YYYY-MM-DD" onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="date" /></label>}
           </div>}
           {source === 'manual' && <>
@@ -254,6 +273,9 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
             {(['drivers', 'riders'] as const).map((role) => <fieldset key={role}><legend>{role === 'drivers' ? 'Drivers' : 'Riders'} ({manual[role].length})</legend>
               {manual[role].length > 0 && <div className="table-scroll"><table className="compact" aria-label={role}><thead><tr><th>Id</th><th>Place</th><th>Earliest</th><th>Latest</th><th>Route</th><th /></tr></thead><tbody>{manual[role].map((a) => row(role, a))}</tbody></table></div>}
               <button type="button" className="btn sm" onClick={() => add(role)}><Plus size={12} /> Add {role === 'drivers' ? 'driver' : 'rider'}</button></fieldset>)}
+            <div className="row gap"><button type="button" className="btn sm" disabled={busy || !manual.drivers.length || !manual.riders.length} onClick={randomize}
+              title="New start and end points on the road network, inside the area, with a new seed; ids and time windows stay"><Shuffle size={12} /> Randomize locations</button>
+              {reloc != null && <span className="small muted">seed {reloc} · times kept</span>}</div>
           </>}
           <fieldset><legend>Vehicle</legend>
             <div className="row gap"><select aria-label="vehicle" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="grow"><option value="">None (no emission data)</option>
@@ -295,10 +317,11 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
           <dt>Vehicles</dt><dd className="iconed">{profile && <VehicleIcon powertrain={profile.powertrain} size={14} />}{profile ? fleet(drivers, profile, assign, allProfiles) : 'none'}</dd>
           <dt>Time horizon</dt><dd>{f.start}–{f.end}</dd>
           <dt>Constraints</dt><dd>detour ≤ {f.detour} min and ≤ {Math.round(f.ratio * 100)} % of the direct trip · one rider per driver</dd>
-          <dt>Repetitions and seed</dt><dd>{reps} repetition{reps === 1 ? '' : 's'} · seed {source === 'manual' ? '—' : f.seed}</dd>
+          <dt>Repetitions and seed</dt><dd>{reps} repetition{reps === 1 ? '' : 's'} · seed {source !== 'manual' ? f.seed : reloc != null ? `${reloc} (locations)` : '—'}</dd>
           <dt>Methods</dt><dd>{checked.map((k) => methods.find((m) => methodKey(m) === k)?.name ?? k).join(', ')} · {reps} repetition{reps === 1 ? '' : 's'}</dd>
           <dt>CO₂ calculation</dt><dd>{profile ? `${SCOPE_LABEL[emis.scope]} · baseline: ${BASELINE_LABEL[emis.baseline]}` : 'not computed (no vehicle)'}</dd>
-          <dt>Provenance</dt><dd>{source === 'synthetic' ? `seeded generator on ${area?.name} road network` : source === 'dataset' ? `seeded sampling (seed ${f.seed}) of ${dsLabel(shownDatasets.find((d) => d.dataset_key === datasetKey))}` : initial?.parent ? 'edited from a library scenario' : 'map editor'}</dd>
+          <dt>Provenance</dt><dd>{source === 'synthetic' ? `seeded generator on ${area?.name} road network` : source === 'dataset' ? `seeded sampling (seed ${f.seed}) of ${dsLabel(shownDatasets.find((d) => d.dataset_key === datasetKey))}` : [initial?.fromInstance ? 'new version of an experiment\'s frozen scenario (the original stays unchanged)' : initial?.parent ? 'edited from a library scenario' : 'map editor',
+            ...(reloc != null ? [`locations randomized on the ${area?.name} road network (seed ${reloc})`] : [])].join(' · ')}</dd>
         </dl>}
       </div>
       <div className="row gap wizard-foot">

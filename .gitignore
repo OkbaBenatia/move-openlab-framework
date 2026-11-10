@@ -15,6 +15,7 @@ dist/
 # frontend
 frontend/node_modules/
 frontend/dist/
+frontend/.unit-tests/
 frontend/*.tsbuildinfo
 frontend/node_modules/.tmp/
 # archives are never committed (bundles are produced at run time)

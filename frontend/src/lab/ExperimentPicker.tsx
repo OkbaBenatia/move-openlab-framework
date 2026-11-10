@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Database, EyeOff, FlaskConical, Plus, Search, Sigma } from 'lucide-react';
+import { Check, ChevronDown, Database, FlaskConical, Plus, Search, Sigma } from 'lucide-react';
+import { HiddenFilter } from '../components/HiddenFilter';
 import { KIND } from '../components/common';
 import type { ExpItem, Group } from './api';
 
@@ -49,7 +50,7 @@ export function ExperimentPicker({ experiments, current, areaFilter, setAreaFilt
         <div className="seg" role="group" aria-label="groups"><button className={only === '' ? 'on' : ''} onClick={() => setOnly('')}>All</button>
           {GROUPS.map(([g, label]) => <button key={g} className={only === g ? 'on' : ''} onClick={() => setOnly(g)}>{g === 'demo' ? 'Demonstration' : label.replace(' experiments', '')}</button>)}</div>
         <span className="grow" />
-        {nHidden > 0 && <label className="row small muted"><input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /><EyeOff size={13} /> Show hidden ({nHidden})</label>}</div>
+        <HiddenFilter n={nHidden} on={hidden} setOn={setHidden} /></div>
       <div className="picker-list">
         {GROUPS.filter(([g]) => !only || only === g).map(([g, label]) => {
           const xs = shown.filter((x) => x.group === g);

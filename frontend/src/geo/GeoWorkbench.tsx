@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Database, Eye, EyeOff, Info, Layers, MapPinned, Pencil, Plus, Shuffle } from 'lucide-react';
+import { HiddenFilter } from '../components/HiddenFilter';
 import type { Json } from '../api/client';
 import { errText, num } from '../components/common';
 import type { DatasetItem } from '../lab/useLabData';
 import { lab } from '../lab/api';
 import { handOff, OPEN_NEW, OPEN_WIZARD } from '../lab/handoff';
-import { t } from '../i18n';
 import { RIDE, useMethods } from '../lab/useLabData';
 import { Wizard } from '../mobility/Wizard';
-import { COLORS, LeafletMap, type MapLine, type MapPoint } from './LeafletMap';
+import { COLORS, LeafletMap, POWERTRAIN_GLYPH, type MapLine, type MapPoint } from './LeafletMap';
 import { geo, hhmm, type Area, type GeoConfig, type Scenario } from './api';
 import { Areas } from './Areas';
 import { Datasets } from './Datasets';
@@ -87,7 +87,7 @@ export function GeoWorkbench({ setErr, onOpenWorkspace, onRun, initialView, onVi
           {shownAreas.map((a) => <option key={a.area_id} value={a.area_id}>{a.name}{a.network_id ? '' : ' (no network)'}</option>)}</select></label>
       {current && <span className="small muted">{current.profile} · {num(current.km2, 0)} km²</span>}
       <span className="grow" />
-      {hiddenHere > 0 && <button className="btn sm" aria-pressed={showHidden} title={t('hidden.purpose')} onClick={() => setShowHidden(!showHidden)}>{showHidden ? <><EyeOff size={12} /> Hide hidden</> : <><Eye size={12} /> Show hidden ({hiddenHere})</>}</button>}
+      <HiddenFilter n={hiddenHere} on={showHidden} setOn={setShowHidden} />
     </div>
     {used && <p className="note ok row gap" role="status"><CheckCircle2 size={15} /><span className="grow">{used}</span>
       <button className="btn sm primary" onClick={onOpenWorkspace}>Open the Workspace <ArrowRight size={13} /></button><button className="btn sm ghost" onClick={() => setUsed(null)}>OK</button></p>}
@@ -107,12 +107,14 @@ export function instanceLayers(inst: Json | null, showPairs: boolean): { points:
   if (!inst) return { points: [], lines: [] };
   const points: MapPoint[] = [], lines: MapLine[] = [];
   for (const d of inst.drivers as Json[]) {
-    points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, label: `${d.id} origin · ${hhmm(d.earliest)}–${hhmm(d.latest)}` });
-    points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, label: `${d.id} destination` });
+    const v = d.vehicle as Json | undefined;
+    points.push({ lat: d.origin[0], lon: d.origin[1], color: COLORS.driver, kind: 'driver', glyph: POWERTRAIN_GLYPH[v?.powertrain] ?? '',
+      label: `${d.id} driver start · ${hhmm(d.earliest)}–${hhmm(d.latest)}${v ? ` · ${v.name ?? v.id}${v.powertrain && v.powertrain !== 'custom' ? ` · ${v.powertrain}` : ''}` : ''}` });
+    points.push({ lat: d.destination[0], lon: d.destination[1], color: COLORS.driver, fill: false, kind: 'driver-end', label: `${d.id} driver destination` });
   }
   for (const r of inst.riders as Json[]) {
-    points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, label: `${r.id} pickup · ${hhmm(r.earliest)}–${hhmm(r.latest)}` });
-    points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, label: `${r.id} drop-off` });
+    points.push({ lat: r.origin[0], lon: r.origin[1], color: COLORS.rider, kind: 'rider', label: `${r.id} rider start (pickup place) · ${hhmm(r.earliest)}–${hhmm(r.latest)}` });
+    points.push({ lat: r.destination[0], lon: r.destination[1], color: COLORS.rider, fill: false, kind: 'rider-end', label: `${r.id} rider destination (drop-off place)` });
   }
   if (showPairs && inst.pairs) {
     const pos: Record<string, [number, number]> = {};
@@ -139,7 +141,7 @@ function Library({ cfg, lib, hiddenCount, setErr, onEdit, onUse, hiddenIds, onTo
   const veh = sel?.instance?.vehicles?.default;
   return <div className="split">
     <div>
-      {lib.length === 0 ? <p className="muted">{hiddenCount ? `No visible scenario: ${hiddenCount} hidden (Show hidden, above, lists them again).` : 'The library is empty. Generate a scenario.'}</p> :
+      {lib.length === 0 ? <p className="muted">{hiddenCount ? `No visible scenario: ${hiddenCount} hidden (Filters, above, lists them again).` : 'The library is empty. Generate a scenario.'}</p> :
         <div className="table-scroll"><table aria-label="scenario library"><thead><tr><th /><th>Scenario</th><th>Category</th><th>Drivers</th><th>Riders</th><th>Created</th><th /></tr></thead>
           <tbody>{lib.map((s) => <tr key={s.scenario_id} className={sel?.scenario_id === s.scenario_id ? 'hl' : hiddenIds.includes(s.scenario_id) ? 'dim' : ''}>
             <td><input type="checkbox" aria-label={`select ${s.name}`} checked={chosen.includes(s.instance_hash)} onChange={(e) => setChosen(e.target.checked ? [...chosen, s.instance_hash] : chosen.filter((x) => x !== s.instance_hash))} /></td>

@@ -44,7 +44,7 @@ export default function App() {
       onTour={() => { if (route.section !== 'workspace') go('workspace'); setTourRequest((k) => k + 1); }} />
     <ErrorBoundary resetKey={`${route.section}/${route.arg}`}>
     {route.section === 'workspace' && <Lab key="lab" cid={route.arg} go={go} tourRequest={tourRequest} onTourShown={() => setTourRequest(0)} />}
-    {route.section === 'compare' && <CompareAB key={route.arg} arg={route.arg} go={(a, b) => go('compare', `${a}|${b}`)} back={() => go('workspace', route.arg.split('|')[0])} />}
+    {route.section === 'compare' && <CompareAB key={route.arg} arg={route.arg} go={(r) => go('compare', r)} back={() => go('workspace', route.arg.split('|')[0])} />}
     {!full && <main className={route.section === 'experiments' ? 'page' : 'content page'}>
       <div className="page-head row gap"><button className="btn ghost sm" onClick={() => go('workspace')}><ChevronLeft size={14} />{t('nav.workspace')}</button>
         <h1 className="grow">{TITLES[route.section] ?? ''}</h1></div>

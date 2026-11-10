@@ -15,7 +15,7 @@ export function ExperimentBadges({ exp }: { exp: Experiment }) {
     {c.category === 'Demo' && <span className="badge outline">Public demonstration</span>}
     {c.category === 'Imported' && <span className="badge outline">Imported{c.imported_from ? ` from ${c.imported_from}` : ''}</span>}
     {exp.reproduction && <span className={`badge ${exp.reproduction.reproduced ? 'ok' : 'bad'}`}>{exp.reproduction.reproduced ? t('ev.reproduced') : t('ev.notReproduced')}</span>}
-    {c.locked && <span className="badge">Locked</span>}
+    {c.locked && <span className="badge" tabIndex={0} title={t('ws.locked.tip')} aria-label={`Locked. ${t('ws.locked.tip')}`}>Locked</span>}
     {!c.locked && c.status !== 'completed' && <span className="badge">{c.status === 'draft' ? 'Draft' : c.status}</span>}
   </div>;
 }

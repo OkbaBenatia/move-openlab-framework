@@ -24,6 +24,7 @@ export interface Compose {
   source: 'synthetic' | 'dataset' | 'manual'; network_id: string; name: string; n_drivers: number; n_riders: number; seed: number; start_s: number; end_s: number;
   params: { max_detour_s: number; max_detour_ratio: number }; min_trip_m: number; dataset_key?: string | null; date?: string | null;
   drivers?: Scenario['drivers']; riders?: Scenario['riders']; vehicles?: ScenarioVehicles | null; emissions?: EmissionsConfig | null;
+  relocate_seed?: number | null;   // manual: new places for the given participants (ids and time windows kept)
 }
 export interface Preview { scenario: Scenario & { vehicles?: ScenarioVehicles; emissions?: EmissionsConfig }; summary: Json; agents: { id: string; role: string; direct_s: number; direct_m: number; snap_m: [number, number]; vehicle: string | null }[] }
 export interface DiffRow {
@@ -46,7 +47,7 @@ export const mob = {
   saveVehicle: (p: VehicleProfile) => call<VehicleProfile>('/lab/vehicles', { method: 'PUT', body: JSON.stringify(p) }),
   duplicateVehicle: (id: string) => post<VehicleProfile>(`/lab/vehicles/${encodeURIComponent(id)}/duplicate`),
   preview: (body: Compose) => post<Preview>('/geo/scenarios/preview', body),
-  saveScenario: (scenario: Json, basis: Compose | null, parent?: string) => post('/geo/scenarios', { scenario, basis: basis ?? undefined, parent }),
+  saveScenario: (scenario: Json, basis: Compose | null, parent?: string, fromInstance?: string) => post('/geo/scenarios', { scenario, basis: basis ?? undefined, parent, from_instance: fromInstance }),
   run: (body: Json) => post<{ campaign_id: string; job: Json }>('/lab/run', body),
   diff: (a: string, b: string, ma?: string, mb?: string) => call<Diff>(`/lab/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}${ma ? `&method_a=${encodeURIComponent(ma)}` : ''}${mb ? `&method_b=${encodeURIComponent(mb)}` : ''}`),
 };

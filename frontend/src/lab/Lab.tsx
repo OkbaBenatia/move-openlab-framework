@@ -4,21 +4,24 @@ import { post, type Json } from '../api/client';
 import { CarIcon, RiderIcon } from '../components/DomainIcons';
 import { TraceDrawer } from '../components/TraceDrawer';
 import { ErrorNote, errText } from '../components/common';
-import { COLORS, LeafletMap, type MapPoint } from '../geo/LeafletMap';
+import { COLORS, LeafletMap, type MapPoint, type MapView } from '../geo/LeafletMap';
 import { geo } from '../geo/api';
 import { instanceLayers } from '../geo/GeoWorkbench';
 import { t } from '../i18n';
-import { Wizard } from '../mobility/Wizard';
+import { Wizard, type WizardProps } from '../mobility/Wizard';
+import { BASELINE_LABEL, SCOPE_LABEL } from '../mobility/api';
 import { AddMethod } from './AddMethod';
 import { ComparePicker } from './ComparePicker';
+import { toRoute } from './compareSelection';
 import type { Section } from '../router';
-import { lab, rowKey, scopeMethods, type Experiment, type LabState } from './api';
+import { lab, rowKey, scopeMethods, type Experiment, type LabState, type WorkspaceView } from './api';
 import { Charts } from './Charts';
 import { ALL_AREAS } from './ExperimentPicker';
 import { ExportDialog } from './ExportDialog';
 import { ImportDialog } from './ImportDialog';
 import { ImportGuide } from './ImportGuide';
-import { MAP, planLayers, planPositions } from './layers';
+import { MAP, planLayers, planPositions, powertrainsOf } from './layers';
+import { POWERTRAIN_GLYPH } from '../geo/LeafletMap';
 import { ReplayBar, useReplay } from './ReplayBar';
 import { ResultPanel, methodKey, type RunOptions, type Scope } from './ResultPanel';
 import { NewExperimentPanel, ScenarioPanel } from './ScenarioPanel';
@@ -54,6 +57,7 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
   const [opts, setOpts] = useState<RunOptions>({ repetitions: 3, variant: '' });
   const [picked, setPicked] = useState<string[]>([]);
   const [wizardData, setWizardData] = useState<{ area_id?: string; dataset_key?: string } | null>(null);
+  const [wizardInitial, setWizardInitial] = useState<WizardProps['initial']>(null);
   const [title, setTitle] = useState(`Experiment ${stamp()}`);
   const [picker, setPicker] = useState(false);
   const [addMethod, setAddMethod] = useState(false);
@@ -92,10 +96,16 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
     return act(fn).finally(() => { busyRef.current = false; setBusy(false); });
   };
 
+  // the account's state is read once per visit; the saved Workspace view (scenario, methods, result, map) comes with it
+  const firstState = useMemo(() => lab.state(), []);
+  const restored = useRef<string | null>(null);            // the experiment whose saved view has been applied
+  const [mapView, setMapView] = useState<MapView | null>(null);
+  const [restoreView, setRestoreView] = useState<{ key: string; view: MapView } | null>(null);
+  const methodsRef = useRef<string[]>([]);
   // first use: the demonstration is imported once into this workspace and opened; new accounts start on its area
   useEffect(() => {
     act(async () => {
-      let s = await lab.state();
+      let s = await firstState;
       if (s.demo.available && (!s.demo.installed || s.demo.area == null)) {
         setNotice('Loading the demonstration experiment…');
         try { await lab.installDemo(); s = await lab.state(); reloadLists(); } catch (e) { setErr(errText(e)); } finally { setNotice(null); }
@@ -129,16 +139,40 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
   // responses for an experiment that is no longer the current one are ignored
   const cidRef = useRef(cid);
   cidRef.current = cid;
-  const loadExp = useCallback((id: string) => lab.experiment(id).then((e) => {
+  const loadExp = useCallback((id: string) => Promise.all([lab.experiment(id), firstState.catch(() => null)]).then(([e, s0]) => {
     if (cidRef.current !== id) return;
     setExp(e);
     lab.prefs({ last_experiment: id }).catch(() => { /* preference only */ });
-    setHash((h) => (e.scenarios.some((s) => s.instance_hash === h) ? h : e.scenarios[0]?.instance_hash ?? ''));
-    setChecked(scopeMethods(e));
+    // coming back to the experiment of the saved view restores what was shown (only what still exists in it)
+    const v: WorkspaceView | null = restored.current !== id && s0?.preferences.workspace?.campaign_id === id ? s0.preferences.workspace : null;
     const rows = e.results?.rows ?? [];
+    const hasHash = (h: string) => e.scenarios.some((s) => s.instance_hash === h);
     const pick = rows.find((r) => r.campaign_id === id && r.method_id === e.results?.reference?.method_id) ?? rows.find((r) => r.campaign_id === id) ?? rows[0];
-    setSelected((k) => (rows.some((r) => rowKey(r) === k) ? k : pick ? rowKey(pick) : ''));
-  }).catch((x) => { if (cidRef.current === id) { setExp(null); setErr(errText(x)); } }), []);
+    if (v) {
+      const own = scopeMethods(e), keep = v.methods.filter((k) => own.includes(k) || methodsRef.current.includes(k));
+      const h = hasHash(v.instance_hash) ? v.instance_hash : e.scenarios[0]?.instance_hash ?? '';
+      setHash(h); setChecked(keep.length ? keep : own); setScope(v.scope);
+      setSelected(rows.some((r) => rowKey(r) === v.result) ? v.result : pick ? rowKey(pick) : '');
+      setRestoreView(v.map && h === v.instance_hash ? { key: `${id}|${h}`, view: v.map } : null);
+    } else {
+      setHash((h) => (hasHash(h) ? h : e.scenarios[0]?.instance_hash ?? ''));
+      setChecked(scopeMethods(e));
+      setSelected((k) => (rows.some((r) => rowKey(r) === k) ? k : pick ? rowKey(pick) : ''));
+    }
+    restored.current = id;
+  }).catch((x) => { if (cidRef.current === id) { setExp(null); setErr(errText(x)); } }), [firstState]);
+  methodsRef.current = methods.map(methodKey);
+  // the view is saved for the account as the researcher works (after the restore, so a visit never erases it)
+  useEffect(() => {
+    if (!exp || isNew || exp.campaign.campaign_id !== cid || restored.current !== cid) return;
+    const t = window.setTimeout(() => lab.prefs({ workspace: { campaign_id: cid, instance_hash: hash, methods: checked, result: selected, scope, map: mapView } })
+      .catch(() => { /* preference only */ }), 700);
+    return () => window.clearTimeout(t);
+  }, [exp, cid, isNew, hash, checked, selected, scope, mapView]);
+  // the researcher's own moves become the view kept for this scenario (later refits of the same scenario keep it)
+  const onMapView = useCallback((v: MapView) => { setMapView(v); setRestoreView((r) => (r ? { ...r, view: v } : r)); }, []);
+  // a restored map view belongs to its scenario: another scenario (or experiment) is fitted as usual
+  useEffect(() => { setRestoreView((r) => (r && r.key !== `${cid}|${hash}` ? null : r)); }, [cid, hash]);
   useEffect(() => {
     setReplaying(false); setPlan(null);
     if (!cid || isNew) { setExp(null); setInst(null); return; }
@@ -209,6 +243,27 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
     setImporting(false); await reloadExperiments(); reloadLists(); notify(note, root); go('workspace', root);
   });
   const reproduceHere = (root: string) => { setImporting(false); setNotice(null); once(async () => { const r = await post(`/campaigns/${root}/reproduce`); await execute(r.campaign_id); }); };
+  // a different CO₂ calculation or baseline: a new experiment on the same frozen scenarios (the original is untouched)
+  const recalcCo2 = (scope: string, baseline: string) => once(async () => {
+    if (!exp) return;
+    const title = `${exp.campaign.title} · ${SCOPE_LABEL[scope] ?? scope}, ${(BASELINE_LABEL[baseline] ?? baseline).toLowerCase()}`.slice(0, 160);
+    const r = await post<{ campaign_id: string; job: Json }>('/lab/run', { title, methods: exp.methods.map((m) => [m.method_id, m.version]), repetitions: exp.campaign.repetitions,
+      instance_hashes: exp.scenarios.map((s) => s.instance_hash), emissions: { scope, baseline } });
+    setJobTarget(r.campaign_id); setJob(r.job); await reloadExperiments();
+  });
+  // other vehicles or parameter values: the wizard opens on a new version of the shown frozen scenario
+  const editVehicles = () => act(async () => {
+    const inst = await geo.instance(hash); const sc = exp?.scenarios.find((s) => s.instance_hash === hash);
+    const drivers = inst.drivers as Json[], def = inst.vehicles?.default as Json | undefined;
+    const profiles = Array.from(new Map([...drivers.map((d) => d.vehicle), def].filter(Boolean).map((p: Json) => [p.id, p])).values());
+    const defId = def?.id ?? profiles[0]?.id;
+    const agent = (a: Json) => ({ id: a.id, origin: a.origin, destination: a.destination, earliest: a.earliest, latest: a.latest });
+    setWizardInitial({ fromInstance: hash, scenario: { name: `${sc?.name ?? 'Scenario'} · vehicles edited`.slice(0, 80), network_id: inst.network?.network_id,
+      params: { max_detour_s: inst.params.max_detour_s, max_detour_ratio: inst.params.max_detour_ratio }, drivers: drivers.map(agent), riders: (inst.riders as Json[]).map(agent),
+      vehicles: { profiles, default: defId, assignments: Object.fromEntries(drivers.filter((d) => d.vehicle && d.vehicle.id !== defId).map((d) => [d.id, d.vehicle.id])) },
+      emissions: exp?.campaign.emissions ?? inst.emissions } });
+    setWizard(true);
+  });
   const variant = () => once(async () => { const r = await post(`/campaigns/${cid}/variant`, { variant: opts.variant }); await execute(r.campaign_id); });
   const parentTitle = exp?.campaign.parent ? experiments.find((x) => x.campaign_id === exp.campaign.parent!.campaign_id)?.title ?? null : null;
   const geographic = !exp || exp.campaign.problem_id === RIDE;
@@ -236,7 +291,8 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
       </aside>
       <main className="lab-centre" data-tour="map">
         {geographic ? <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} points={points} lines={lines} rects={rects} dynamic={dynamic}
-          fitKey={isNew ? `new:${areaFilter}` : `${cid}|${hash}|${inst ? 1 : 0}${plan ? 'p' : ''}`} focus={focus} height="100%" />
+          fitKey={isNew ? `new:${areaFilter}` : `${cid}|${hash}|${inst ? 1 : 0}${plan ? 'p' : ''}`} focus={focus} height="100%"
+          restore={!isNew && restoreView?.key === `${cid}|${hash}` ? restoreView.view : null} onView={isNew ? undefined : onMapView} />
           : <div className="panel-body">{exp?.results ? <Charts metrics={exp.problem.metrics} rows={exp.results.rows} title={exp.campaign.title} /> : <p className="muted">This problem has no map; results appear here as charts once the experiment has run.</p>}</div>}
         {showStart && <div className="mapcard start-card" role="region" aria-label="start here">
           <div className="row gap"><span className="start-ico"><BadgeCheck size={18} /></span>
@@ -249,8 +305,14 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
             {!st?.preferences.tour_dismissed && <button className="btn sm ghost" onClick={() => { dismissStart(); setTour(true); }}>Quick tour</button>}</div></div>}
         {geographic && plan && <div className="mapcard legend" aria-label="legend">
           <span><i className="lg-line" style={{ borderColor: MAP.shared }} />Shared ride</span><span><i className="lg-dash" style={{ borderColor: MAP.alone }} />Drives alone</span>
-          <span><i className="dot" style={{ background: MAP.start }} /><CarIcon size={14} />Driver start</span>
-          <span><i className="dot" style={{ background: MAP.stop }} /><RiderIcon size={14} />Pick-up / drop-off</span><span><i className="dot hollow" style={{ borderColor: MAP.unmatched }} />Rider not matched</span></div>}
+          <span><i className="lg-sq" style={{ background: MAP.start }} /><CarIcon size={14} />Driver start</span>
+          <span title="filled: pick-up · hollow: drop-off"><i className="dot" style={{ background: MAP.stop }} /><i className="dot hollow" style={{ borderColor: MAP.stop }} /><RiderIcon size={14} />Pick-up / drop-off</span><span><i className="dot hollow" style={{ borderColor: MAP.unmatched }} />Rider not matched</span>
+          <PowertrainKey list={powertrainsOf((plan.vehicles as Json[]).map((v) => v.vehicle))} /></div>}
+        {geographic && !plan && inst && !isNew && <div className="mapcard legend" aria-label="legend">
+          <span><i className="lg-sq" style={{ background: COLORS.driver }} /><CarIcon size={14} />Driver start</span>
+          <span><i className="dot" style={{ background: COLORS.rider }} /><RiderIcon size={14} />Rider start</span>
+          <span title="destinations are hollow"><i className="dot hollow" style={{ borderColor: COLORS.driver }} /><i className="dot hollow" style={{ borderColor: COLORS.rider }} />Destination</span>
+          <PowertrainKey list={powertrainsOf((inst.drivers as Json[]).map((d) => d.vehicle))} /></div>}
         {geographic && plan && !replaying && <button className="mapcard replay-pill" onClick={() => setReplaying(true)} data-tour="replay"><Play size={14} /> Replay routes</button>}
         {geographic && <button className={`mapcard map-expand ${expanded ? 'on' : ''}`} aria-pressed={expanded} aria-label={expanded ? 'Exit expanded map' : 'Expand the map'}
           title={expanded ? 'Back to the workspace layout (Esc)' : 'Expand the map: panels open on demand, actions stay in the bar above'} onClick={() => { setPanel(null); setExpanded(!expanded); }}>
@@ -263,10 +325,11 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
           onLock={() => act(async () => { await post(`/campaigns/${cid}/lock`); await loadExp(cid); await reloadExperiments(); })}
           opts={opts} setOpts={setOpts} variants={(problem?.variants ?? []).filter((v) => v.instance_level)} onVariant={variant}
           onWhy={() => exp?.comparability && go('experiments', `sem:${exp.comparability.reference}|${cid}`)}
+          onRecalcCo2={exp?.campaign.problem_id === RIDE ? recalcCo2 : undefined} onEditVehicles={exp?.campaign.problem_id === RIDE && hash ? editVehicles : undefined}
           onTrace={traceId ? () => setTrace(traceId) : null} onAddMethod={() => setAddMethod(true)} hash={hash} scope={scope} setScope={setScope} />
       </aside>
     </div>
-    {picker && exp && <ComparePicker a={cid} onClose={() => setPicker(false)} onCompare={(ids) => go('compare', `${cid}|${ids.join(',')}`)} />}
+    {picker && exp && <ComparePicker current={cid} onClose={() => setPicker(false)} onCompare={(sel) => go('compare', toRoute(sel))} />}
     {addMethod && <AddMethod problemId={problemId} onClose={() => setAddMethod(false)} onChanged={() => setMethodsKey((k) => k + 1)} setErr={setErr} />}
     {exporting && exp && <ExportDialog cid={cid} title={exp.campaign.title} setErr={setErr} onClose={() => setExporting(false)} onDone={() => { loadExp(cid); reloadExperiments().catch(() => { /* list refresh only */ }); }} />}
     {importing && <ImportDialog sampleAvailable={!!st?.sample.available} setErr={setErr} onClose={() => setImporting(false)} onImported={imported} onReproduce={reproduceHere} />}
@@ -276,9 +339,16 @@ export function Lab({ cid, go, tourRequest = 0, onTourShown }: { cid: string; go
     {trace && <TraceDrawer jobId={trace} onClose={() => setTrace(null)} />}
     {wizard && (!wizardData?.area_id || areas.length > 0) && <Wizard cfg={cfg} areas={areas.filter((a) => !hiddenIds.includes(a.area_id) || a.area_id === wizardData?.area_id)} datasets={datasets.filter((d) => !hiddenIds.includes(d.dataset_key) || d.dataset_key === wizardData?.dataset_key)} methods={methods}
       areaId={wizardData?.area_id ?? area?.area_id ?? areas.find((a) => a.name === current?.area)?.area_id} datasetKey={wizardData?.dataset_key} setErr={setErr} reloadAreas={reloadLists} onAddMethod={() => setAddMethod(true)}
-      onClose={() => { setWizard(false); setWizardData(null); }}
-      onSaved={(rec) => { setWizard(false); setWizardData(null); reloadLists(); setPicked([rec.instance_hash]); notify('Scenario saved. Choose the methods on the right and press Run.', NEW); go('workspace', NEW); }}
-      onRun={(r) => { setWizard(false); setWizardData(null); setNotice(null); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}
+      initial={wizardInitial} onClose={() => { setWizard(false); setWizardData(null); setWizardInitial(null); }}
+      onSaved={(rec) => { setWizard(false); setWizardData(null); setWizardInitial(null); reloadLists(); setPicked([rec.instance_hash]); notify('Scenario saved. Choose the methods on the right and press Run.', NEW); go('workspace', NEW); }}
+      onRun={(r) => { setWizard(false); setWizardData(null); setWizardInitial(null); setNotice(null); reloadLists(); setJobTarget(r.campaign_id); setJob(r.job); reloadExperiments().then(() => go('workspace', r.campaign_id)).catch(() => go('workspace', r.campaign_id)); }} />}
     {tour && <Tour onClose={(never) => { setTour(false); if (never) lab.prefs({ tour_dismissed: true }).then(setSt).catch(() => { /* preference only */ }); }} />}
   </div>;
 }
+
+/** Letters on driver markers, for the vehicle types present. */
+function PowertrainKey({ list }: { list: string[] }) {
+  if (!list.length) return null;
+  return <span title="letter on the driver marker: vehicle type">{list.map((p) => <span key={p} className="lg-pt"><i className="lg-sq glyph">{POWERTRAIN_GLYPH[p]}</i>{PT_SHORT[p] ?? p}</span>)}</span>;
+}
+const PT_SHORT: Record<string, string> = { ICE: 'Combustion', HEV: 'Hybrid', PHEV: 'Plug-in hybrid', BEV: 'Electric' };

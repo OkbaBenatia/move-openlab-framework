@@ -33,6 +33,7 @@ const en = {
   'gloss.scenario': 'Scenario — a frozen set of drivers, riders and travel times. An experiment runs methods on scenarios.',
   'gloss.library': 'Library — where areas, road networks, mobility data, scenarios and experiments are browsed and managed.',
   'gloss.hidden': 'Hidden records — kept out of normal lists, never deleted; restore them any time.',
+  'hidden.tip': 'Hidden records are kept out of normal lists and counts, never deleted; restore them under Library › Hidden records.',
   'hidden.purpose': 'Hide items from normal lists without deleting them. You can restore them later.',
   'tour.reopen': 'You can reopen it any time from Help (?) at the top right.',
   'menu.account': 'My account',
@@ -59,6 +60,7 @@ const en = {
   'ws.runAgain': 'Run again',
   'ws.compare': 'Compare',
   'ws.export': 'Export',
+  'ws.locked.tip': 'Original results are frozen. Re-run or extend this experiment to create new results.',
   'ws.area': 'Area',
   'ws.network': 'Road network',
   'ws.dataSource': 'Mobility data · source',
@@ -93,7 +95,8 @@ const en = {
   'ev.why': 'Why?',
 
   // comparison
-  'cmp.with': 'Compare with…',
+  'cmp.with': 'Compare experiments',
+  'cmp.pick': 'Tick exactly the experiments to compare (at least two). Deltas are computed against the reference.',
   'cmp.selected': 'Compare selected',
   'cmp.showIncompatible': 'Show incompatible ({n})',
   'cmp.showHidden': 'Show hidden ({n})',

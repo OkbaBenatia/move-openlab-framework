@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { HiddenFilter } from './HiddenFilter';
 import type { Json } from '../api/client';
 import { lab, type ExpItem } from '../lab/api';
 import { kindLabel } from './common';
@@ -15,7 +16,7 @@ export function Workspace({ list, onOpen }: { list: Json[]; onOpen: (id: string)
   const shown = list.filter((c) => showHidden || !hidden.includes(c.campaign_id));
   if (list.length === 0) return <p className="muted">This workspace has no campaign for this problem yet. Create one or import a bundle.</p>;
   return <div>
-    {hidden.length > 0 && <label className="row small"><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Show hidden ({hidden.filter((h) => list.some((c) => c.campaign_id === h)).length})</label>}
+    <div className="row"><span className="grow" /><HiddenFilter n={hidden.filter((h) => list.some((c) => c.campaign_id === h)).length} on={showHidden} setOn={setShowHidden} /></div>
     <div className="table-scroll"><table aria-label="campaigns">
       <thead><tr><th>Campaign</th><th>Category</th><th>Type</th><th>Status</th><th>Researcher</th><th>Methods</th><th>Scenarios</th><th>Runs</th><th>Parent</th><th /></tr></thead>
       <tbody>{shown.map((c) => <tr key={c.campaign_id} className={hidden.includes(c.campaign_id) ? 'dim' : ''}>

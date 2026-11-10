@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-export interface MapPoint { lat: number; lon: number; color: string; label?: string; radius?: number; fill?: boolean }
+/** A map point. `glyph` (a driver: one letter for the vehicle type, or '') draws a small square instead of a circle;
+ *  `kind` names what the point is (driver, rider, pickup, dropoff, unserved…) for the legend and for tests. */
+export interface MapPoint { lat: number; lon: number; color: string; label?: string; radius?: number; fill?: boolean; glyph?: string; kind?: string }
+
+/** One letter per powertrain on driver markers (the legend spells them out). */
+export const POWERTRAIN_GLYPH: Record<string, string> = { ICE: 'C', HEV: 'H', PHEV: 'P', BEV: 'E' };
 export interface MapLine { coords: [number, number][]; color: string; weight?: number; dash?: string; label?: string; opacity?: number }
 export type BBox = [number, number, number, number];
 export interface MapRect { bbox: BBox; color: string }
@@ -18,12 +23,14 @@ const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, icon
  *  (e.g. playback positions) are redrawn without moving the view. Tiles and attribution come from the server config. */
 export interface MapView { center: [number, number]; zoom: number }
 
-export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor, view, onView }: {
+export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor, view, onView, restore }: {
   tileUrl: string; attribution: string; points?: MapPoint[]; lines?: MapLine[]; rects?: MapRect[]; dynamic?: MapPoint[];
   fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number | string; onBounds?: (b: BBox) => void;
   box?: EditBox | null; coverage?: Coverage | null; focus?: { key: string; bbox: BBox } | null; cursor?: 'crosshair';
   /** Synchronised maps: `view` is applied when it differs from the current one; `onView` reports the user's moves. */
   view?: MapView | null; onView?: (v: MapView) => void;
+  /** A view to restore instead of fitting the layers (the researcher's own view of this subject, kept from a visit). */
+  restore?: MapView | null;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -32,6 +39,8 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const click = useRef(onClick);
   const bounds = useRef(onBounds);
   const viewCb = useRef(onView);
+  const restoreRef = useRef(restore);
+  restoreRef.current = restore;
   const fitted = useRef<string | undefined>(undefined);
   const boxLayer = useRef<L.LayerGroup | null>(null);
   const covLayer = useRef<L.LayerGroup | null>(null);
@@ -142,13 +151,39 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
       if (ln.label) pl.bindTooltip(text(ln.label), { sticky: true });
       all.push(...ln.coords);
     }
+    // points at the same place (a pickup where a driver starts, riders sharing a node) fan out around it by a few
+    // pixels at every zoom, so that each stays visible and has its own tooltip; a small dot marks the true place
+    const at = (p: MapPoint) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+    const count = new Map<string, number>(), seen = new Map<string, number>();
+    for (const p of points) count.set(at(p), (count.get(at(p)) ?? 0) + 1);
     for (const p of points) {
-      const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 6, color: p.color, weight: 2, fillColor: p.color, fillOpacity: p.fill === false ? 0 : 0.85 }).addTo(g);
-      if (p.label) c.bindTooltip(text(p.label));
+      const k = at(p), n = count.get(k) ?? 1, i = seen.get(k) ?? 0;
+      seen.set(k, i + 1);
       all.push([p.lat, p.lon]);
+      if (n === 1 && p.glyph === undefined) {
+        const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 6, color: p.color, weight: 2, fillColor: p.color, fillOpacity: p.fill === false ? 0 : 0.85 }).addTo(g);
+        if (p.label) c.bindTooltip(text(p.label));
+        continue;
+      }
+      const size = p.glyph !== undefined ? 16 : 2 * (p.radius ?? 6) + 2;
+      const off = n > 1 ? Math.max(9, 3 + 2.4 * n) : 0, ang = n > 1 ? (2 * Math.PI * i) / n - Math.PI / 2 : 0;
+      const el = document.createElement('span');
+      el.className = `mk${p.glyph !== undefined ? ' mk-sq' : ''}${p.fill === false ? ' mk-hollow' : ''}`;
+      el.style.setProperty('--c', p.color); el.style.width = el.style.height = `${size}px`;
+      if (p.glyph) el.textContent = p.glyph;
+      if (p.kind) el.dataset.kind = p.kind;
+      const icon = L.divIcon({ className: 'mk-icon', html: el, iconSize: [size, size],
+        iconAnchor: [size / 2 - off * Math.cos(ang), size / 2 - off * Math.sin(ang)], tooltipAnchor: [off * Math.cos(ang), off * Math.sin(ang) - size / 2] });
+      const mk = L.marker([p.lat, p.lon], { icon, keyboard: false }).addTo(g);
+      if (p.label) mk.bindTooltip(text(n > 1 ? `${p.label} · ${n} at this place` : p.label), { direction: 'top' });
+      if (n > 1 && i === 0) L.circleMarker([p.lat, p.lon], { radius: 2, color: '#6b7a8c', weight: 1, fillColor: '#6b7a8c', fillOpacity: 1, interactive: false }).addTo(g);
     }
     // refit only when the displayed subject changes (fitKey), never on edits: clicks must stay where the user aims
-    if (all.length && fitKey !== undefined && fitted.current !== fitKey) { m.fitBounds(L.latLngBounds(all), { padding: [24, 24], maxZoom: 16 }); fitted.current = fitKey; }
+    if (all.length && fitKey !== undefined && fitted.current !== fitKey) {
+      const r = restoreRef.current;
+      if (r) m.setView(r.center, r.zoom, { animate: false }); else m.fitBounds(L.latLngBounds(all), { padding: [24, 24], maxZoom: 16 });
+      fitted.current = fitKey;
+    }
   }, [points, lines, rects, fitKey]);
 
   useEffect(() => {

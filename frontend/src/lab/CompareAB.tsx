@@ -5,40 +5,30 @@ import { ErrorNote, errText, num } from '../components/common';
 import { LeafletMap, type MapView } from '../geo/LeafletMap';
 import { geo, hhmm, hhmmss, type GeoConfig } from '../geo/api';
 import { t } from '../i18n';
-import { BASELINE_LABEL, SCOPE_LABEL, mob, sameEmissionSemantics, type Diff, type Domain } from '../mobility/api';
+import { BASELINE_LABEL, SCOPE_LABEL, mob, sameEmissionSemantics, type Diff } from '../mobility/api';
 import { VERDICT, lab, type Experiment, type ResultRow, type Verdict } from './api';
 import { ComparePicker, type Candidate } from './ComparePicker';
-import { MetricChart } from './MetricChart';
+import { fromRoute, letter, ordered, setReference, toRoute } from './compareSelection';
+import { CompareCharts, type CustomMetric } from './CompareCharts';
 import { planLayers, planPositions } from './layers';
 import { useReplay } from './ReplayBar';
 import { runtime } from './ResultPanel';
+import { byMethod, cellOf, type Cell } from './compareData';
 
 const SUMMARY_KEY = 'move-openlab.compare-summary';   // collapsed / open, remembered on this browser
 
 type Tab = 'results' | 'charts' | 'maps' | 'replay' | 'diff';
 const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', '#9085e9', '#e87ba4'];
 
-/** One row per method of an experiment (its own row first, else the lineage row it shows). */
-function byMethod(e: Experiment | null): Map<string, ResultRow> {
-  const out = new Map<string, ResultRow>();
-  for (const r of e?.results?.rows ?? []) { const cur = out.get(r.method_id); if (!cur || (r.campaign_id === e!.campaign.campaign_id && cur.campaign_id !== e!.campaign.campaign_id)) out.set(r.method_id, r); }
-  return out;
-}
-interface Cell { served?: number; obj: Record<string, number>; time: number | null; gap: number | null; dom: Domain | null | undefined }
-const cellOf = (r: ResultRow | undefined, k: number | 'all', e: Experiment | null): Cell | null => {
-  if (!r || !e) return null;
-  if (k === 'all') return { obj: r.totals, time: r.total_time_s, gap: r.gap_pct, dom: r.domain };
-  const c = r.per_scenario[e.scenarios[k]?.instance_hash];
-  return c ? { obj: c.metrics, time: c.median_total_time_s, gap: c.gap_pct, dom: c.domain } : null;
-};
-
 /** The comparison workspace: experiment A against one or several Bs (`#/compare/A|B1,B2`). The three kinds of evidence
  *  stay apart (validation, reproducibility, semantic comparability). Results: a method-grouped table with the basis of
  *  every value and a scope (all scenarios or one); Charts with CSV/PNG/SVG export; synchronised maps and replay; Diff
  *  scenario by scenario (definition, assignments, served riders, routes, vehicles, CO₂ where comparable). */
-export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: string) => void; back: () => void }) {
-  const [a, bArg] = arg.split('|');
-  const bs = useMemo(() => (bArg ?? '').split(',').filter(Boolean), [bArg]);
+export function CompareAB({ arg, go, back }: { arg: string; go: (route: string) => void; back: () => void }) {
+  // exactly the experiments of the route, the reference first (column A); nothing is added
+  const sel = useMemo(() => fromRoute(arg), [arg]);
+  const a = sel.reference;
+  const bs = useMemo(() => ordered(sel).slice(1), [sel]);
   const [bi, setBi] = useState(0);
   const b = bs[Math.min(bi, Math.max(0, bs.length - 1))] ?? '';
   const [cfg, setCfg] = useState<GeoConfig | null>(null);
@@ -59,8 +49,9 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
   const [why, setWhy] = useState(false);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(SUMMARY_KEY) === 'collapsed'; } catch { return false; } });
   const [adding, setAdding] = useState(false);
-  const [chartMethod, setChartMethod] = useState('');
+  const [customs, setCustoms] = useState<CustomMetric[]>([]);
   useEffect(() => { geo.config().then(setCfg).catch((e) => setErr(errText(e))); }, []);
+  useEffect(() => { if (ea) fetch(`/api/lab/metrics?problem_id=${encodeURIComponent(ea.campaign.problem_id)}`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((d) => d && setCustoms(d.metrics)).catch(() => { /* optional */ }); }, [ea]);
   useEffect(() => { lab.experiment(a).then(setEa).catch((e) => setErr(errText(e))); }, [a]);
   useEffect(() => { Promise.all(bs.map((x) => lab.experiment(x).catch(() => null))).then(setEbs); }, [bs]);
   useEffect(() => { fetch(`/api/lab/compatible?a=${encodeURIComponent(a)}`, { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : null).then((d) => d && setCands(d.candidates)).catch(() => { /* optional */ }); }, [a]);
@@ -87,7 +78,8 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
   const lb = useMemo(() => (plans.b ? planLayers(plans.b) : { points: [], lines: [] }), [plans.b]);
   const eb = ebs[Math.min(bi, ebs.length - 1)] ?? null;
   const cand = cands.find((c) => c.campaign_id === b);
-  const bLabel = (i: number) => (bs.length > 1 ? `B${i + 1}` : 'B');
+  const candOf = (id: string) => cands.find((c) => c.campaign_id === id);
+  const bLabel = (i: number) => letter(i + 1);
   if (!cfg) return <ErrorNote text={err} />;
 
   // ---------------- results table
@@ -111,9 +103,14 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
     { group: 'Fleet', label: 'Vehicles used', basis: scopeWord, get: (c) => c.dom?.vehicles_used, fmt: (v) => num(v) },
     { label: 'Vehicle distance', basis: scopeWord, get: (c) => c.dom?.vehicle_km, fmt: (v) => `${num(v, 1)} km` }];
   const csvTable = () => {
-    const head = ['metric', 'basis', ...methodIds.flatMap((m) => sides.map((s) => `${m} ${s.label}`))];
-    const lines = defs.map((d) => [d.label, d.basis, ...methodIds.flatMap((m) => sides.map((s, i) => { const c = cellOf(s.rows.get(m), scope, s.e); const v = c ? d.get(c, s.e) : null; return d.co2 && !co2Ok(i) ? '' : v ?? ''; }))].join(','));
-    const blob = new Blob([[head.join(','), ...lines].join('\n') + '\n'], { type: 'text/csv' });
+    // exactly the compared experiments: one value column per experiment and method, and the delta to the reference A
+    const q = (x: string) => `"${x.replace(/"/g, '""')}"`;
+    const head = ['metric', 'basis', ...methodIds.flatMap((m) => sides.flatMap((s, i) => [`${m} ${s.label}`, ...(i > 0 ? [`${m} ${s.label}-A`] : [])]))];
+    const val = (d: RowDef, m: string, i: number) => { const s = sides[i]; const c = cellOf(s.rows.get(m), scope, s.e); const v = c ? d.get(c, s.e) : null; return d.co2 && !co2Ok(i) ? null : v ?? null; };
+    const lines = defs.map((d) => [q(d.label), q(d.basis), ...methodIds.flatMap((m) => sides.flatMap((_, i) => { const v = val(d, m, i), av = val(d, m, 0);
+      return [v ?? '', ...(i > 0 ? [v != null && av != null ? v - av : ''] : [])]; }))].join(','));
+    const legend = sides.map((s) => `# ${s.label}${s.label === 'A' ? ' (reference)' : ''}: ${s.e?.campaign.title ?? ''} [${s.e?.campaign.campaign_id ?? ''}]`);
+    const blob = new Blob([[...legend, head.join(','), ...lines].join('\n') + '\n'], { type: 'text/csv' });
     const x = document.createElement('a'); x.href = URL.createObjectURL(blob); x.download = 'move_openlab_comparison.csv'; x.click();
   };
   const table = <div className="card table-card"><table className="compact cmp-table" aria-label="comparison by method"><thead>
@@ -123,17 +120,7 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
     <tbody>{defs.map((d) => <FragmentRow key={d.label} d={d} methodIds={methodIds} sides={sides} scope={scope} riders={riders} co2Ok={co2Ok} />)}</tbody></table></div>;
 
   // ---------------- charts
-  const cm = chartMethod || methodIds[0] || '';
-  const cats = Array.from({ length: nScen }, (_, i) => `Sample ${i + 1}`);
-  const per = (s: typeof sides[number], f: (c: Cell) => number | null | undefined) => cats.map((_, i) => { const c = cellOf(s.rows.get(cm), i, s.e); const v = c ? f(c) : null; return v ?? null; });
-  const charts = <div className="charts-grid">
-    <MetricChart title="Served riders per scenario" subtitle={`${sides.map((s) => s.rows.get(cm)?.name).find(Boolean) ?? cm} · per scenario, of ${ea?.scenarios[0]?.riders ?? '—'} riders`} unit="riders" cats={cats} file="served_per_scenario"
-      series={sides.map((s, i) => ({ name: `${s.label} ${s.e?.campaign.title ?? ''}`, color: SERIES[i], values: per(s, (c) => c.obj.served) }))} />
-    <MetricChart title="Runtime per scenario" subtitle={`median of ${ea?.campaign.repetitions ?? '—'} repetitions per scenario`} unit="ms" cats={cats} file="runtime_per_scenario" fmt={(v) => num(v, 1)}
-      series={sides.map((s, i) => ({ name: `${s.label}`, color: SERIES[i], values: per(s, (c) => (c.time == null ? null : c.time * 1000)) }))} />
-    <MetricChart title="CO₂ avoided per scenario" subtitle="vs the stated baseline · only where the CO₂ calculation is comparable" unit="%" cats={cats} file="co2_avoided_per_scenario" fmt={(v) => num(v, 1)}
-      series={sides.map((s, i) => ({ name: `${s.label}`, color: SERIES[i], values: co2Ok(i) ? per(s, (c) => (c.dom?.complete ? c.dom.avoided_pct ?? null : null)) : cats.map(() => null) }))} />
-  </div>;
+  const charts = <CompareCharts sides={sides} colors={sides.map((_, i) => SERIES[i % SERIES.length])} methodIds={methodIds} cands={cands} customs={customs} />;
 
   // ---------------- maps / replay
   const methodSel = (s: 'a' | 'b') => diff && <select aria-label={`method ${s}`} value={(s === 'a' ? diff.a : diff.b).method_id ?? ''} onChange={(e) => (s === 'a' ? setMa : setMb)(e.target.value)} className="small">
@@ -180,68 +167,78 @@ export function CompareAB({ arg, go, back }: { arg: string; go: (a: string, b: s
   </div>;
 
   const verdictChip = (v: Verdict | null | undefined, label: string) => v ? <span className={`badge ${VERDICT[v].cls}`}>{label}</span> : null;
-  const rep = cand?.reproducibility;
   const toggleSummary = () => { const n = !collapsed; setCollapsed(n); try { localStorage.setItem(SUMMARY_KEY, n ? 'collapsed' : 'open'); } catch { /* storage unavailable */ } };
-  // what this comparison establishes, claim by claim: identical (re-execution), comparable (per claim), not applicable
-  const claims = cand ? ([['results', cand.quality], ['runtime', cand.runtime], ['CO₂', cand.emissions]] as [string, Verdict | null][]).filter(([, v]) => v) : [];
-  const byVerdict = (v: Verdict) => claims.filter(([, x]) => x === v).map(([k]) => k).join(', ');
-  const notRepro = cand?.relation.startsWith('Controlled variant') ? 'B is a controlled variant, not a re-execution' : cand?.relation.startsWith('Extension') ? 'B adds methods, it is not a re-execution' : 'B is not a re-execution of A';
-  const shows = cand && <p className="evsum small" aria-label="what this comparison shows">
-    {rep?.applicable && rep.reproduced && <span><b>Identical:</b> every validated result ({rep.cells} of {rep.cells} cells{rep.identical != null ? `; identical solutions in ${rep.identical}` : ''})</span>}
-    {rep?.applicable && rep.reproduced === false && <span><b>Different:</b> {rep.different} of {rep.cells} cells</span>}
-    {byVerdict('direct') && <span><b>{VERDICT.direct.label}:</b> {byVerdict('direct')}</span>}
-    {byVerdict('conditional') && <span><b>{VERDICT.conditional.label}:</b> {byVerdict('conditional')}</span>}
-    {byVerdict('incompatible') && <span><b>{VERDICT.incompatible.label}:</b> {byVerdict('incompatible')}</span>}
-    {rep?.applicable && <span><b>Reported, not required to match:</b> runtimes (measured again)</span>}
-    {!rep?.applicable && <span><b>Not applicable:</b> reproducibility — {notRepro}</span>}</p>;
+  const others = sides.slice(1).map((s, i) => ({ ...s, id: bs[i], c: candOf(bs[i]) }));
+  const notRepro = (c: Candidate | undefined, L: string) => c?.relation.startsWith('Controlled variant') ? `${L} is a controlled variant of A, not a re-execution`
+    : c?.relation.startsWith('Extension') ? `${L} extends A with methods, it is not a re-execution` : `${L} is not a re-execution of A`;
+  const reproLine = (c: Candidate | undefined) => { const x = c?.reproducibility;
+    return x?.applicable ? (x.reproduced ? `${t('ev.reproduced')}: ${x.cells} of ${x.cells} results equal` : x.reproduced === false ? `${x.different} of ${x.cells} results differ` : 'not analysed yet') : 'not applicable'; };
+  // what each comparison with the reference establishes, claim by claim: identical (re-execution), comparable, not applicable
+  const shows = (o: typeof others[number]) => { const c = o.c; if (!c) return null; const x = c.reproducibility;
+    const claims = ([['results', c.quality], ['runtime', c.runtime], ['CO₂', c.emissions]] as [string, Verdict | null][]).filter(([, v]) => v);
+    const by = (v: Verdict) => claims.filter(([, y]) => y === v).map(([k]) => k).join(', ');
+    return <p key={o.id} className="evsum small" aria-label={`what the comparison of ${o.label} with A shows`}><span className="evsum-k">{o.label} vs A</span>
+      {x.applicable && x.reproduced && <span><b>Identical:</b> every validated result ({x.cells} of {x.cells} cells{x.identical != null ? `; identical solutions in ${x.identical}` : ''})</span>}
+      {x.applicable && x.reproduced === false && <span><b>Different:</b> {x.different} of {x.cells} cells</span>}
+      {by('direct') && <span><b>{VERDICT.direct.label}:</b> {by('direct')}</span>}
+      {by('conditional') && <span><b>{VERDICT.conditional.label}:</b> {by('conditional')}</span>}
+      {by('incompatible') && <span><b>{VERDICT.incompatible.label}:</b> {by('incompatible')}</span>}
+      {x.applicable && <span><b>Reported, not required to match:</b> runtimes (measured again)</span>}
+      {!x.applicable && <span><b>Not applicable:</b> reproducibility — {notRepro(c, o.label)}</span>}</p>; };
+  const sideTitle = (i: number) => sides[i]?.e?.campaign.title ?? '…';
   return <div className="ab">
     <div className="cmp-head">
-      <div className="row gap"><button className="btn ghost icon" aria-label="back to the workspace" onClick={back}><ChevronLeft size={17} /></button>
-        <span className="badge" style={{ background: SERIES[0], color: '#fff' }}>A</span><b className="ellipsis">{ea?.campaign.title ?? '…'}</b><span className="muted">vs</span>
-        {bs.map((x, i) => <button key={x} className={`bchip ${i === Math.min(bi, bs.length - 1) ? 'on' : ''}`} onClick={() => { setBi(i); setMb(undefined); }}>
-          <span className="badge" style={{ background: SERIES[i + 1], color: '#fff' }}>{bLabel(i)}</span><span className="ellipsis">{ebs[i]?.campaign.title ?? '…'}</span></button>)}
+      <div className="row gap wrap"><button className="btn ghost icon" aria-label="back to the workspace" onClick={back}><ChevronLeft size={17} /></button>
+        {sides.map((s, i) => <span key={s.label} className={`cmpchip ${i === 0 ? 'ref' : ''}`} title={i === 0 ? 'Reference: every delta is computed against this experiment' : undefined}>
+          <span className="badge" style={{ background: SERIES[i % SERIES.length], color: '#fff' }}>{s.label}</span><span className="ellipsis">{sideTitle(i)}</span>
+          {i === 0 && <span className="badge outline">Reference</span>}</span>)}
         <span className="grow" />
+        {<label className="row small gap" title="The reference is column A; deltas are other − A">Reference
+          <select aria-label="reference for deltas" value={a} onChange={(e) => go(toRoute(setReference(sel, e.target.value)))}>
+            {ordered(sel).map((id, i) => <option key={id} value={id}>{letter(i)} · {sideTitle(i)}</option>)}</select></label>}
         <button className="btn ghost sm" aria-expanded={!collapsed} aria-controls="cmp-evidence" onClick={toggleSummary} title={collapsed ? 'Show the evidence summary' : 'Hide the evidence summary to give the table, charts and maps more room'}>
           {collapsed ? <><ChevronDown size={14} /> Show summary</> : <><ChevronUp size={14} /> Hide summary</>}</button>
-        <button className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Add experiment</button>
+        <button className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Edit selection</button>
         <button className="btn" onClick={csvTable}><Download size={14} /> Export table</button></div>
       {collapsed ? <div className="evstrip row gap wrap" id="cmp-evidence" aria-label="evidence summary (collapsed)">
-        <span className="badge ok"><ShieldCheck size={12} /> Validated A {ea?.validation.accepted ?? '—'}/{ea?.validation.runs ?? '—'}{sides.slice(1).map((s) => ` · ${s.label} ${s.e?.validation.accepted ?? '—'}/${s.e?.validation.runs ?? '—'}`).join('')}</span>
-        <span className={`badge ${rep?.applicable && rep.reproduced ? 'ok' : ''}`}><RotateCcw size={12} /> {rep?.applicable ? (rep.reproduced ? `${t('ev.reproduced')} ${rep.cells}/${rep.cells}` : rep.reproduced === false ? `${rep.different} of ${rep.cells} differ` : 'not analysed') : 'Reproducibility: not applicable'}</span>
-        {cand && <span className="row gap"><Scale size={13} className="muted" />{verdictChip(cand.quality, 'Results')}{verdictChip(cand.runtime, 'Runtime')}{verdictChip(cand.emissions, 'CO₂')}</span>}
+        <span className="badge ok"><ShieldCheck size={12} /> Validated {sides.map((s) => `${s.label} ${s.e?.validation.accepted ?? '—'}/${s.e?.validation.runs ?? '—'}`).join(' · ')}</span>
+        {others.map((o) => <span key={o.id} className="row gap"><span className={`badge ${o.c?.reproducibility.applicable && o.c.reproducibility.reproduced ? 'ok' : ''}`}><RotateCcw size={12} /> {o.label}: {o.c?.reproducibility.applicable ? reproLine(o.c) : 'reproducibility n/a'}</span>
+          {o.c && <span className="row gap"><Scale size={13} className="muted" />{verdictChip(o.c.quality, 'Results')}{verdictChip(o.c.runtime, 'Runtime')}{verdictChip(o.c.emissions, 'CO₂')}</span>}</span>)}
       </div> : <>
       <div className="evgrid" id="cmp-evidence">
         <div className="evcard"><span className="evi ok"><ShieldCheck size={16} /></span><div><div className="evh">{t('ev.validation')}</div>
-          <b>A {ea?.validation.accepted ?? '—'} of {ea?.validation.runs ?? '—'}{sides.slice(1).map((s) => ` · ${s.label} ${s.e?.validation.accepted ?? '—'} of ${s.e?.validation.runs ?? '—'}`).join('')} runs accepted</b>
+          <b>{sides.map((s) => `${s.label} ${s.e?.validation.accepted ?? '—'} of ${s.e?.validation.runs ?? '—'}`).join(' · ')} runs accepted</b>
           <div className="small muted">every solution checked by validator {ea?.validation.validator_version ?? ''}, not by the method</div></div></div>
-        <div className="evcard"><span className={`evi ${rep?.applicable && rep.reproduced ? 'ok' : ''}`}><RotateCcw size={16} /></span><div><div className="evh">{t('ev.reproducibility')}</div>
-          {rep?.applicable ? <><b>{rep.reproduced ? `${t('ev.reproduced')}: ${rep.cells} of ${rep.cells} results equal` : rep.reproduced === false ? `${rep.different} of ${rep.cells} results differ` : 'not analysed yet'}</b>
-            <div className="small muted">every validated metric must be equal; runtimes are reported, not required to match</div></>
-            : <><b className="soft">Not applicable to this pair</b><div className="small muted">{cand?.relation.startsWith('Controlled variant') ? 'B is a controlled variant of A, not a re-execution' : cand?.relation.startsWith('Extension') ? 'B extends A with methods, it is not a re-execution' : 'B is not a re-execution of A'}</div></>}</div></div>
-        <div className="evcard"><span className={`evi ${cand?.quality === 'direct' ? 'ok' : ''}`}><Scale size={16} /></span><div className="grow"><div className="evh">{t('ev.comparability')}</div>
-          {cand ? <><div className="row gap wrap">{verdictChip(cand.quality, 'Results')}{verdictChip(cand.runtime, 'Runtime')}{verdictChip(cand.emissions, 'CO₂')}<button className="btn link small" aria-expanded={why} onClick={() => setWhy(!why)}>{t('ev.why')}</button></div>
-            <div className="small muted">{VERDICT[cand.quality].label} for results{cand.reasons.length ? ` · ${cand.reasons.length} qualification${cand.reasons.length === 1 ? '' : 's'}` : ''}</div></> : <span className="small muted">…</span>}</div></div>
+        <div className="evcard"><span className={`evi ${others.some((o) => o.c?.reproducibility.applicable && o.c.reproducibility.reproduced) ? 'ok' : ''}`}><RotateCcw size={16} /></span><div><div className="evh">{t('ev.reproducibility')}</div>
+          {others.map((o) => <div key={o.id}><b className={o.c?.reproducibility.applicable ? '' : 'soft'}>{o.label}: {o.c?.reproducibility.applicable ? reproLine(o.c) : 'not applicable'}</b>
+            {!o.c?.reproducibility.applicable && <span className="small muted"> — {notRepro(o.c, o.label)}</span>}</div>)}
+          <div className="small muted">every validated metric must be equal; runtimes are reported, not required to match</div></div></div>
+        <div className="evcard"><span className={`evi ${others.every((o) => o.c?.quality === 'direct') ? 'ok' : ''}`}><Scale size={16} /></span><div className="grow"><div className="evh">{t('ev.comparability')} with A</div>
+          {others.map((o) => <div key={o.id} className="row gap wrap"><b className="small">{o.label}</b>{o.c ? <>{verdictChip(o.c.quality, 'Results')}{verdictChip(o.c.runtime, 'Runtime')}{verdictChip(o.c.emissions, 'CO₂')}
+            <button className="btn link small" aria-expanded={why && b === o.id} onClick={() => { const i = bs.indexOf(o.id); setBi(i); setWhy(!(why && b === o.id)); }}>{t('ev.why')}</button></> : <span className="small muted">…</span>}</div>)}
+          </div></div>
       </div>
-      {shows}
-      {why && cand && <ul className="note small reasons">{cand.reasons.length ? cand.reasons.map((x) => <li key={x}>{x}</li>) : <li>Same problem, objective, validator and comparable environment.</li>}</ul>}
+      {others.map((o) => shows(o))}
+      {why && cand && <ul className="note small reasons"><li><b>{bLabel(Math.min(bi, bs.length - 1))} vs A:</b></li>{cand.reasons.length ? cand.reasons.map((x) => <li key={x}>{x}</li>) : <li>Same problem, objective, validator and comparable environment.</li>}</ul>}
       </>}
       <div className="row gap tabsrow"><nav className="tabs" aria-label="comparison views">{(['results', 'charts', 'maps', 'replay', 'diff'] as Tab[]).map((x) => <button key={x} className={tab === x ? 'on' : ''} aria-pressed={tab === x} onClick={() => setTab(x)}>{t(`cmp.tab.${x}` as 'cmp.tab.results')}</button>)}</nav>
         <span className="grow" />
         {(tab === 'results') && nScen > 1 && <div className="seg" role="group" aria-label="scope"><button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All {nScen} scenarios</button>
           {Array.from({ length: nScen }, (_, i) => <button key={i} className={scope === i ? 'on' : ''} onClick={() => setScope(i)}>Sample {i + 1}</button>)}</div>}
-        {tab === 'charts' && methodIds.length > 1 && <select aria-label="method for charts" value={cm} onChange={(e) => setChartMethod(e.target.value)}>{methodIds.map((m) => <option key={m} value={m}>{sides.map((s) => s.rows.get(m)?.name).find(Boolean) ?? m}</option>)}</select>}
+        {(tab === 'maps' || tab === 'replay' || tab === 'diff') && bs.length > 1 && <div className="seg" role="group" aria-label="experiment shown next to A">
+          {bs.map((x, i) => <button key={x} className={i === Math.min(bi, bs.length - 1) ? 'on' : ''} aria-pressed={i === Math.min(bi, bs.length - 1)} onClick={() => { setBi(i); setMb(undefined); }}>A vs {bLabel(i)}</button>)}</div>}
         {(tab === 'maps' || tab === 'replay' || tab === 'diff') && scenSel}
         {(tab === 'maps' || tab === 'replay') && <label className="row small gap"><input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} /> {t('cmp.sync')}</label>}</div>
     </div>
     {err && <div className="lab-notes"><ErrorNote text={err} /></div>}
     <div className={`cmp-body ${tab === 'maps' || tab === 'replay' ? 'maps' : ''}`}>
-      {tab === 'results' && <>{table}<p className="small muted">{ea?.results?.rows.every((x) => x.repetitions_consistent) ? `Results identical in all ${ea?.campaign.repetitions} repetitions (values from repetition 1); runtime uses every run.` : 'Repetitions differ for some cells: values from repetition 1.'} Deltas are B − A. CO₂ is compared only when the calculation is the same.</p></>}
+      {tab === 'results' && <>{table}<p className="small muted">{ea?.results?.rows.every((x) => x.repetitions_consistent) ? `Results identical in all ${ea?.campaign.repetitions} repetitions (values from repetition 1); runtime uses every run.` : 'Repetitions differ for some cells: values from repetition 1.'} Deltas are against the reference A ({ea?.campaign.title ?? '…'}). CO₂ is compared only when the calculation is the same.</p></>}
       {tab === 'charts' && charts}
       {(tab === 'maps' || tab === 'replay') && <>{maps}{tab === 'replay' && replayBar}</>}
       {tab === 'diff' && diffView}
       {!ea && !err && <p className="muted small">Loading…</p>}
     </div>
-    {adding && <ComparePicker a={a} onClose={() => setAdding(false)} onCompare={(ids) => { setAdding(false); go(a, Array.from(new Set([...bs, ...ids])).join(',')); }} />}
+    {adding && <ComparePicker current={a} already={ordered(sel)} reference={a} onClose={() => setAdding(false)} onCompare={(next) => { setAdding(false); go(toRoute(next)); }} />}
   </div>;
 }
 

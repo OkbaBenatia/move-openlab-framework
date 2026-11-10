@@ -54,14 +54,16 @@ function Co2({ dom, basis }: { dom: Domain | null | undefined; basis: string }) 
 /** Right panel: methods (with Add method), the running job, results in an explicit scope, CO₂, and the evidence kept
  *  apart — independent validation, reproducibility (only for a re-execution), semantic comparability with the parent. */
 export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone, setErr, selected, setSelected, onLock, opts, setOpts, variants, onVariant,
-  onWhy, onTrace, onAddMethod, hash, scope, setScope }: {
+  onWhy, onTrace, onAddMethod, hash, scope, setScope, onRecalcCo2, onEditVehicles }: {
   exp: Experiment | null; methods: MethodRef[]; checked: string[]; setChecked: (k: string[]) => void;
   job: Json | null; onJobDone: (j: Json) => void; setErr: (s: string | null) => void;
   selected: string; setSelected: (m: string) => void; onLock: () => void;
   opts: RunOptions; setOpts: (o: RunOptions) => void; variants: { id: string; description: string }[]; onVariant: () => void; onWhy: () => void;
   onTrace: (() => void) | null; onAddMethod: () => void; hash: string; scope: Scope; setScope: (s: Scope) => void;
+  onRecalcCo2?: (scope: string, baseline: string) => void; onEditVehicles?: () => void;
 }) {
   const [why, setWhy] = useState(false);
+  const [co2Cfg, setCo2Cfg] = useState<{ scope: string; baseline: string } | null>(null);
   const inExp = new Set(exp ? scopeMethods(exp) : []);
   const toggle = (k: string) => setChecked(checked.includes(k) ? checked.filter((x) => x !== k) : [...checked, k]);
   const rows = exp?.results?.rows ?? [];
@@ -135,6 +137,16 @@ export function ResultPanel({ exp, methods, checked, setChecked, job, onJobDone,
         <select aria-label="controlled variant" value={opts.variant} onChange={(e) => setOpts({ ...opts, variant: e.target.value })} className="grow">
           {variants.map((v) => <option key={v.id} value={v.id}>{v.description}</option>)}</select>
         <button className="btn sm" onClick={onVariant}><GitBranch size={12} /> Create controlled variant</button></div>}
+      {exp && (onRecalcCo2 || onEditVehicles) && exp.results && <div className="adv-co2">
+        <div className="small strong">CO₂ calculation and vehicles</div>
+        {onRecalcCo2 && (() => { const cur = co2Cfg ?? { scope: exp.campaign.emissions?.scope ?? 'operational-energy', baseline: exp.campaign.emissions?.baseline ?? 'everyone-drives-alone' };
+          const same = exp.campaign.emissions && cur.scope === exp.campaign.emissions.scope && cur.baseline === exp.campaign.emissions.baseline;
+          return <div className="row gap wrap">
+            <select aria-label="CO₂ calculation of the new experiment" value={cur.scope} onChange={(e) => setCo2Cfg({ ...cur, scope: e.target.value })}>{Object.entries(SCOPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <select aria-label="CO₂ baseline of the new experiment" value={cur.baseline} onChange={(e) => setCo2Cfg({ ...cur, baseline: e.target.value })}>{Object.entries(BASELINE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <button className="btn sm" disabled={!!same} title={same ? 'Choose another calculation or baseline' : 'Runs the same methods on the same frozen scenarios with this CO₂ calculation'} onClick={() => onRecalcCo2(cur.scope, cur.baseline)}>New experiment with this calculation</button></div>; })()}
+        {onEditVehicles && <button className="btn sm" onClick={onEditVehicles}>Edit vehicles and their parameters…</button>}
+        <p className="tiny muted">Each creates a new, traceable configuration (new fingerprints); the original results stay unchanged.</p></div>}
     </details>
   </div>;
 }

@@ -90,7 +90,8 @@ export function ImportDialog({ onClose, onImported, onReproduce, sampleAvailable
                 <dt>Mobility data</dt><dd>{rep.datasets.length ? rep.datasets.map((d: Json) => `${d.provider === 'rpc' || d.release ? `RPC ${d.release}` : d.provider}${d.licence?.name ? ` · ${d.licence.name}` : ''}`).join('; ') : 'synthetic or placed participants'}</dd>
                 <dt>Methods</dt><dd>{rep.methods.map((m: Json) => <span key={`${m.method_id}${m.version}`} className={`badge ${m.available_locally ? 'ok' : 'warn'}`} title={m.reason ?? 'available on this installation'}>{m.method_id} {m.version}{m.available_locally ? '' : ' · not here'}</span>)}</dd>
                 <dt>Vehicles and CO₂</dt><dd>{rep.vehicles ? `${rep.vehicles} vehicle profiles` : 'no vehicle data'}{rep.emissions?.length ? ` · CO₂: ${SCOPE_LABEL[rep.emissions[0].scope] ?? rep.emissions[0].scope}, baseline ${(BASELINE_LABEL[rep.emissions[0].baseline] ?? rep.emissions[0].baseline).toLowerCase()}` : ''}</dd>
-                <dt>Replay geometry</dt><dd>{rep.geometry_verified ? `${rep.geometry_verified} route files` : 'none'}</dd></dl></section>
+                <dt>Replay geometry</dt><dd>{rep.geometry_verified ? `${rep.geometry_verified} route files` : 'none'}</dd>
+                <dt>Evidence report</dt><dd>{rep.evidence ? `included · matches the bundle${rep.evidence.generated_by ? ` · by ${rep.evidence.generated_by}` : ''}` : 'not included'}</dd></dl></section>
             <section className="sec"><h3><FileCheck2 size={16} /> Integrity and compatibility</h3>
               <ul className="checks">
                 <li>{ok(true)} <b>{t('ev.integrity')}</b><span>{rep.files_checked} files, each checksum matches; manifest digest matches</span></li>

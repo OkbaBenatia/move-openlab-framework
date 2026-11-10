@@ -7,8 +7,9 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 const kindLabel: Record<string, string> = { baseline: 'Baseline', variant: 'Controlled variant', reproduction: 'Re-execution', extended: 'Extension', 'threshold-study': 'Threshold study' };
 
 /** Export: says exactly what the bundle will contain before anything is written. The sections the importer needs to
- *  verify and reproduce the experiment are always included (and shown as such); replay geometry and the separate
- *  evidence report are optional. Export locks an unlocked experiment first (its results can no longer change). */
+ *  verify and reproduce the experiment are always included (and shown as such); replay geometry and the evidence
+ *  report are optional and go inside the same ZIP — one download. The report alone (JSON) is an explicit action.
+ *  Export locks an unlocked experiment first (its results can no longer change). */
 export function ExportDialog({ cid, title, onClose, onDone, setErr }: { cid: string; title: string; onClose: () => void; onDone: () => void; setErr: (s: string | null) => void }) {
   const [p, setP] = useState<Json | null>(null);
   const [geometry, setGeometry] = useState(true);
@@ -28,11 +29,12 @@ export function ExportDialog({ cid, title, onClose, onDone, setErr }: { cid: str
     try {
       if (!p!.locked) await post(`/campaigns/${cid}/lock`);
       const file = `move_openlab_${slug(title)}.zip`;
-      const r = await download(`/campaigns/${cid}/export?geometry=${geometry}`, file);
-      if (evidence) await download(`/lab/experiments/${cid}/evidence`, `move_openlab_${slug(title)}_evidence.json`);
+      const r = await download(`/campaigns/${cid}/export?geometry=${geometry}&evidence=${evidence}`, file);
       setDone({ file, bytes: r?.bytes ?? 0, sha256: r?.sha256 ?? null, evidence }); onDone();
     } catch (e) { setErr(`Export failed: ${errText(e)}`); } finally { setBusy(false); }
   };
+  // the report as its own file: only on request
+  const saveReport = () => download(`/lab/experiments/${cid}/evidence`, `move_openlab_${slug(title)}_evidence.json`).catch((e) => setErr(`Download failed: ${errText(e)}`));
   const Row = ({ on, fixed, title: tt, text, count, onChange }: { on: boolean; fixed?: boolean; title: string; text: string; count?: string; onChange?: (v: boolean) => void }) =>
     <label className={`exrow ${fixed ? 'fixed' : ''}`}><input type="checkbox" checked={on} disabled={fixed} onChange={(e) => onChange?.(e.target.checked)} />
       <span className="grow"><b>{tt}</b>{count && <span className="badge">{count}</span>}{fixed && <span className="req"><Lock size={11} /> required</span>}<span className="small muted block">{text}</span></span></label>;
@@ -43,10 +45,10 @@ export function ExportDialog({ cid, title, onClose, onDone, setErr }: { cid: str
         <button className="btn icon ghost" aria-label="close" onClick={onClose}><X size={16} /></button></div>
       {!p ? <p className="muted small">Preparing the summary…</p> : done ? <section className="sec">
         <p className="note ok row gap" role="status"><CheckCircle2 size={16} /><span><b>Bundle saved: {done.file}</b> · {(done.bytes / 1e6).toFixed(2)} MB{done.sha256 ? ` · SHA-256 ${done.sha256.slice(0, 12)}…` : ''}
-          {done.evidence && <><br />Evidence report saved next to it (JSON).</>}</span></p>
+          {done.evidence && <><br />The evidence report is inside it (evidence/report.json).</>}</span></p>
         <p className="small muted">The receiver opens it with <b>Import</b>: every checksum and fingerprint is verified before anything is stored, then the experiment can be
           reproduced and compared. This experiment is now locked.</p>
-        <div className="row gap"><span className="grow" /><button className="btn primary" onClick={onClose}>Done</button></div></section> : <>
+        <div className="row gap"><button className="btn sm ghost" onClick={saveReport}><FileJson size={13} /> Evidence report alone (JSON)</button><span className="grow" /><button className="btn primary" onClick={onClose}>Done</button></div></section> : <>
         <section className="sec exsum"><h3>{title}</h3>
           <dl className="facts">
             <dt>Records</dt><dd>{p.campaigns.map((c: Json) => `${kindLabel[c.kind] ?? c.kind}${c.campaign_id === cid ? '' : ' (lineage)'}`).join(' · ')}</dd>
@@ -66,8 +68,8 @@ export function ExportDialog({ cid, title, onClose, onDone, setErr }: { cid: str
             <Row on fixed title="Vehicle and emission parameters" count={p.vehicles ? `${p.vehicles} profiles` : undefined} text={p.emissions.length ? 'Every vehicle profile with its sources, and the CO₂ calculation and baseline of each record.' : 'No vehicle data in these scenarios.'} />
             <Row on={geometry} title="Replay geometry" count={`${p.geometry.available} of ${p.geometry.scenarios}`} onChange={setGeometry}
               text={p.geometry.available ? 'Road polylines of the routes, so the receiver can replay them without downloading the road network. Optional.' : 'Not available for these scenarios.'} />
-            <Row on={evidence} title="Evidence report (separate JSON file)" onChange={setEvidence}
-              text="Validation, reproducibility, semantic comparability, fingerprints and results in one readable file to keep next to the bundle. Not needed to verify it." />
+            <Row on={evidence} title="Evidence report" onChange={setEvidence}
+              text="Inside the ZIP (evidence/report.json): validation, reproducibility, semantic comparability, fingerprints and results in one readable file. Checked against the bundle on import; not needed to verify it." />
           </div></section>
         <div className="row gap drawer-foot"><FileJson size={14} className="muted" /><span className="small muted grow">No code is exported: methods are identified by id, version and code digest.</span>
           <button className="btn" onClick={onClose}>Cancel</button>
