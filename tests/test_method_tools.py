@@ -91,3 +91,17 @@ def test_template_values_cannot_break_the_generated_python(tmp_path):
         ast.parse((d / f).read_text())
     assert check_method(d / "test_plugin.py")["steps"][0]["ok"] is False            # only plugin.py is accepted
     assert main(["method", "check", str(d), "--bundle", str(tmp_path / "missing.zip")]) == 2
+
+
+def test_shipped_example_my_greedy_matching_checks_on_the_sample_bundle(tmp_path):
+    """The worked example of docs/ADD_YOUR_METHOD.md: the figures the tutorial prints are the ones this check gets."""
+    from pathlib import Path
+    from move_openlab import samples
+    sandbox_or_skip(tmp_path)
+    d = Path(__file__).resolve().parents[1] / "plugins" / "my_greedy_matching"
+    rep = check_method(d, samples.bundle_bytes())
+    assert rep["ok"] and [s["step"] for s in rep["steps"]] == ["metadata", "self-test", "benchmark"]
+    rows = {r["method_id"]: r for r in rep["steps"][-1]["comparison"]}
+    assert set(rows) == {"my-greedy-matching", "exact-matching-highs", "greedy-min-detour"} and all(r["valid"] for r in rows.values())
+    assert rows["my-greedy-matching"]["totals"] == dict(served=48, detour_s=3113) and rows["my-greedy-matching"]["optimal"] == 0
+    assert rows["exact-matching-highs"]["totals"] == dict(served=48, detour_s=2175) and rows["exact-matching-highs"]["optimal"] == 3
