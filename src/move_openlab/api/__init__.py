@@ -1,6 +1,8 @@
 """HTTP API and single-origin web application."""
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 
 from ..auth import Auth
@@ -25,8 +27,10 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
     from .web import AuthGuard, BodyLimit, mount_frontend, router as web_router
     settings = settings or Settings.from_env()
     from .. import privatefiles
+    os.umask(privatefiles.PRIVATE_UMASK)              # every file and directory the server creates is owner-only
     for name in ("audit.log", "dev-credentials.json"):  # owner-only, also when written by an earlier version
         privatefiles.tighten(settings.data_dir / name)
+    privatefiles.secure_tree(settings.data_dir)         # data written by earlier versions: 0700 directories, 0600 files
     if settings.production and len(settings.session_secret) < 32:
         raise RuntimeError("production requires SESSION_SECRET (at least 32 characters)")
     if settings.production and settings.plugin_mode == "trusted-process":

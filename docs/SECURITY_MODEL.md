@@ -117,8 +117,11 @@ the process umask (`move_openlab.privatefiles`):
 | `<data>/audit.log` | who did what to which account | appended through a descriptor opened with `0600` | tightened at server start and at the next entry |
 | `<data>/dev-credentials.json` | development passwords (`scripts/dev_provision.py`, `start-local.sh`) | written to a `0600` temporary file, then renamed atomically | tightened at server start; replaced by a `0600` file when rewritten |
 
-Only the group and other permission bits are removed; contents are never touched. Research data (workspaces,
-networks, datasets) keeps the directory's normal permissions.
+Only the group and other permission bits are removed; contents are never touched. The rest of the data directory
+(workspaces, experiments, instances, jobs, networks, datasets, caches) is owner-only too: the server runs with umask
+`077`, so everything it creates is `0600` (files) or `0700` (directories), and at start it removes the group and other
+bits from existing entries written by earlier versions (owner bits, including executable bits, are kept; symbolic
+links are neither followed nor changed). `start-local.sh` also sets umask `077` before it creates its lock file.
 
 ### Roles and supervision
 

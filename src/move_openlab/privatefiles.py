@@ -12,6 +12,7 @@ import stat
 from pathlib import Path
 
 PRIVATE = 0o600
+PRIVATE_UMASK = 0o077          # files and directories created by the server: owner only (0600 / 0700)
 
 
 def tighten(path: str | os.PathLike) -> bool:
@@ -67,3 +68,52 @@ def write(path: str | os.PathLike, data: str | bytes) -> None:
     finally:
         os.close(fd)
     os.replace(tmp, p)
+
+
+def secure_tree(root: str | os.PathLike) -> int:
+    """Remove group and other permissions from a data directory and everything below it; return how many changed.
+
+    Symbolic links are never followed or changed; owner bits (including executable bits) are kept as they are.
+    """
+    changed = 0
+    root = os.fspath(root)
+    if not os.path.isdir(root) or os.path.islink(root):
+        return 0
+    for top, dirs, files in os.walk(root, followlinks=False):
+        for name in [None, *dirs, *files]:
+            path = top if name is None else os.path.join(top, name)
+            try:
+                st = os.lstat(path)
+            except OSError:
+                continue
+            if stat.S_ISLNK(st.st_mode) or not (stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode)):
+                continue
+            if stat.S_IMODE(st.st_mode) & 0o077 and _tighten_nofollow(path, st):
+                changed += 1
+        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(top, d))]
+    return changed
+
+
+def _tighten_nofollow(path: str, seen: os.stat_result) -> bool:
+    """Tighten through a descriptor opened without following links, only if it is still the entry seen by lstat.
+
+    An entry replaced by a symbolic link in the meantime, or one that cannot be opened (owned by another user, no
+    read permission), is skipped: startup never fails and never changes anything outside the data directory.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return False
+    try:
+        st = os.fstat(fd)
+        if (st.st_dev, st.st_ino) != (seen.st_dev, seen.st_ino):
+            return False
+        mode = stat.S_IMODE(st.st_mode)
+        if not mode & 0o077:
+            return False
+        os.fchmod(fd, mode & ~0o077)
+        return True
+    except OSError:
+        return False
+    finally:
+        os.close(fd)

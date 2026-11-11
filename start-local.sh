@@ -128,6 +128,7 @@ case "$probe" in
 esac
 
 mkdir -p "$MOVE_OPENLAB_DATA_DIR"
+umask 077                                       # data written from here on (lock, server files) is owner-only
 if command -v flock >/dev/null 2>&1; then         # one server per data directory, even if two terminals race
   exec 9>"$MOVE_OPENLAB_DATA_DIR/.start-local.lock"
   flock -n 9 || fail "another ./start-local.sh is already starting for this data directory."
