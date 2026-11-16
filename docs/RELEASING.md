@@ -47,11 +47,13 @@ ruff check src tests scripts plugins
 
 - Clean-install test: copy the tracked files to an empty directory, create a fresh virtual environment, install,
   run the tests and build the frontend.
-- Dependency licences: runtime Python and npm dependencies remain permissive (MIT, BSD, ISC, Apache-2.0, PSF).
+- Dependency licences: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) is current — every runtime Python and npm
+  dependency listed with the licence read from its metadata — and compatible with the project licence once chosen.
 - Browser check of the main workflows on desktop and phone widths, with a test account.
 
-Also check: documentation links, no credentials or generated data in the tree, licence and notices present, and that
-every number quoted in the documentation comes from an executed run of this version.
+Also check: documentation links, no credentials or generated data in the tree, licence and notices present, that
+every number quoted in the documentation comes from an executed run of this version, and the confidentiality
+checklist in [SECURITY_MODEL.md](SECURITY_MODEL.md#confidentiality-checklist-before-a-release).
 
 ## 3. Publish
 
@@ -66,19 +68,22 @@ Branch `hotfix/X.Y.Z+1` from `main`, fix with a regression test, then follow ste
 
 ## First public release checklist
 
-- [ ] Apache-2.0 `LICENSE` and `NOTICE` added after ownership and third-party rights are verified; README licence section updated
+- [x] Licence prepared: Apache-2.0 (`LICENSE` verbatim, `NOTICE`, `pyproject.toml`, `frontend/package.json`, the licence sections of `README.md`, `CONTRIBUTING.md`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`)
+- [x] `NOTICE` and `CITATION.cff` reviewed for the release (`python scripts/check_release_ready.py`)
 - [ ] Demonstration video (supplied by the maintainer)
 - [x] Screenshots generated from a real local run (`docs/assets/screenshots/`)
-- [ ] Verified LinkedIn, Google Scholar and ORCID links; scientific references and citation file
+- [x] Verified LinkedIn, Google Scholar and GitHub links (README); ORCID to add once verified
 - [x] Code of Conduct and security contact address
 - [ ] Production tile service and place-search policy decided (`MOVE_OPENLAB_TILE_URL`, `MOVE_OPENLAB_GEOCODER_URL`, `MOVE_OPENLAB_GEOCODER_PROVIDER`)
 - [x] Approved logo lockup integrated (header, sign-in and password pages, README banner)
 - [ ] Clean square icon from the approved source (favicon, touch icon); until then a neutral letter-mark favicon is used, not presented as the logo
 - [x] Sample bundle shipped and independently re-checked in a second installation (`scripts/check_sample_bundle.py`)
-- [ ] Synthetic scientific benchmark: integrated only once a reproducible, publishable version exists (shown as *Planned*); needs the maintainer's decision on publishing its protocol and the missing public components
+- [ ] Synthetic scientific benchmark: integrated only once a reproducible, publishable version exists; needs the maintainer's decision on publishing its protocol and the missing public components
 - [x] Third-party custom metrics sandboxed (no metric code in the server process)
 - [x] Browser journeys, frontend lint and unit tests in CI (`.github/workflows/browser.yml`, `ci.yml`)
-- [ ] Software citation metadata (`CITATION.cff`) once the citation and author identifiers are verified
+- [x] Software citation metadata: `CITATION.cff` with verified author, affiliation, version and licence
+- [x] `date-released` (and a DOI, if one is registered) added in `CITATION.cff` with the first release; the platform paper as `preferred-citation` only after its acceptance
+- [ ] Release assets attached: `sample_scenario.zip`, `sample_experiment.zip`, `SHA256SUMS` from `scripts/pack_examples.py`
 - [ ] Solver pinned for the published figures (HiGHS / highspy version stated with any reported number)
 - [x] Default demonstration on Montbéliard rebuilt from one frozen RPC release (2026-10) with full provenance
 - [x] Roles (Administrator, Researcher, Student), supervision and the server-side password policy

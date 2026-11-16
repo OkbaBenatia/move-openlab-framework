@@ -449,7 +449,8 @@ if (ONLY === 'fallback') {
   // ---- 7. comparison candidate picker ----------------------------------------------------------------------------
   await check('Compare with…: candidates with validation, reproducibility and comparability; Why?', async () => {
     await goHash(`#/workspace/${demoBase}`, 3500);
-    await p.click('Compare', '.labbar button');
+    // one Compare entry: it opens the Methods tab when the experiment has several methods; experiments are chosen on the Experiments tab
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500); if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); }
     await p.waitFor('!!document.querySelector(".cand")', 20000, 'candidates');
     await sleep(800);
     const t = await text('[role=dialog]');
@@ -509,7 +510,7 @@ if (ONLY === 'fallback') {
   });
   await check('Compare original and reproduction: identical, comparable and not applicable stated separately', async () => {
     await goHash(`#/workspace/${demoRepro}`, 3500);
-    await p.click('Compare', '.labbar button');
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500); if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); }
     await p.waitFor('!!document.querySelector(".cand")', 20000, 'candidates'); await sleep(600);
     // tick the baseline by its exact title (the open re-execution is already ticked as "This experiment")
     const ok = await p.eval(`(() => { const i = [...document.querySelectorAll('.picker-drawer input[type=checkbox]')].find((x) => x.getAttribute('aria-label') === 'Montbéliard Demo — Baseline' && !x.disabled); if (!i) return false; i.click(); return true; })()`);
@@ -527,12 +528,12 @@ if (ONLY === 'fallback') {
   const ensureGuide = async () => {                 // each step may start with the guide closed (Escape between checks)
     if (await has('.guide')) return;
     if (!(await has('.labbar'))) await goHash(`#/workspace/${demoBase}`, 3000);
-    await p.click('Import', '.labbar button'); await p.click('Try an imported experiment', '[role=menuitem]');
+    await p.click('Import', '.labbar button'); await p.click('Try a sample', '[role=menuitem]'); await p.click('Try an imported experiment', '.samples-guide button');
     await p.waitFor('!!document.querySelector(".guide .checks")', 30000, 'guide');
   };
   await check('sample bundle: download, integrity verified, import', async () => {
     await goHash(`#/workspace/${demoBase}`, 3500);
-    await p.click('Import', '.labbar button'); await p.click('Try an imported experiment', '[role=menuitem]');
+    await p.click('Import', '.labbar button'); await p.click('Try a sample', '[role=menuitem]'); await p.click('Try an imported experiment', '.samples-guide button');
     await p.waitFor('!!document.querySelector(".guide .checks")', 30000, 'integrity report');
     const before = p.downloadCount();
     await p.click('Download sample bundle', '.guide button'); await p.waitDownload(before);

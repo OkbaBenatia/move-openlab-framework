@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, X } from 'lucide-react';
 import type { Json } from '../api/client';
 import { hhmm, hhmmss } from '../geo/api';
+import { tr } from '../i18n';
 
 export function positionAt(path: number[][], t: number): [number, number] | null {
   if (!path.length || t < path[0][2] || t >= path[path.length - 1][2]) return null;
@@ -49,27 +50,25 @@ export function nowCounts(plan: Json, t: number) {
   return { moving, onboard, delivered, unserved: plan.unserved.length };
 }
 
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
-
 export function ReplayBar({ plan, replay, onClose }: { plan: Json; replay: ReturnType<typeof useReplay>; onClose: () => void }) {
   const { t, setT, playing, setPlaying, speed, setSpeed } = replay;
   const span = Math.max(1, plan.t_max - plan.t_min);
   const ticks = (plan.vehicles as Json[]).flatMap((v) => v.stops.filter((s: Json) => s.type === 'pickup' || s.type === 'dropoff'));
   const n = nowCounts(plan, t);
   const pct = (100 * (t - plan.t_min)) / span;
-  return <div className="replay" data-tour="replay" aria-label="replay">
+  return <div className="replay" data-tour="replay" aria-label={tr('replay')}>
     <div className="row gap">
-      <button className="btn icon" onClick={() => { if (t >= plan.t_max) setT(plan.t_min); setPlaying(!playing); }} aria-label={playing ? 'pause' : 'play'}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+      <button className="btn icon" onClick={() => { if (t >= plan.t_max) setT(plan.t_min); setPlaying(!playing); }} aria-label={playing ? tr('pause') : tr('play')}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
       <span className="mono">{hhmmss(t)}</span>
       <div className="timeline grow">
         <div className="timeline-track"><span style={{ width: `${pct}%` }} /></div>
-        {ticks.map((s: Json, i: number) => <i key={i} className={`tick ${s.type}`} style={{ left: `${(100 * (s.t - plan.t_min)) / span}%` }} title={`${s.rider} ${s.type} ${hhmm(s.t)}`} />)}
-        <input type="range" min={plan.t_min} max={plan.t_max} step={1} value={t} aria-label="time" onChange={(e) => { setPlaying(false); setT(Number(e.target.value)); }} />
+        {ticks.map((s: Json, i: number) => <i key={i} className={`tick ${s.type}`} style={{ left: `${(100 * (s.t - plan.t_min)) / span}%` }} title={`${s.rider} ${tr(s.type)} ${hhmm(s.t)}`} />)}
+        <input type="range" min={plan.t_min} max={plan.t_max} step={1} value={t} aria-label={tr('time')} onChange={(e) => { setPlaying(false); setT(Number(e.target.value)); }} />
       </div>
-      <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="speed">{[10, 30, 60, 120, 300].map((s) => <option key={s} value={s}>×{s}</option>)}</select>
-      <button className="btn icon" aria-label="close replay" onClick={onClose}><X size={14} /></button>
+      <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label={tr('speed')}>{[10, 30, 60, 120, 300].map((s) => <option key={s} value={s}>×{s}</option>)}</select>
+      <button className="btn icon" aria-label={tr('close replay')} onClick={onClose}><X size={14} /></button>
     </div>
-    <div className="small muted row gap"><span>{plural(n.moving, 'vehicle')} moving</span><span>{plural(n.onboard, 'rider')} on board</span><span>{n.delivered} delivered</span>
-      <span>{n.unserved} unserved</span><span className="grow" /><span>{hhmm(plan.t_min)}–{hhmm(plan.t_max)}</span></div>
+    <div className="small muted row gap"><span>{n.moving === 1 ? tr('{n} vehicle moving', { n: n.moving }) : tr('{n} vehicles moving', { n: n.moving })}</span><span>{n.onboard === 1 ? tr('{n} rider on board', { n: n.onboard }) : tr('{n} riders on board', { n: n.onboard })}</span><span>{tr('{n} delivered', { n: n.delivered })}</span>
+      <span>{tr('{n} unserved', { n: n.unserved })}</span><span className="grow" /><span>{hhmm(plan.t_min)}–{hhmm(plan.t_max)}</span></div>
   </div>;
 }

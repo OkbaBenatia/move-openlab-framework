@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python ≥ 3.11 and Node.js ≥ 20.
+- Python ≥ 3.11 and Node.js 20.19+ or 22.12+ (the interface build refuses older versions).
 - Linux with bubblewrap (`bwrap`) and unprivileged user namespaces, for sandboxed plugins and their tests.
 - Network access only for the optional OpenStreetMap, place-search and open-data features.
 
@@ -86,6 +86,16 @@ methods, exactly two experiments, Run with this method, Save & Run transition, c
 from the Workspace, Randomize with a typed seed, marker types, short titles, the public benchmark); it writes
 `workflow-acceptance.json` and the screenshots. Manual version: `docs/MANUAL_ACCEPTANCE.md`.
 
+### Result views (CI, synthetic data only)
+
+`scripts/e2e/final_corrections.mjs` runs on the same seeded data directory (`seed_ci.py` also creates one ordinary
+administrator): an administrator and a researcher get the same results and CO₂ summary for the same public
+demonstration; *Choose metrics* controls the Workspace columns, both comparison tables and the charts (select all,
+deselect all, reset, kept for the account or for the tab); every chart type draws; charts are selected and exported
+together, and the script opens the ZIP and verifies each PNG (size, drawn rows), SVG, CSV and the manifest; the two
+kinds of comparison; the public synthetic benchmark; French and English. Same usage as `ci_journeys.mjs`; it writes
+`final-corrections.json` and screenshots.
+
 ## Installation (manual)
 
 ```bash
@@ -125,8 +135,8 @@ For interface work, run the Vite development server as well (http://localhost:51
 npm --prefix frontend run dev
 ```
 
-Configuration is read from environment variables; the full list is in `src/move_openlab/settings.py`. The most
-useful in development:
+Configuration is read from environment variables; every variable is listed in [INSTALL.md](INSTALL.md#4-configuration)
+(source: `src/move_openlab/settings.py`). The most useful in development:
 
 | Variable | Purpose |
 |---|---|
@@ -136,7 +146,8 @@ useful in development:
 | `MOVE_OPENLAB_OVERPASS_URL`, `MOVE_OPENLAB_GEOCODER_URL` | road-network and place-search services (`off` disables search) |
 | `MOVE_OPENLAB_EXTERNAL_FETCH` | `researcher` (default) or `admin`: who may start downloads from public services |
 
-Restarting the server signs everyone out (sessions are held in memory).
+In development the session signing key is random at each start, so restarting the server signs everyone out; set
+`SESSION_SECRET` (32 characters or more) to keep sessions across restarts.
 
 ## Tests
 
@@ -165,6 +176,11 @@ service.
 | `test_metric_security.py` | registered metrics: sandbox isolation (other workspaces, credential store, environment, network), never in the server process, timeout and memory limit, invalid outputs, pinned code, fail closed |
 | `test_solver_robustness.py` | a solver time limit is never an optimality claim, a worker that does not answer is killed with diagnostics, solver / method / end-to-end times, HiGHS's cumulative clock |
 | `test_bundle_compatibility.py` | newer bundle formats and sections refused clearly, a method missing here, complete exchange between two researchers |
+| `test_restricted_problems.py` | restricted problems: invisible without a grant whatever the role, grant, use and revocation, audit of grants and refusals |
+| `test_studies.py` | study views: methods of several experiments on the same scenarios, provenance kept, mismatches refused |
+| `test_solver_settings.py`, `test_result_import.py`, `test_problem_capabilities.py` | solver settings against their schema and as a new version, hybrid optimality scope, candidate view and preview; results computed elsewhere re-validated and kept apart, run facts and display names; presentation capabilities |
+| `test_sample_trips.py`, `test_private_files.py`, `test_private_data_permissions.py` | the sample trip dataset through the normal CSV import; owner-only credential store, audit log and data directory |
+| `test_accounts_compat.py`, `test_workflow_fixes.py` | password policy levels, roles and supervision, version label, place-search providers, comparison candidates; short derived titles, Save & Run reusing the preview, the public benchmark and its oracle check, extensions |
 | `test_scientific_audit.py` | claim-dependent verdicts, a CO₂ calculation change as a new traceable configuration, CO₂ units and aggregation, scenario-level matching, the three separate statements |
 
 Frontend unit tests (the comparison selection model and the scenario matching of compared experiments; TypeScript
@@ -199,7 +215,7 @@ set (about a minute).
 `python scripts/benchmark_synthetic_assignment.py --out <dir>` reproduces the public synthetic capacitated-assignment
 benchmark from its frozen seeds (30 instances, three methods including the sandboxed example plug-in, five
 repetitions, validator and min-cost-flow oracle checks) and writes a JSON record and a Markdown table — its own
-measured figures, not those of the planned scientific benchmark.
+measured figures, not those of a scientific study.
 
 `python scripts/solver_stress.py --out <file>` is the controlled repetition and concurrency stress test of the exact
 ride-matching method used to investigate an intermittent solver stall: deterministic inputs (the sample bundle's frozen

@@ -150,6 +150,49 @@ def set_supervisor(username: str, body: Supervisor, request: Request):
     return dict(user=request.app.state.auth.public_user(user))
 
 
+class AccessBody(BaseModel):
+    usernames: list[str] = Field(default_factory=list, max_length=200)
+
+
+@router.get("/extensions")
+def extensions(request: Request):
+    """The problem packages installed here (identifier, title, providing distribution) and, for restricted ones, the
+    accounts granted access. Identification only: what a restricted package contains is shown to granted accounts."""
+    _admin(request)
+    from .. import registry
+    inst = request.app.state.installation
+    st = inst.plugin_status()
+    return dict(problems=[dict(problem_id=p.problem_id, title=p.title, synthetic=p.synthetic, restricted=bool(p.restricted),
+                               specification=p.problem_spec_version, validator=p.validator_version,
+                               granted=inst.access.granted(p.problem_id) if p.restricted else None,
+                               **registry.origin(p.problem_id)) for p in registry.all_problems()],
+                load_errors=registry.load_errors(), group=registry.GROUP,
+                plugins=dict(mode=st["mode"], enabled=st["enabled"], reason=st["reason"]))
+
+
+@router.put("/extensions/{problem_id}/access")
+def set_access(problem_id: str, body: AccessBody, request: Request):
+    """Replace the accounts that may use a restricted problem. No role implies access: only listed accounts get it."""
+    ses = _admin(request)
+    from .. import registry
+    try:
+        p = registry.get(problem_id)
+    except registry.UnknownProblem as e:
+        raise HTTPException(404, str(e)) from None
+    if not p.restricted:
+        raise HTTPException(400, "this problem is open to every account of the installation; there is nothing to grant")
+    store = request.app.state.auth.store
+    unknown = [u for u in body.usernames if store.get(u) is None]
+    if unknown:
+        raise HTTPException(404, f"unknown account: {unknown[0]}")
+    try:
+        users = request.app.state.installation.access.set(problem_id, body.usernames)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    audit(request, ses.username, "set_problem_access", f"{problem_id}: {', '.join(users) or '(nobody)'}")
+    return dict(problem_id=problem_id, granted=users)
+
+
 @router.get("/audit")
 def audit_log(request: Request, limit: int = 200):
     """The most recent administrative actions (time, actor, action, target; never a secret)."""

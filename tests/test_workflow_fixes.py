@@ -61,7 +61,7 @@ def test_public_benchmark_definition_run_and_oracle_check(tmp_path):
     login(c, "alice")
     d = c.get("/api/lab/benchmark/public").json()["definition"]
     assert d["scenario_params"] == dict(sizes=["small", "medium", "large"], seeds=list(range(1, 11)))
-    assert "not the separate synthetic scientific study" in d["scope"] and "Planned" in d["scope"]
+    assert "fixed protocol" in d["scope"] and "Planned" not in d["scope"]      # no placeholder for unfinished studies
     small = dict(d, scenario_params=dict(sizes=["small"], seeds=[1, 2]))
     # the endpoint lists only runs of the frozen definition: a smaller run is not "the benchmark"
     x = c.post("/api/campaigns", json=dict(problem_id=d["problem_id"], title="smaller", scenario_params=small["scenario_params"],

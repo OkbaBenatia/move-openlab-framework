@@ -1,0 +1,44 @@
+# Citation metadata for MOVE OpenLab (Citation File Format 1.2.0).
+#
+# Verified from the repository (2026-11-16): the author (pyproject.toml and every commit of the history), the
+# affiliation (README › Maintainer), the version (src/move_openlab/__init__.py), the repository address, and the
+# licence of the public framework (LICENSE, Apache-2.0); date-released is the date of the 0.3.0 release.
+#
+# Deliberately absent until they exist (never invent them):
+#   - doi / identifiers: add them when a DOI is registered (for example by archiving a release);
+#   - orcid of the author: add it once verified;
+#   - preferred-citation: the platform paper, to add ONLY after its acceptance. Template (uncomment and complete):
+#       preferred-citation:
+#         type: article            # or conference-paper
+#         title: "<title as published>"
+#         authors:
+#           - family-names: "BEN ATIA"
+#             given-names: "Okba"
+#         collection-title: "<proceedings or journal>"
+#         year: <year>
+#         doi: "<doi of the paper>"
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "MOVE OpenLab"
+abstract: >-
+  MOVE OpenLab: a reproducible experimentation framework for sustainable mobility optimization, conceived, designed,
+  developed and implemented by Dr. Okba BEN ATIA. Problems, methods, metrics and datasets plug in through adapters;
+  every solution is checked by an independent validator; experiments are frozen, exported as verified bundles,
+  re-executed and compared claim by claim.
+authors:
+  - family-names: "BEN ATIA"
+    given-names: "Okba"
+    affiliation: "Université Marie et Louis Pasteur, FEMTO-ST Institute, DISC Department, OMNI team"
+version: "0.3.0"
+date-released: "2026-11-16"
+license: Apache-2.0
+repository-code: "https://github.com/OkbaBenatia/move-openlab-framework"
+keywords:
+  - optimization
+  - reproducibility
+  - experimentation framework
+  - benchmarking
+  - independent validation
+  - ride matching
+  - sustainable mobility

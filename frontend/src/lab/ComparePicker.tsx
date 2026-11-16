@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, CircleX, Columns2, ListChecks, Plus, Rotat
 import { HiddenFilter } from '../components/HiddenFilter';
 import { call } from '../api/client';
 import { errText } from '../components/common';
-import { t } from '../i18n';
+import { t, tr } from '../i18n';
 import { type Validation, type Verdict } from './api';
 import { canCompare, initialSelection, letter, ordered, setReference, toggle, type Selection } from './compareSelection';
 
@@ -21,8 +21,8 @@ const CLS = { direct: 'ok', conditional: 'warn', incompatible: 'bad' };
 const reproText = (c: Candidate) => {
   const r = c.reproducibility;
   if (!r.applicable) return <span className="muted">{c.relation.startsWith('Controlled variant') ? t('ev.na.variant') : c.relation.startsWith('Extension') ? t('ev.na.extension') : t('ev.na.other')}</span>;
-  if (r.reproduced == null) return <span className="muted">re-execution not analysed yet</span>;
-  return r.reproduced ? <b className="ok-text">{t('ev.reproduced')}: {r.cells} of {r.cells} results equal</b> : <b className="bad-text">{r.different} of {r.cells} results differ</b>;
+  if (r.reproduced == null) return <span className="muted">{tr('re-execution not analysed yet')}</span>;
+  return r.reproduced ? <b className="ok-text">{t('ev.reproduced')}: {tr('{n} of {m} results equal', { n: r.cells ?? '', m: r.cells ?? '' })}</b> : <b className="bad-text">{tr('{n} of {m} results differ', { n: r.different ?? '', m: r.cells ?? '' })}</b>;
 };
 
 /** Choose exactly the experiments to compare. The current experiment is listed first, ticked, and can be unticked;
@@ -53,51 +53,51 @@ export function ComparePicker({ current, already = [], reference, onClose, onCom
   const title = (id: string) => id === current ? data?.a.title ?? id : data?.candidates.find((c) => c.campaign_id === id)?.title ?? id;
   const n = sel.ids.length;
   const comparable = visible.filter((c) => c.overall !== 'incompatible').length;
-  const refRadio = (id: string) => sel.ids.includes(id) && <label className="row small refpick" title="Deltas are computed against the reference">
-    <input type="radio" name="reference" checked={sel.reference === id} onChange={() => setSel(setReference(sel, id))} aria-label={`use ${title(id)} as reference`} />Reference</label>;
-  return <div className="overlay" role="dialog" aria-label="compare experiments" onClick={onClose}>
+  const refRadio = (id: string) => sel.ids.includes(id) && <label className="row small refpick" title={tr('Deltas are computed against the reference')}>
+    <input type="radio" name="reference" checked={sel.reference === id} onChange={() => setSel(setReference(sel, id))} aria-label={tr('use {title} as reference', { title: title(id) })} />{tr('Reference')}</label>;
+  return <div className="overlay" role="dialog" aria-label={tr('compare experiments')} onClick={onClose}>
     <div className="drawer wide picker-drawer" onClick={(e) => e.stopPropagation()}>
       <div className="row gap drawer-head"><div className="grow"><h2>{t('cmp.with')}</h2><div className="small muted">{t('cmp.pick')}</div></div>
-        {onMethods && <button className="btn sm" onClick={onMethods} title="Compare the algorithms of this experiment on its own frozen scenarios"><ListChecks size={14} /> Compare methods in this experiment</button>}
-        <button className="btn icon ghost" aria-label="close" onClick={onClose}><X size={16} /></button></div>
+        {onMethods && <button className="btn sm" onClick={onMethods} title={tr('Compare the algorithms of this experiment on its own frozen scenarios')}><ListChecks size={14} /> {tr('Compare methods in this experiment')}</button>}
+        <button className="btn icon ghost" aria-label={tr('close')} onClick={onClose}><X size={16} /></button></div>
       {err && <p className="note warn" role="alert">{err}</p>}
-      {!data && !err && <p className="muted small">Checking comparability…</p>}
+      {!data && !err && <p className="muted small">{tr('Checking comparability…')}</p>}
       {data && <>
         <div className="row gap small wrap">
-          <span className="strong">Comparability with {letterOf(sel, current) ?? 'the current experiment'}</span><span className="badge ok">{ICON.direct} Direct {data.counts.direct}</span><span className="badge warn">{ICON.conditional} With conditions {data.counts.conditional}</span>
+          <span className="strong">{tr('Comparability with {x}', { x: letterOf(sel, current) ?? tr('the current experiment') })}</span><span className="badge ok">{ICON.direct} {tr('Direct')} {data.counts.direct}</span><span className="badge warn">{ICON.conditional} {tr('With conditions')} {data.counts.conditional}</span>
           <span className="grow" />
           {nIncompatible > 0 && <label className="row small"><input type="checkbox" checked={showIncompatible} onChange={(e) => setShowIncompatible(e.target.checked)} /> {t('cmp.showIncompatible', { n: nIncompatible })}</label>}
           <HiddenFilter n={data.hidden} on={showHidden} setOn={setShowHidden} />
         </div>
-        <div className="evlegend"><span><ShieldCheck size={13} /><b>Validation</b> each solution checked by the validator</span><span><RotateCcw size={13} /><b>Reproducibility</b> same results when re-executed</span><span><Scale size={13} /><b>Comparability</b> whether the numbers may be compared</span></div>
+        <div className="evlegend"><span><ShieldCheck size={13} /><b>{tr('Validation')}</b> {tr('each solution checked by the validator')}</span><span><RotateCcw size={13} /><b>{tr('Reproducibility')}</b> {tr('same results when re-executed')}</span><span><Scale size={13} /><b>{tr('Comparability')}</b> {tr('whether the numbers may be compared')}</span></div>
         <div className="cands-scroll">
-          <section className="cands"><h4>This experiment</h4>
+          <section className="cands"><h4>{tr('This experiment')}</h4>
             <div className={`cand ${sel.ids.includes(current) ? 'sel' : ''}`}>
               <div className="row gap top"><label className="row gap top grow"><input type="checkbox" aria-label={data.a.title} checked={sel.ids.includes(current)} onChange={() => setSel(toggle(sel, current))} />
-                <span className="grow"><b>{data.a.title}</b><span className="small muted block">the experiment you opened{letterOf(sel, current) ? ` · column ${letterOf(sel, current)}` : ' · not in the comparison'}</span></span></label>{refRadio(current)}</div>
-              <div className="ev"><span className="evk"><ShieldCheck size={13} />Validation</span><span>{data.a.validation.runs ? <><b>{data.a.validation.accepted} of {data.a.validation.runs}</b> runs accepted</> : <span className="muted">not run</span>}</span></div>
+                <span className="grow"><b>{data.a.title}</b><span className="small muted block">{tr('the experiment you opened')}{letterOf(sel, current) ? ` · ${tr('column {x}', { x: letterOf(sel, current) ?? '' })}` : ` · ${tr('not in the comparison')}`}</span></span></label>{refRadio(current)}</div>
+              <div className="ev"><span className="evk"><ShieldCheck size={13} />{tr('Validation')}</span><span>{data.a.validation.runs ? <><b>{tr('{a} of {n}', { a: data.a.validation.accepted, n: data.a.validation.runs })}</b> {tr('runs accepted')}</> : <span className="muted">{tr('not run')}</span>}</span></div>
             </div></section>
-          {comparable === 0 && <div className="note empty-compare" role="status"><b>No comparable experiment found.</b>
-            <div className="row gap wrap">{onMethods && <button className="btn sm primary" onClick={onMethods}><ListChecks size={14} /> Compare methods in this experiment</button>}
-              {onAddMethod && <button className="btn sm" onClick={onAddMethod}><Plus size={14} /> Run another method on the same scenario</button>}
-              {onReproduce && <button className="btn sm" onClick={onReproduce}><RotateCcw size={14} /> Reproduce this experiment</button>}</div></div>}
+          {comparable === 0 && <div className="note empty-compare" role="status"><b>{tr('No comparable experiment found.')}</b>
+            <div className="row gap wrap">{onMethods && <button className="btn sm primary" onClick={onMethods}><ListChecks size={14} /> {tr('Compare methods in this experiment')}</button>}
+              {onAddMethod && <button className="btn sm" onClick={onAddMethod}><Plus size={14} /> {tr('Run another method on the same scenario')}</button>}
+              {onReproduce && <button className="btn sm" onClick={onReproduce}><RotateCcw size={14} /> {tr('Reproduce this experiment')}</button>}</div></div>}
           {comparable > 0 && groups.length === 0 && <p className="muted">{t('cmp.none')}</p>}
-          {groups.map(([g, xs]) => <section key={g} className="cands"><h4>{g}</h4>
+          {groups.map(([g, xs]) => <section key={g} className="cands"><h4>{tr(g)}</h4>
           {xs.map((c) => { const dis = c.overall === 'incompatible' && !sel.ids.includes(c.campaign_id); const on = sel.ids.includes(c.campaign_id); return <div key={c.campaign_id} className={`cand ${on ? 'sel' : ''} ${dis ? 'dim' : ''}`}>
             <div className="row gap top"><label className="row gap top grow"><input type="checkbox" aria-label={c.title} disabled={dis} checked={on} onChange={() => setSel(toggle(sel, c.campaign_id))} />
-              <span className="grow"><b>{c.title}</b><span className="small muted block">{c.category} · {c.owner_display} · {c.methods.length} method{c.methods.length === 1 ? '' : 's'}{c.hidden ? ' · hidden' : ''}{on ? ` · column ${letterOf(sel, c.campaign_id)}` : ''}</span></span></label>{refRadio(c.campaign_id)}</div>
+              <span className="grow"><b>{c.title}</b><span className="small muted block">{tr(c.category)} · {c.owner_display} · {c.methods.length === 1 ? tr('{n} method', { n: 1 }) : tr('{n} methods', { n: c.methods.length })}{c.hidden ? ` · ${tr('hidden')}` : ''}{on ? ` · ${tr('column {x}', { x: letterOf(sel, c.campaign_id) ?? '' })}` : ''}</span></span></label>{refRadio(c.campaign_id)}</div>
             <div className="ev">
-              <span className="evk"><ShieldCheck size={13} />Validation</span><span>{c.validation.runs ? <><b>{c.validation.accepted} of {c.validation.runs}</b> runs accepted</> : <span className="muted">not run</span>}</span>
-              <span className="evk"><RotateCcw size={13} />Reproducibility</span><span>{reproText(c)}</span>
-              <span className="evk"><Scale size={13} />Comparability</span><span className="row gap wrap">
-                <span className={`badge ${CLS[c.quality]}`}>{ICON[c.quality]}Results</span><span className={`badge ${CLS[c.runtime]}`}>{ICON[c.runtime]}Runtime</span>
+              <span className="evk"><ShieldCheck size={13} />{tr('Validation')}</span><span>{c.validation.runs ? <><b>{tr('{a} of {n}', { a: c.validation.accepted, n: c.validation.runs })}</b> {tr('runs accepted')}</> : <span className="muted">{tr('not run')}</span>}</span>
+              <span className="evk"><RotateCcw size={13} />{tr('Reproducibility')}</span><span>{reproText(c)}</span>
+              <span className="evk"><Scale size={13} />{tr('Comparability')}</span><span className="row gap wrap">
+                <span className={`badge ${CLS[c.quality]}`}>{ICON[c.quality]}{tr('Results')}</span><span className={`badge ${CLS[c.runtime]}`}>{ICON[c.runtime]}{tr('Runtime')}</span>
                 {c.emissions && <span className={`badge ${CLS[c.emissions]}`}>{ICON[c.emissions]}CO₂</span>}
                 {c.reasons.length > 0 && <button className="btn link small" type="button" aria-expanded={why === c.campaign_id} onClick={() => setWhy(why === c.campaign_id ? null : c.campaign_id)}>{t('ev.why')}</button>}</span>
             </div>
-            {why === c.campaign_id && <ul className="note small reasons">{c.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
+            {why === c.campaign_id && <ul className="note small reasons">{c.reasons.map((r) => <li key={r}>{tr(r)}</li>)}</ul>}
           </div>; })}</section>)}</div>
-        <div className="row gap drawer-foot"><span className="small muted grow" aria-live="polite">{n} selected{n ? ` · reference ${letterOf(sel, sel.reference)}: ${title(sel.reference)}` : ''}{n === 1 ? ' · tick at least one more' : ''}</span>
-          <button className="btn" onClick={onClose}>Cancel</button>
+        <div className="row gap drawer-foot"><span className="small muted grow" aria-live="polite">{tr('{n} selected', { n })}{n ? ` · ${tr('reference {x}: {title}', { x: letterOf(sel, sel.reference) ?? '', title: title(sel.reference) })}` : ''}{n === 1 ? ` · ${tr('tick at least one more')}` : ''}</span>
+          <button className="btn" onClick={onClose}>{tr('Cancel')}</button>
           <button className="btn primary" disabled={!canCompare(sel)} onClick={() => onCompare(sel)}><Columns2 size={14} /> {t('cmp.selected')} ({n})</button></div>
       </>}
     </div>

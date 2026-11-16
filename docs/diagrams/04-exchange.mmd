@@ -1,0 +1,20 @@
+sequenceDiagram
+  participant A as Researcher A
+  participant IA as Workspace of A
+  participant IB as Workspace of B
+  participant B as Researcher B
+  A->>IA: Run methods on frozen scenarios
+  IA-->>A: Validated results
+  A->>IA: Lock and export
+  IA-->>A: One bundle file and its SHA-256
+  A->>B: Send the bundle and the SHA-256
+  B->>IB: Import a bundle file
+  IB-->>B: Inspection report, nothing stored yet
+  B->>IB: Import experiment
+  IB-->>B: Imported, integrity verified
+  B->>IB: Run again
+  IB-->>B: Reproduced or not, cell by cell
+  B->>IB: Add a method and run
+  IB-->>B: Extension on the same frozen scenarios
+  B->>IB: Compare, then export the extension
+  B->>A: Send the extended bundle

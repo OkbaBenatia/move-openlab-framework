@@ -1,0 +1,50 @@
+{
+ "title": "Montbéliard demo, sample 1",
+ "filename": "sample_scenario.zip",
+ "format": "move-openlab-scenario/1",
+ "problem_id": "public-ride-matching",
+ "instance_id": "demo-sample-1-a4d13d15",
+ "instance_hash": "a6e81c72fe6e853ef3f329596a8871b4d485bc4ed9bea73591a0792b5910713f",
+ "drivers": 20,
+ "riders": 30,
+ "pairs": 54,
+ "network_id": "2858421165cd47486a509d26",
+ "composition": "instance",
+ "geometry": true,
+ "created_at": "2026-11-16T00:00:00+00:00",
+ "licences": [
+  {
+   "licence": {
+    "id": "fr-lo",
+    "name": "Licence Ouverte / Open Licence (Etalab)",
+    "url": "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0/"
+   },
+   "statement": "Registre de Preuve de Covoiturage, data.gouv.fr, release 2026-10 (updated 2026-11-07), Licence Ouverte / Open Licence (Etalab)",
+   "subject": "participants"
+  },
+  {
+   "licence": {
+    "attribution": "© OpenStreetMap contributors",
+    "copyright_url": "https://www.openstreetmap.org/copyright",
+    "id": "ODbL-1.0",
+    "name": "Open Database License 1.0",
+    "url": "https://opendatacommons.org/licenses/odbl/1-0/"
+   },
+   "statement": "© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)",
+   "subject": "road network, travel times and route geometry"
+  }
+ ],
+ "source": "the Montbéliard demonstration's frozen baseline scenario, sample 1",
+ "composition_check": {
+  "composition_digest_prefix": "a4d13d15",
+  "instance_id": "demo-sample-1-a4d13d15",
+  "statement": "the composition recovered from the instance has the SHA-256 prefix the demonstration builder put in the instance id (scripts/build_demo.py): it is the composition used",
+  "rebuilt_on_network": {
+   "network_id": "2858421165cd47486a509d26",
+   "identical": true
+  }
+ },
+ "packed_sha256": "5be2218bcbb52cb85758b365eb30ac9e3f9c9bf050a625addf1a7ff4a83cfd74",
+ "packed_bytes": 274781,
+ "manifest_sha256": "f89cbe94c946da305b71b2450b775bb34b578b2832f44d5dee9b2ce0c831a922"
+}

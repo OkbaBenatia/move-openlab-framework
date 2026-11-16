@@ -16,7 +16,7 @@ validator's figures are shown. What your method reports about itself (`declared`
 ```
 
 ```text
-created plugins/my_greedy_matching/plugin.py and plugins/my_greedy_matching/test_plugin.py
+created plugins/my_greedy_matching/plugin.py, plugins/my_greedy_matching/test_plugin.py and plugins/my_greedy_matching/README.md
 next: edit solve(), then  move-openlab method check plugins/my_greedy_matching --bundle <experiment bundle>
 ```
 
@@ -98,9 +98,30 @@ proven optimum — a heuristic never claims one. The same figures are asserted b
 ## 5. Register it in the web interface
 
 Plugins are off unless the operator approves a directory; `./start-local.sh` approves `plugins/` and runs them in
-the verified sandbox. In the Workspace: **+ Add method → Register my method → My Greedy Matching → Register**.
+the verified sandbox. In the Workspace: **+ Add method → Register my method → My Greedy Matching → Register** (it is
+listed under *Ready-made examples*; *Details → Check compatibility* first shows the static check, nothing executed).
 Registration pins the SHA-256 of `plugin.py` and repeats the sandboxed self-test; a modified file is refused until
 it is registered again (under a new version).
+
+### Without the command line: Create from template
+
+Everything above can be done from the web interface, with the same template and the same checks:
+
+1. **+ Add method → Create from template**; the problem is the open experiment's (a selector appears when several
+   are installed).
+2. Fill in *Method name* (`my_greedy_matching`), *Display name*, *Author*, *Kind* and a *Short description*.
+3. **Generate the template (.zip)** downloads `my_greedy_matching.zip` with `plugin.py`, `test_plugin.py` and
+   `README.md`; the screen shows the instance fields and the decision format of the problem.
+4. Implement `solve(instance, config)` in `plugin.py` (the platform does not write it for you), optionally test it
+   locally, then zip the directory again without caches (`zip -r my_greedy_matching.zip my_greedy_matching -x
+   '*__pycache__*'`).
+5. **Upload the completed plug-in (.zip)**: the screen shows *ZIP checked*, *Metadata*, *Not registered yet* and
+   *Self-test in the sandbox*, each ok or failed with the reason. Then **Register**, **Run with this method** and
+   **Compare**, as below. The upload stays in your workspace only and runs only in the verified sandbox.
+
+Each step shows its command-line equivalent under *Developer details*. The shipped examples (*Ready-made examples* in
+*Register my method*) need no upload: `nearest_pickup` and `my_greedy_matching` register and run on the public
+Montbéliard demonstration straight away, with no private code, data or commercial solver.
 
 ## 6. Run it on the Montbéliard experiment and compare
 
@@ -110,9 +131,9 @@ it is registered again (under a new version).
    and press **Run added methods**): an *extension* experiment (*Montbéliard Demo — Extension 1 (My Greedy Matching)*)
    runs the new method on the same frozen scenarios and shows it with the original methods; the original record is
    unchanged.
-3. When it finishes, every run shows the validator's verdict; **Compare methods** puts My Greedy Matching, Exact and
-   Greedy side by side (results, runtime, CO₂, custom metrics, charts); **Compare** puts the extension beside another
-   experiment, each claim with its comparability verdict.
+3. When it finishes, every run shows the validator's verdict; **Compare** opens on its *Methods* tab and puts My
+   Greedy Matching, Exact and Greedy side by side (results, runtime, CO₂, custom metrics, charts, maps); its
+   *Experiments* tab puts the extension beside another experiment, each claim with its comparability verdict.
 
 The figures obtained this way in the browser acceptance run are in the review package (`reports/`), with
 screenshots; they are recomputed from validated decisions only.

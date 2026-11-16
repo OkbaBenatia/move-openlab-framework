@@ -1,6 +1,8 @@
 """Developer workflow for a new method: create it from the template, then check it the way the platform will run it.
 
-``new_method``   writes ``<dest>/<name>/plugin.py`` and ``test_plugin.py`` for a problem.
+``new_method``   writes ``<dest>/<name>/plugin.py``, ``test_plugin.py`` and ``README.md`` for a problem.
+``template_zip`` the same files as a ZIP (``<name>/...``) for the web interface's "Create from template" — one
+                 template, one rendering, shared with the CLI.
 ``check_method`` runs, in a throw-away installation and in order (stopping at the first failure):
     1. metadata  — read statically and checked against the problem (nothing executed);
     2. self-test — registration: one run on the problem's reserved self-test instance in the verified sandbox;
@@ -11,16 +13,18 @@ Each step reports ``ok`` and an actionable ``detail``. Nothing is written outsid
 """
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
 from string import Template
 
 from . import registry
 from .analysis.compare import compare
-from .methods import ContractError, check_metadata
+from .methods import KINDS, ContractError, check_metadata
 from .plugins import PLUGIN_FILE, read_plugin_metadata
 from .store import BenchError, Installation
 
@@ -33,9 +37,29 @@ def _doc(value) -> str:
     return str(value).replace("\\", "/").replace('"' * 3, "'" * 3)
 
 
-def new_method(name: str, problem_id: str, dest: Path, author: str = "") -> Path:
+def template_values(problem) -> dict:
+    """What a new method of ``problem`` receives and returns (shown by the CLI template and the web interface)."""
+    keys = [k for k in sorted(problem.selftest_instance()) if k not in ("instance_hash", "schema")]
+    return dict(problem_id=problem.problem_id, title=problem.title, objective_spec_id=problem.objective_spec_id,
+                instance_keys=keys, decisions=problem.decision_description or "the problem's decision list",
+                kinds=list(KINDS), version="0.1.0", entry_point="solve(instance, config)")
+
+
+def _text(value, what: str, limit: int) -> str:
+    v = " ".join(str(value or "").split())              # one line: no control characters, no newlines
+    if len(v) > limit:
+        raise ValueError(f"{what} must be at most {limit} characters")
+    return v
+
+
+def new_method(name: str, problem_id: str, dest: Path, author: str = "", display_name: str = "", kind: str = "heuristic",
+               description: str = "", shown_dir: str | None = None) -> Path:
+    """Create ``<dest>/<name>/`` from the template. ``shown_dir`` is how the generated files refer to the directory
+    (default: its real path; the web interface's ZIP uses the bare name)."""
     if not NAME.match(name):
         raise ValueError("name must be 3-41 characters: lowercase letters, digits, '_' and start with a letter")
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {KINDS}")
     try:
         problem = registry.get(problem_id)
     except registry.UnknownProblem:
@@ -43,18 +67,40 @@ def new_method(name: str, problem_id: str, dest: Path, author: str = "") -> Path
     d = Path(dest) / name
     if d.exists():
         raise ValueError(f"{d} already exists")
-    keys = ", ".join(k for k in sorted(problem.selftest_instance()) if k not in ("instance_hash", "schema"))
-    title = name.replace("_", " ").title()
+    tv = template_values(problem)
+    title = _text(display_name, "display name", 80) or name.replace("_", " ").title()
+    author = _text(author, "author", 80) or "Your name"
+    description = _text(description, "description", 300) or "Describe the rule your method follows."
+    shown = shown_dir if shown_dir is not None else str(d)
     lit = json.dumps                                  # a JSON string is a valid Python string literal
     values = dict(name=_doc(title), name_lit=lit(title), method_id_lit=lit(name.replace("_", "-")),
                   problem_id=_doc(problem_id), problem_id_lit=lit(problem_id),
-                  objective_lit=lit(problem.objective_spec_id), author_lit=lit(author or "Your name"),
-                  decisions=_doc(problem.decision_description or "the problem's decision list"),
-                  instance_keys=_doc(keys), test_file=_doc(d / "test_plugin.py"), plugin_dir=_doc(d))
+                  objective_lit=lit(problem.objective_spec_id), author_lit=lit(author), kind_lit=lit(kind),
+                  description_lit=lit(description), decisions=_doc(tv["decisions"]),
+                  instance_keys=_doc(", ".join(tv["instance_keys"])), test_file=_doc(f"{shown}/test_plugin.py"),
+                  plugin_dir=_doc(shown), dir_name=name)
     d.mkdir(parents=True)
-    for tmpl, out in (("plugin.py.tmpl", PLUGIN_FILE), ("test_plugin.py.tmpl", "test_plugin.py")):
+    for tmpl, out in (("plugin.py.tmpl", PLUGIN_FILE), ("test_plugin.py.tmpl", "test_plugin.py"), ("README.md.tmpl", "README.md")):
         (d / out).write_text(Template((TEMPLATES / tmpl).read_text()).substitute(values))
     return d
+
+
+TEMPLATE_FILES = (PLUGIN_FILE, "test_plugin.py", "README.md")
+
+
+def template_zip(name: str, problem_id: str, author: str = "", display_name: str = "", kind: str = "heuristic",
+                 description: str = "") -> bytes:
+    """The files of :func:`new_method` as a deterministic ZIP ``<name>/plugin.py``, ``<name>/test_plugin.py``,
+    ``<name>/README.md`` (the web interface's "Create from template"). Nothing is stored or executed."""
+    with tempfile.TemporaryDirectory(prefix="move-openlab-template-") as tmp:
+        d = new_method(name, problem_id, Path(tmp), author, display_name, kind, description, shown_dir=name)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for fn in TEMPLATE_FILES:
+                zi = zipfile.ZipInfo(f"{name}/{fn}", date_time=(2026, 1, 1, 0, 0, 0))
+                zi.external_attr, zi.compress_type = 0o100644 << 16, zipfile.ZIP_DEFLATED
+                z.writestr(zi, (d / fn).read_bytes())
+        return buf.getvalue()
 
 
 def _step(steps: list, name: str, ok: bool, detail, **extra) -> bool:

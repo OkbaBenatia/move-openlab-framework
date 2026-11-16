@@ -2,7 +2,37 @@
 // over another scenario set is never put beside the reference's. Run with `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ridersOf, sameScenarios, sampleHash, totalsComparable } from '../src/lab/scenarioMatch.ts';
+import { gapLabel, hasCap, participantsOf, ridersOf, sameScenarios, sampleHash, servedLabel, servedOf, totalsComparable } from '../src/lab/scenarioMatch.ts';
+
+test('a reference is called exact only when it is proven optimal in every scenario', () => {
+  const proven = { method_id: 'ref', kind: 'exact', proven_optimal: 3, scenarios: 3 };
+  const limited = { method_id: 'ref', kind: 'exact', proven_optimal: 61, scenarios: 78 };
+  const hybrid = { method_id: 'h', kind: 'hybrid', proven_optimal: 0, scenarios: 78 };
+  assert.equal(gapLabel([proven, hybrid]), 'Gap to the exact reference');
+  assert.equal(gapLabel([limited, hybrid], 'ref'), 'Objective difference vs reference (reference proven optimal 61/78)');
+  assert.equal(gapLabel([hybrid]), 'Gap to the exact reference');            // no reference row: unchanged wording
+});
+
+test('the served denominator is the problem\'s own when declared, else the riders', () => {
+  const own = { scenarios: [{ instance_hash: 'h1', riders: 4, served_of: 11 }, { instance_hash: 'h2', riders: 3, served_of: 9 }] };
+  const ride = { scenarios: [{ instance_hash: 'h1', riders: 4 }, { instance_hash: 'h2', riders: 3 }] };
+  assert.equal(ridersOf(own, 0), 11);
+  assert.equal(ridersOf(own, 'all'), 20);
+  assert.equal(ridersOf(ride, 'all'), 7);                  // ride matching unchanged
+  assert.equal(servedOf(own, 1), 9);
+  assert.equal(servedOf(ride, 'all'), 7);
+  assert.equal(servedOf(null, 'all'), null);
+});
+
+test('map, playback and served wording come from the problem\'s presentation', () => {
+  const ride = { problem: { presentation: { capabilities: ['map', 'playback'], participants: 'riders', served_label: 'Served riders' } } };
+  const other = { problem: { presentation: { capabilities: [], participants: 'requests', served_label: 'Served requests' } } };
+  assert.ok(hasCap(ride, 'map') && hasCap(ride, 'playback'));
+  assert.ok(!hasCap(other, 'map') && !hasCap(null, 'map'));
+  assert.equal(servedLabel(other), 'Served requests');
+  assert.equal(participantsOf(other), 'requests');
+  assert.equal(servedLabel({ problem: {} }), 'Served riders');   // no presentation: the ride-matching wording
+});
 
 const exp = (hs: string[]) => ({ scenarios: hs.map((h, i) => ({ instance_hash: h, riders: 10 + i })) });
 

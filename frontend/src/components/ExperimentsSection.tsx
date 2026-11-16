@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Plus, Puzzle, Upload } from 'lucide-react';
 import { call, type Json, type Problem } from '../api/client';
+import { tr } from '../i18n';
 import { Playback } from '../geo/Playback';
 import { CampaignView } from './CampaignView';
 import { Compare } from './Compare';
@@ -35,18 +36,18 @@ export function ExperimentsSection({ view, go, preset, clearPreset }: { view: st
   const arg = (p: string) => view.slice(p.length);
   return <div className="content">
     {problem && <section className="problem-head">
-      <div className="row gap"><h1>{problem.title} {problem.synthetic && <span className="badge warn">SYNTHETIC DATA</span>}</h1><span className="grow" />
-        {problems.length > 1 && <select aria-label="problem" value={pid} onChange={(e) => { setPid(e.target.value); go(''); }}>
-          {problems.map((p) => <option key={p.spec.problem_id} value={p.spec.problem_id}>{p.title}</option>)}</select>}</div>
-      <details className="small muted"><summary>About this problem</summary><p>{problem.description}</p>
-        <p className="mono">{problem.spec.problem_id} · objective {problem.spec.objective_spec_id} · validator {problem.validator_version}</p></details>
+      <div className="row gap"><h1>{tr(problem.title)} {problem.synthetic && <span className="badge warn">{tr('SYNTHETIC DATA')}</span>}</h1><span className="grow" />
+        {problems.length > 1 && <select aria-label={tr('problem')} value={pid} onChange={(e) => { setPid(e.target.value); go(''); }}>
+          {problems.map((p) => <option key={p.spec.problem_id} value={p.spec.problem_id}>{tr(p.title)}</option>)}</select>}</div>
+      <details className="small muted"><summary>{tr('About this problem')}</summary><p>{tr(problem.description)}</p>
+        <p className="mono">{problem.spec.problem_id} · {tr('objective')} {problem.spec.objective_spec_id} · {tr('validator')} {problem.validator_version}</p></details>
     </section>}
     <nav className="row gap actions">
-      {view && <button className="btn" onClick={() => go('')}><ArrowLeft size={13} /> Experiments</button>}
+      {view && <button className="btn" onClick={() => go('')}><ArrowLeft size={13} /> {tr('Experiments')}</button>}
       {!view && problem && <>
-        <button className="btn primary" onClick={() => go('new')}><Plus size={13} /> New campaign</button>
-        <button className="btn" onClick={() => go('import')}><Upload size={13} /> Import bundle</button>
-        <button className="btn" onClick={() => go('methods')}><Puzzle size={13} /> Methods &amp; extensions</button></>}
+        <button className="btn primary" onClick={() => go('new')}><Plus size={13} /> {tr('New campaign')}</button>
+        <button className="btn" onClick={() => go('import')}><Upload size={13} /> {tr('Import bundle')}</button>
+        <button className="btn" onClick={() => go('methods')}><Puzzle size={13} /> {tr('Methods & extensions')}</button></>}
     </nav>
     <ErrorNote text={err} />
     {problem && !view && <Workspace list={list} onOpen={(id) => go(`c:${id}`)} />}
@@ -59,12 +60,12 @@ export function ExperimentsSection({ view, go, preset, clearPreset }: { view: st
     {problem && view.startsWith('sem:') && <Semantic ids={arg('sem:')} problem={problem} setErr={setErr} />}
     {problem && view.startsWith('thr:') && <ThresholdReport id={arg('thr:')} problem={problem} setErr={setErr} />}
     {problem && view.startsWith('play:') && <PlaybackLoader id={arg('play:')} setErr={setErr} />}
-    {!problem && !err && <p className="muted">Loading…</p>}
+    {!problem && !err && <p className="muted">{tr('Loading…')}</p>}
   </div>;
 }
 
 function PlaybackLoader({ id, setErr }: { id: string; setErr: (s: string | null) => void }) {
   const [c, setC] = useState<Json | null>(null);
   useEffect(() => { call(`/campaigns/${id}`).then((r) => setC(r.campaign)).catch((e) => setErr(errText(e))); }, [id, setErr]);
-  return c ? <><h2>Route playback — {c.title}</h2><Playback campaign={c} setErr={setErr} /></> : null;
+  return c ? <><h2>{tr('Route playback — {title}', { title: c.title })}</h2><Playback campaign={c} setErr={setErr} /></> : null;
 }

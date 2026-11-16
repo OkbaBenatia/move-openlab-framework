@@ -207,7 +207,7 @@ await scenario(29, 'Import dropdown positioning', 'Open Import in the toolbar at
     const s2 = await shot('import-dropdown-mobile', 200);
     await p.key('Escape'); await p.size(W, H, DSF); await p.goto(`${BASE}/#/workspace/${demoBase}`); await waitWorkspace(); await sleep(2000);
     expect(wide && wide.items.every(Boolean) && wide.inViewport && /Import a bundle/.test(wide.focus), `wide ${JSON.stringify(wide)}`);
-    expect(/Try an imported/.test(f2) && !closed.open && closed.back === 'menu', `keyboard ${f2} ${JSON.stringify(closed)}`);
+    expect(/Try a sample/.test(f2) && !closed.open && closed.back === 'menu', `keyboard ${f2} ${JSON.stringify(closed)}`);
     expect(narrow && narrow.items.every(Boolean) && narrow.inViewport, `phone ${JSON.stringify(narrow)}`);
     F.import_menu = { wide, narrow };
     return { actual: `1440 px: menu ${wide.menu.join(',')} ${wide.overlapsExpand ? 'over' : 'clear of'} the expand control, items on top and clickable; keyboard focus moves and returns; 375 px: inside the viewport, items clickable.`, evidence: [s1, s2] };
@@ -468,6 +468,8 @@ await scenario(24, 'Run and validate the custom method', 'Tick My Greedy Matchin
   'An extension experiment runs the method on the same frozen scenarios in the sandbox; the validator accepts every solution; the baseline stays unchanged.',
   async () => {
     const cs0 = (await api(`/api/campaigns/${demoBase}`)).body;
+    // on frozen results the list of methods to run is closed until the researcher opens it
+    await p.eval(`document.querySelector('.lab-right details.run-methods:not([open]) > summary')?.click()`); await sleep(400);
     await clickCss('.lab-right input[aria-label="My Greedy Matching"]'); await sleep(400);
     await armJob();
     await p.click('Run added methods', '.labbar button');   // an added method: the run is an extension
@@ -498,7 +500,8 @@ await scenario(25, 'Compare it with built-in methods', 'Read the extension\'s re
   });
 
 // ---- comparisons ---------------------------------------------------------------------------------------------------
-const openPicker = async () => { await p.click('Compare', '.labbar button'); await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'comparison picker'); await sleep(600); };
+// one Compare entry: it opens the Methods tab when the experiment has several methods; experiments are chosen on the Experiments tab
+const openPicker = async () => { await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500); if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); } await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'comparison picker'); await sleep(600); };
 const tick = async (title) => {
   const ok = await p.eval(`(() => { const i = [...document.querySelectorAll('.picker-drawer input[type=checkbox]')].find((x) => x.getAttribute('aria-label') === ${JSON.stringify(title)} && !x.disabled); if (!i) return false; i.scrollIntoView({ block: 'center' }); i.click(); return true; })()`);
   expect(ok, `cannot tick ${title}`); await sleep(300);

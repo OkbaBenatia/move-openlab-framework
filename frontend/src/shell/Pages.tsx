@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Eye, EyeOff, KeyRound, LogOut, Moon, Play, Sigma, Sun } from 'lucide-react';
 import { api, call, post, type Json, type User } from '../api/client';
-import { errText } from '../components/common';
+import { bold, errText } from '../components/common';
 import { geo } from '../geo/api';
-import { t } from '../i18n';
+import { t, tr } from '../i18n';
 import { lab } from '../lab/api';
 import type { Section } from '../router';
 import type { Theme } from './Header';
@@ -13,16 +13,16 @@ export function AccountPage({ user, theme, setTheme }: { user: User; theme: Them
   const role = user.role === 'admin' ? t('role.admin') : user.role === 'student' ? t('role.student') : t('role.researcher');
   return <div className="col-page">
     <section className="card pad"><dl className="facts">
-      <dt>Name</dt><dd>{user.display}</dd><dt>Username</dt><dd className="mono">{user.username}</dd>
-      <dt>Role</dt><dd>{role}{user.role === 'researcher' ? (user.can_supervise ? ' · can supervise students' : '') : ''}</dd>
-      <dt>Session</dt><dd>until {new Date(user.expires_at * 1000).toLocaleString()}</dd></dl>
-      <div className="row gap"><button className="btn" onClick={() => window.location.assign('/change-password')}><KeyRound size={14} /> Change password</button>
+      <dt>{tr('Name')}</dt><dd>{user.display}</dd><dt>{tr('Username')}</dt><dd className="mono">{user.username}</dd>
+      <dt>{tr('Role')}</dt><dd>{role}{user.role === 'researcher' ? (user.can_supervise ? ` · ${tr('can supervise students')}` : '') : ''}</dd>
+      <dt>{tr('Session')}</dt><dd>{tr('until {date}', { date: new Date(user.expires_at * 1000).toLocaleString() })}</dd></dl>
+      <div className="row gap"><button className="btn" onClick={() => window.location.assign('/change-password')}><KeyRound size={14} /> {tr('Change password')}</button>
         <button className="btn" onClick={() => api.logout().finally(() => window.location.replace('/login'))}><LogOut size={14} /> {t('menu.signout')}</button></div></section>
     <section className="card pad"><h3>{t('menu.appearance')}</h3>
       <div className="seg" role="group" aria-label={t('menu.appearance')}>
         <button className={theme === 'light' ? 'on' : ''} aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><Sun size={14} />{t('menu.light')}</button>
         <button className={theme === 'dark' ? 'on' : ''} aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><Moon size={14} />{t('menu.dark')}</button></div>
-      <p className="small muted">Light is the default; your choice is kept for your account.</p></section>
+      <p className="small muted">{tr('Light is the default; your choice is kept for your account.')}</p></section>
   </div>;
 }
 
@@ -35,7 +35,7 @@ export function HiddenPage({ setErr }: { setErr: (s: string | null) => void }) {
     Promise.all([lab.state(), lab.experiments(), geo.areas(), geo.datasets(), geo.scenarios()]).then(([s, e, a, d, sc]) => {
       const n: Record<string, [string, string]> = {};
       // experiments with the same title (e.g. an earlier demonstration) are told apart by their creation date
-      e.experiments.forEach((x) => { n[x.campaign_id] = [t('lib.experiments'), `${x.title} · ${x.created_at.slice(0, 10)}${x.imported ? ' · imported' : ''}`]; });
+      e.experiments.forEach((x) => { const name = `${x.title} · ${x.created_at.slice(0, 10)}`; n[x.campaign_id] = [t('lib.experiments'), x.imported ? tr('{name} · imported', { name }) : name]; });
       a.areas.forEach((x: Json) => { n[x.area_id] = [t('lib.areas'), x.name]; });
       [...d.shared, ...d.mine].forEach((x: Json) => { n[x.dataset_key] = [t('lib.datasets'), x.name]; });
       sc.scenarios.forEach((x: Json) => { n[x.scenario_id] = [t('lib.scenarios'), x.name]; });
@@ -49,23 +49,22 @@ export function HiddenPage({ setErr }: { setErr: (s: string | null) => void }) {
   const gone = (ids ?? []).filter((id) => !names[id]);
   return <div className="col-page">
     <section className="card pad hidden-intro"><div className="row gap"><EyeOff size={18} className="muted" /><h3 className="grow">{t('hidden.purpose')}</h3></div>
-      <p className="small muted">Use the eye button next to an experiment, area, mobility dataset or scenario to hide it. Hidden items are left out of
-        the normal lists, of their counts and of the comparison candidates; their data, results and lineage stay untouched. Show again
-        puts an item back.</p></section>
-    {ids == null ? <p className="muted">Loading…</p> : !present.length && !gone.length ? <p className="muted">Nothing is hidden.</p> : <>
+      <p className="small muted">{tr('Use the eye button next to an experiment, area, mobility dataset or scenario to hide it. Hidden items are left out of the normal lists, of their counts and of the comparison candidates; their data, results and lineage stay untouched. Show again puts an item back.')}</p></section>
+    {ids == null ? <p className="muted">{tr('Loading…')}</p> : !present.length && !gone.length ? <p className="muted">{tr('Nothing is hidden.')}</p> : <>
       {kinds.map((k) => { const xs = present.filter((id) => names[id][0] === k); return xs.length > 0 && <section key={k} className="card table-card">
-        <div className="row gap card-head"><h3 className="grow">{k}</h3><span className="badge">{xs.length} hidden</span></div>
-        <table aria-label={`hidden ${k.toLowerCase()}`}><tbody>{xs.map((id) => <tr key={id}><td>{names[id][1]}</td>
-          <td className="right-cell"><button className="btn sm" onClick={() => save((ids ?? []).filter((x) => x !== id))}><Eye size={12} /> Show again</button></td></tr>)}</tbody></table></section>; })}
-      {gone.length > 0 && <section className="card pad"><p className="small muted">{gone.length} hidden {gone.length === 1 ? 'entry refers' : 'entries refer'} to records that are no longer in this workspace (for example a
-        replaced demonstration). Nothing else is affected.</p><button className="btn sm" onClick={() => save((ids ?? []).filter((x) => names[x]))}>Remove these entries from the list</button></section>}
+        <div className="row gap card-head"><h3 className="grow">{k}</h3><span className="badge">{tr('{n} hidden', { n: xs.length })}</span></div>
+        <table aria-label={tr('hidden {kind}', { kind: k.toLowerCase() })}><tbody>{xs.map((id) => <tr key={id}><td>{names[id][1]}</td>
+          <td className="right-cell"><button className="btn sm" onClick={() => save((ids ?? []).filter((x) => x !== id))}><Eye size={12} /> {tr('Show again')}</button></td></tr>)}</tbody></table></section>; })}
+      {gone.length > 0 && <section className="card pad"><p className="small muted">{gone.length === 1
+        ? tr('{n} hidden entry refers to records that are no longer in this workspace (for example a replaced demonstration). Nothing else is affected.', { n: gone.length })
+        : tr('{n} hidden entries refer to records that are no longer in this workspace (for example a replaced demonstration). Nothing else is affected.', { n: gone.length })}</p><button className="btn sm" onClick={() => save((ids ?? []).filter((x) => names[x]))}>{tr('Remove these entries from the list')}</button></section>}
     </>}
   </div>;
 }
 
 /** Benchmarks, kept apart from the geographic demonstration. The public synthetic benchmark (methodological, its own
  *  measured results) can be run here; every result is checked by the validator and, here, against an independent
- *  min-cost-flow oracle. The synthetic scientific study stays "Planned" until its protocol is published and reproduced. */
+ *  min-cost-flow oracle. */
 export function BenchmarksPage({ go }: { go: (s: Section, arg?: string) => void }) {
   const [mine, setMine] = useState<Json[]>([]);
   const [pb, setPb] = useState<Json | null>(null);
@@ -86,27 +85,27 @@ export function BenchmarksPage({ go }: { go: (s: Section, arg?: string) => void 
   const sizes = d ? Object.entries(d.generator.sizes as Record<string, Json>).map(([k, v]) => `${k} ${v.drivers}×${v.passengers}`).join(' · ') : '';
   return <div className="col-page">
     {err && <p className="note warn" role="alert">{err}</p>}
-    {d && <section className="card pad" aria-label="public synthetic benchmark"><div className="row gap"><Sigma size={18} /><h3 className="grow">{d.title}</h3><span className="badge ok">Available</span></div>
-      <p className="small">{d.description}</p>
+    {d && <section className="card pad" aria-label={tr('public synthetic benchmark')}><div className="row gap"><Sigma size={18} /><h3 className="grow">{tr(d.title)}</h3><span className="badge ok">{tr('Available')}</span></div>
+      <p className="small">{tr(d.description)}</p>
       <dl className="facts small">
-        <dt>Inputs</dt><dd>generator {d.generator.name} {d.generator.version} · sizes {sizes} (drivers × passengers) · seeds {d.generator.seeds[0]}–{d.generator.seeds[d.generator.seeds.length - 1]} · {d.generator.sizes ? Object.keys(d.generator.sizes).length * d.generator.seeds.length : ''} frozen scenarios</dd>
-        <dt>Objective</dt><dd>{d.objective.map((o: Json) => `${o.sense} ${o.metric}`).join(', then ')}</dd>
-        <dt>Methods</dt><dd>{d.methods.map((m: Json) => m.name ?? m.method_id).join(' · ')} · {d.repetitions} repetitions ({d.optional_plugin.note})</dd>
-        <dt>Checks</dt><dd>independent validator {d.validator} · {d.oracle}</dd>
-        <dt>Reproduce</dt><dd><span className="mono">{d.command}</span> · or export a run (one ZIP) and import it in another workspace, then Run again</dd>
+        <dt>{tr('Inputs')}</dt><dd>{tr('generator {name} {version} · sizes {sizes} (drivers × passengers) · seeds {first}–{last} · {n} frozen scenarios', { name: d.generator.name, version: d.generator.version, sizes, first: d.generator.seeds[0], last: d.generator.seeds[d.generator.seeds.length - 1], n: d.generator.sizes ? Object.keys(d.generator.sizes).length * d.generator.seeds.length : '' })}</dd>
+        <dt>{tr('Objective')}</dt><dd>{d.objective.map((o: Json) => `${o.sense} ${o.metric}`).join(tr(', then '))}</dd>
+        <dt>{tr('Methods')}</dt><dd>{d.methods.map((m: Json) => m.name ?? m.method_id).join(' · ')} · {tr('{n} repetitions', { n: d.repetitions })} ({tr(d.optional_plugin.note)})</dd>
+        <dt>{tr('Checks')}</dt><dd>{tr('independent validator {v}', { v: d.validator })} · {tr(d.oracle)}</dd>
+        <dt>{tr('Reproduce')}</dt><dd><span className="mono">{d.command}</span> · {tr('or export a run (one ZIP) and import it in another workspace, then Run again')}</dd>
       </dl>
-      <p className="tiny muted">{d.scope}</p>
-      <div className="row gap"><button className="btn primary" onClick={run} disabled={busy}><Play size={14} /> {busy ? 'Starting…' : 'Run the public benchmark'}</button>
-        <span className="small muted">about half a minute; opens in the Workspace with its progress</span></div>
-      {pb.runs.length > 0 && <div className="table-scroll"><table className="compact" aria-label="benchmark runs"><thead><tr><th>Run</th><th>Method</th><th className="n">Validated</th><th className="n">Equal to the oracle optimum</th><th /></tr></thead>
+      <p className="tiny muted">{tr(d.scope)}</p>
+      <div className="row gap"><button className="btn primary" onClick={run} disabled={busy}><Play size={14} /> {busy ? tr('Starting…') : tr('Run the public benchmark')}</button>
+        <span className="small muted">{tr('about half a minute; opens in the Workspace with its progress')}</span></div>
+      {pb.runs.length > 0 && <div className="table-scroll"><table className="compact" aria-label={tr('benchmark runs')}><thead><tr><th>{tr('Run')}</th><th>{tr('Method')}</th><th className="n">{tr('Validated')}</th><th className="n">{tr('Equal to the oracle optimum')}</th><th /></tr></thead>
         <tbody>{pb.runs.flatMap((r: Json) => r.methods.map((m: Json, i: number) => <tr key={r.campaign_id + m.method_id}>
-          <td>{i === 0 ? <><b>{r.title}</b><span className="tiny muted block">{r.created_at.slice(0, 16).replace('T', ' ')} · {r.scenarios} scenarios{r.locked ? ' · locked' : ''}</span></> : ''}</td>
-          <td>{m.method_id}</td><td className="n">{m.accepted}/{m.runs}</td><td className="n">{m.oracle_optimal}/{m.runs} runs</td>
-          <td>{i === 0 && <button className="btn sm" onClick={() => go('workspace', r.campaign_id)}>Open</button>}</td></tr>))}</tbody></table></div>}
+          <td>{i === 0 ? <><b>{r.title}</b><span className="tiny muted block">{r.created_at.slice(0, 16).replace('T', ' ')} · {tr('{n} scenarios', { n: r.scenarios })}{r.locked ? ` · ${tr('locked')}` : ''}</span></> : ''}</td>
+          <td>{m.method_id}</td><td className="n">{m.accepted}/{m.runs}</td><td className="n">{tr('{a}/{b} runs', { a: m.oracle_optimal, b: m.runs })}</td>
+          <td>{i === 0 && <button className="btn sm" onClick={() => go('workspace', r.campaign_id)}>{tr('Open')}</button>}</td></tr>))}</tbody></table></div>}
     </section>}
-    <section className="card pad planned"><div className="row gap"><Sigma size={18} /><h3 className="grow">Synthetic scientific benchmark (semantic comparability study)</h3><span className="tag-planned">Planned</span></div>
-      <p className="small">Not available yet. Its protocol and several components are not published; it will appear here once they are, and once it is independently reproduced — separate from the geographic demonstration and from the public benchmark above.</p></section>
-    {mine.length > 0 && <section className="card pad"><h3>Your experiments on problems without geography</h3>
-      <ul className="plain">{mine.map((x) => <li key={x.campaign_id}><button className="btn link" onClick={() => go('workspace', x.campaign_id)}>{x.title}</button> <span className="small muted">· {x.problem} · {x.validation.accepted}/{x.validation.runs} validated</span></li>)}</ul></section>}
+    <section className="card pad"><h3>{tr('Compare or Benchmark?')}</h3>
+      <p className="small">{bold(tr('*Compare* analyses the experiments and methods you select, on their matched scenarios. A *benchmark* is a repeatable, standardized evaluation: fixed scenarios, parameters, versions and aggregation, with an independent check — the same protocol for everyone who runs it.'))}</p></section>
+    {mine.length > 0 && <section className="card pad"><h3>{tr('Your experiments on problems without geography')}</h3>
+      <ul className="plain">{mine.map((x) => <li key={x.campaign_id}><button className="btn link" onClick={() => go('workspace', x.campaign_id)}>{x.title}</button> <span className="small muted">· {tr(x.problem)} · {tr('{a}/{b} validated', { a: x.validation.accepted, b: x.validation.runs })}</span></li>)}</ul></section>}
   </div>;
 }

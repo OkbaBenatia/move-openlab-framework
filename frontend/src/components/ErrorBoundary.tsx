@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { tr } from '../i18n';
 
 /** A rendering error in one view never blanks the application: the view shows the error and can be reloaded. */
 export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -8,7 +9,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
   componentDidUpdate(prev: { resetKey?: string }) { if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null }); }
   render() {
     if (!this.state.error) return this.props.children;
-    return <div className="content"><p className="note warn" role="alert">This view failed to render: {this.state.error.message}</p>
-      <button className="btn sm" onClick={() => window.location.reload()}>Reload</button></div>;
+    return <div className="content"><p className="note warn" role="alert">{tr('This view failed to render: {message}', { message: this.state.error.message })}</p>
+      <button className="btn sm" onClick={() => window.location.reload()}>{tr('Reload')}</button></div>;
   }
 }

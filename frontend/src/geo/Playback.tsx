@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import type { Json } from '../api/client';
 import { errText } from '../components/common';
+import { tr } from '../i18n';
 import { COLORS, LeafletMap, type MapLine, type MapPoint } from './LeafletMap';
 import { geo, hhmmss, type GeoConfig } from './api';
 
@@ -49,27 +50,27 @@ export function Playback({ campaign, setErr }: { campaign: Json; setErr: (s: str
     raf.current = requestAnimationFrame(step);
     return () => { if (raf.current) cancelAnimationFrame(raf.current); };
   }, [playing, plan, speed]);
-  const lines: MapLine[] = useMemo(() => (plan?.vehicles ?? []).map((v: Json, i: number) => ({ coords: v.path.map((p: number[]) => [p[0], p[1]]), color: v.rider ? PALETTE[i % PALETTE.length] : '#94a3b8', weight: v.rider ? 4 : 2, dash: v.rider ? undefined : '4 6', label: v.rider ? `${v.driver} carries ${v.rider} · detour ${dur(v.detour_s)}` : `${v.driver} alone` })), [plan]);
+  const lines: MapLine[] = useMemo(() => (plan?.vehicles ?? []).map((v: Json, i: number) => ({ coords: v.path.map((p: number[]) => [p[0], p[1]]), color: v.rider ? PALETTE[i % PALETTE.length] : '#94a3b8', weight: v.rider ? 4 : 2, dash: v.rider ? undefined : '4 6', label: v.rider ? tr('{driver} carries {rider} · detour {detour}', { driver: v.driver, rider: v.rider, detour: dur(v.detour_s) }) : tr('{driver} alone', { driver: v.driver }) })), [plan]);
   const points: MapPoint[] = useMemo(() => [
-    ...(plan?.vehicles ?? []).flatMap((v: Json) => v.stops.filter((s: Json) => s.type === 'pickup' || s.type === 'dropoff').map((s: Json) => ({ lat: s.at[0], lon: s.at[1], color: COLORS.rider, fill: s.type === 'pickup', radius: 5, label: `${s.rider} ${s.type} ${hhmmss(s.t)}` }))),
-    ...(plan?.unserved ?? []).map((u: Json) => ({ lat: u.at[0], lon: u.at[1], color: COLORS.unserved, radius: 6, label: `${u.rider} unserved` }))], [plan]);
+    ...(plan?.vehicles ?? []).flatMap((v: Json) => v.stops.filter((s: Json) => s.type === 'pickup' || s.type === 'dropoff').map((s: Json) => ({ lat: s.at[0], lon: s.at[1], color: COLORS.rider, fill: s.type === 'pickup', radius: 5, label: `${s.rider} ${tr(s.type)} ${hhmmss(s.t)}` }))),
+    ...(plan?.unserved ?? []).map((u: Json) => ({ lat: u.at[0], lon: u.at[1], color: COLORS.unserved, radius: 6, label: tr('{rider} unserved', { rider: u.rider }) }))], [plan]);
   const dynamic: MapPoint[] = (plan?.vehicles ?? []).flatMap((v: Json, i: number) => { const p = positionAt(v.path, t); return p ? [{ lat: p[0], lon: p[1], color: v.rider ? PALETTE[i % PALETTE.length] : '#64748b', label: v.driver }] : []; });
   const events = (plan?.vehicles ?? []).flatMap((v: Json) => v.stops.map((s: Json) => ({ ...s, driver: v.driver }))).sort((a: Json, b: Json) => a.t - b.t);
   const recent = events.filter((e: Json) => e.t <= t).slice(-6).reverse();
   if (!cfg) return null;
   return <div>
     <div className="row gap actions">
-      <label className="row">Run <select value={runId} onChange={(e) => setRunId(e.target.value)} aria-label="run">{runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.instance_id} · {r.method_id}</option>)}</select></label>
-      {plan && <><button className="btn" onClick={() => { if (t >= plan.t_max) setT(plan.t_min); setPlaying(!playing); }} aria-label={playing ? 'pause' : 'play'}>{playing ? <Pause size={13} /> : <Play size={13} />}</button>
-        <input type="range" min={plan.t_min} max={plan.t_max} step={1} value={t} onChange={(e) => { setPlaying(false); setT(Number(e.target.value)); }} aria-label="time" className="grow" />
+      <label className="row">{tr('Run')} <select value={runId} onChange={(e) => setRunId(e.target.value)} aria-label={tr('run')}>{runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.instance_id} · {r.method_id}</option>)}</select></label>
+      {plan && <><button className="btn" onClick={() => { if (t >= plan.t_max) setT(plan.t_min); setPlaying(!playing); }} aria-label={playing ? tr('pause') : tr('play')}>{playing ? <Pause size={13} /> : <Play size={13} />}</button>
+        <input type="range" min={plan.t_min} max={plan.t_max} step={1} value={t} onChange={(e) => { setPlaying(false); setT(Number(e.target.value)); }} aria-label={tr('time')} className="grow" />
         <span className="mono">{hhmmss(t)}</span>
-        <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="speed">{[10, 30, 60, 120].map((s) => <option key={s} value={s}>×{s}</option>)}</select></>}
+        <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label={tr('speed')}>{[10, 30, 60, 120].map((s) => <option key={s} value={s}>×{s}</option>)}</select></>}
     </div>
-    {plan && <p className="small muted">{plan.served}/{plan.riders} riders served · served riders {plan.metrics.served} · total detour {dur(plan.metrics.detour_s)} · geometry: {plan.geometry === 'road' ? 'road network routes' : 'straight segments (network not installed)'} · timing: {plan.timing}.</p>}
+    {plan && <p className="small muted">{tr('{served}/{riders} riders served', { served: plan.served, riders: plan.riders })} · {tr('served riders')} {plan.metrics.served} · {tr('total detour {detour}', { detour: dur(plan.metrics.detour_s) })} · {tr('geometry: {geometry}', { geometry: plan.geometry === 'road' ? tr('road network routes') : tr('straight segments (network not installed)') })} · {tr('timing: {timing}', { timing: tr(plan.timing ?? '') })}.</p>}
     <div className="split">
       <LeafletMap tileUrl={cfg.tile_url} attribution={cfg.tile_attribution} lines={lines} points={points} dynamic={dynamic} fitKey={plan ? `${plan.run_id}` : undefined} height={520} />
-      <div><h3>Events up to {hhmmss(t)}</h3>{recent.length === 0 ? <p className="muted small">No event yet.</p> :
-        <table aria-label="events"><tbody>{recent.map((e: Json, i: number) => <tr key={i}><td className="mono">{hhmmss(e.t)}</td><td>{e.driver}</td><td>{e.type}{e.rider ? ` ${e.rider}` : ''}</td></tr>)}</tbody></table>}</div>
+      <div><h3>{tr('Events up to {time}', { time: hhmmss(t) })}</h3>{recent.length === 0 ? <p className="muted small">{tr('No event yet.')}</p> :
+        <table aria-label={tr('events')}><tbody>{recent.map((e: Json, i: number) => <tr key={i}><td className="mono">{hhmmss(e.t)}</td><td>{e.driver}</td><td>{tr(e.type)}{e.rider ? ` ${e.rider}` : ''}</td></tr>)}</tbody></table>}</div>
     </div>
   </div>;
 }

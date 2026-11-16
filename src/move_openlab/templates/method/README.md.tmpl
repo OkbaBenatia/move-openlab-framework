@@ -1,0 +1,57 @@
+# $name
+
+A MOVE OpenLab method plug-in for the problem `$problem_id`, created from the framework's method template
+(the same template as `move-openlab method new`). The platform does not write your algorithm or train a model:
+you implement it yourself in `solve(instance, config)`.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `plugin.py` | `METADATA` (a plain literal, read without running the file) and `solve(instance, config)` |
+| `test_plugin.py` | a local test: runs `solve` on the problem's self-test instance and validates the result |
+| `README.md` | this file |
+
+## 1. Implement `solve(instance, config)` in `plugin.py`
+
+`instance` is a read-only view of one scenario. Its fields: $instance_keys.
+
+Return a dict whose `decisions` are: $decisions. Also return a `status` (`HEURISTIC` for a heuristic,
+`OPTIMAL` only if your method proves it). Optional: `declared` metrics (compared, never trusted), `metadata`,
+`diagnostics`.
+
+As generated, `solve` returns no decision: the result is valid but serves no one. It passes the self-test without
+being a method — replace its body before you register it.
+
+Change `version` in `METADATA` whenever you change the code: a registered method id and version is pinned to the
+SHA-256 of its code and is never replaced.
+
+## 2. Test it locally
+
+With MOVE OpenLab installed (`pip install -e .` in the framework repository), from the directory that contains
+`$dir_name/`:
+
+```
+python -m pytest $test_file
+```
+
+## 3. Check it the way the platform runs it
+
+Metadata check, then the sandboxed self-test, then — with an experiment bundle exported from the Workspace
+(Export) — a run on every frozen scenario of that experiment, validated independently and compared:
+
+```
+move-openlab method check $plugin_dir --bundle <experiment bundle>.zip
+```
+
+## 4. Upload the completed plug-in
+
+Zip the directory without caches (only `plugin.py` and small text files are accepted):
+
+```
+zip -r $dir_name.zip $dir_name -x '*__pycache__*'
+```
+
+then, in the Workspace: **+ Add method → Create from template → Upload the completed plug-in**. The upload is
+checked (archive, metadata), stored in your own workspace only, and runs only in the verified sandbox. Then
+**Register** (sandboxed self-test, code pinned), **Run with this method** and **Compare**.

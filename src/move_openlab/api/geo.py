@@ -10,10 +10,12 @@ import re
 import threading
 from collections import OrderedDict
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import registry
+from .. import scenario_packages as SP
 from ..datasets import DatasetStore
 from ..geo import playback as PB
 from ..geo.geometry import GeometryStore
@@ -21,6 +23,8 @@ from ..geo import scenarios as SC
 from ..geo.osm import PROFILES, NetworkStore
 from ..hashing import sha256
 from ..integrations import rpc
+from ..mobility import authoring as AU
+from ..problem import overrides
 from ..store import BenchError, problem_for
 from .experiments import _call, ws
 
@@ -118,6 +122,42 @@ def route(network_id: str, a: str, b: str, request: Request):
     return dict(r, snap_m=[da, db])
 
 
+# ---------------------------------------------------------------- participants placed or moved by hand
+def _area_bbox(request: Request, network_id: str):
+    """The rectangle of the area a road network was built for (None for networks stored without one)."""
+    try:
+        return (store(request).provenance(network_id).get("area") or {}).get("bbox")
+    except KeyError:
+        return None
+
+
+@router.get("/networks/{network_id}/snap")
+def snap(network_id: str, p: str, request: Request):
+    """The road node a point placed on the map stands for; refused outside the working area or too far from a road."""
+    net = network(request, network_id)
+    try:
+        r = AU.snap_point(net, *_pt(p), _area_bbox(request, network_id))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return dict(point=r["point"], snap_m=r["snap_m"])
+
+
+class ParticipantBody(BaseModel):
+    role: str = Field(pattern="^(driver|rider)$")
+    participant: dict
+
+
+@router.post("/networks/{network_id}/participant")
+def participant(network_id: str, body: ParticipantBody, request: Request):
+    """One driver or rider checked before it enters a scenario being edited: points snapped to the road network, direct
+    travel time, time window and optional latest arrival. Nothing is stored."""
+    net = network(request, network_id)
+    try:
+        return AU.resolve_participant(net, body.role, body.participant, _area_bbox(request, network_id))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
 # ---------------------------------------------------------------- scenario library
 def _build_and_save(request: Request, scenario: dict, parent: str | None = None) -> dict:
     w = ws(request)
@@ -156,6 +196,7 @@ class ComposeBody(BaseModel):
     vehicles: dict | None = None
     emissions: dict | None = None
     relocate_seed: int | None = Field(None, ge=0, le=1_000_000)    # manual: new places for the given participants
+    authoring: dict | None = None               # manual: participants and vehicles generated from these parameters
 
 
 class ScenarioBody(BaseModel):
@@ -188,6 +229,8 @@ def _compose(request: Request, b: ComposeBody) -> dict:
             inside, rep = _trips_inside(request, net, b.dataset_key)
             sc = SC.generate_empirical(inside, rep, b.network_id, b.name, b.n_drivers, b.n_riders, b.seed, b.start_s,
                                        b.end_s, b.params, b.date)
+        elif b.authoring is not None:            # "Randomize": seeded participants and vehicles (mobility.authoring)
+            sc = AU.generate(net, b.authoring, b.name)
         else:
             drivers, riders, prov = b.drivers or [], b.riders or [], dict(source="editor")
             if b.relocate_seed is not None:      # "Randomize locations": ids and time windows kept, places re-drawn
@@ -197,7 +240,7 @@ def _compose(request: Request, b: ComposeBody) -> dict:
                       drivers=drivers, riders=riders, provenance=prov)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
-    if b.vehicles:
+    if b.vehicles and not (b.authoring is not None and sc.get("vehicles")):   # a generated fleet is the scenario's
         sc["vehicles"] = b.vehicles
     if b.emissions:
         sc["emissions"] = b.emissions
@@ -230,7 +273,7 @@ def _edited_agents(base: dict, sc: dict) -> list[str]:
 def scenarios(request: Request):
     out = ws(request).scenarios(RIDE)
     for s in out:
-        s["category"] = "Edited" if s.get("parent") else "Generated"
+        s["category"] = "Edited" if s.get("parent") else "Imported" if s.get("source") == SP.IMPORTED else "Generated"
     return dict(scenarios=out)
 
 
@@ -242,7 +285,8 @@ def save_scenario(body: ScenarioBody, request: Request):
     prov: dict = dict(source="editor")
     # a generator, a dataset or randomized locations: recomputed here, so the recorded seed matches the saved places
     # (participants moved by hand afterwards are listed as edited)
-    if body.basis is not None and (body.basis.source != "manual" or body.basis.relocate_seed is not None):
+    if body.basis is not None and (body.basis.source != "manual" or body.basis.relocate_seed is not None
+                                   or body.basis.authoring is not None):
         base = _compose(request, body.basis)
         prov = dict(base["provenance"])
         edited = _edited_agents(base, body.scenario)
@@ -341,17 +385,83 @@ def instance(instance_hash: str, request: Request):
     return w.inst.get_instance(instance_hash)
 
 
+@router.get("/instances/{instance_hash}/participants")
+def participants(instance_hash: str, request: Request):
+    """Problem-specific properties of the participants and vehicles of a scenario (shown when a marker is clicked)."""
+    inst = instance(instance_hash, request)                 # the same workspace check as the instance itself
+    try:
+        prob = ws(request).problem(inst.get("problem_id") or RIDE)
+    except BenchError:
+        raise HTTPException(404, "instance not found in this workspace") from None
+    return dict(properties=prob.participant_properties(inst), authoring_note=prob.authoring_note)
+
+
+# ---------------------------------------------------------------- candidate reduction (read-only)
+@router.get("/candidates/{cid}/{run_id}")
+def candidates(cid: str, run_id: str, request: Request):
+    """Before / after view of the candidates a run's method removed before its exact solve (recorded data only)."""
+    w = ws(request)
+    c = _call(w.get, cid)
+    prob = _call(problem_for, c)
+    if not overrides(prob, "candidate_view"):
+        raise HTTPException(400, "this problem has no candidate-reduction view")
+    run = next((r for r in c["runs"] if r.get("run_id") == run_id), None)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    try:
+        return dict(prob.candidate_view(w.inst.get_instance(run["instance_hash"]), run), method_id=run["method_id"],
+                    accepted=run["accepted"], status=run.get("status_declared"))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+class PreviewBody(BaseModel):
+    campaign_id: str = Field(min_length=3, max_length=80)
+    instance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    method_id: str = Field(min_length=3, max_length=64)
+    method_config: dict = Field(default_factory=dict)
+
+
+@router.post("/candidates/preview")
+def candidates_preview(body: PreviewBody, request: Request):
+    """The candidate reduction a method of an experiment would apply to one of its scenarios with the given settings,
+    before any solve. The settings are checked against the method's schema first; nothing is solved or stored."""
+    w = ws(request)
+    c = _call(w.get, body.campaign_id)
+    prob = _call(problem_for, c)
+    if not overrides(prob, "candidate_preview"):
+        raise HTTPException(400, "this problem has no candidate-reduction preview")
+    if body.instance_hash not in c["scenario_set"]["instance_hashes"]:
+        raise HTTPException(404, "scenario not in this experiment")
+    ref = next((m for m in c["methods"] if m["method_id"] == body.method_id), None)
+    if ref is None:
+        raise HTTPException(404, "method not in this experiment")
+    cfg = _call(w.method_settings, prob, [ref], {ref["method_id"]: body.method_config})[ref["method_id"]]
+    try:
+        return dict(prob.candidate_preview(w.inst.get_instance(body.instance_hash), dict(method_id=ref["method_id"], version=ref["version"]), cfg),
+                    method_id=ref["method_id"], method_config=cfg)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
 # ---------------------------------------------------------------- playback
 @router.get("/playback/{cid}/{run_id}")
 def playback(cid: str, run_id: str, request: Request):
     w = ws(request)
     c = _call(w.get, cid)
-    if _call(problem_for, c).problem_id != RIDE:
-        raise HTTPException(400, "route playback is available for ride-matching campaigns")
+    prob = _call(problem_for, c)
+    if "playback" not in prob.presentation()["capabilities"]:
+        raise HTTPException(400, "route playback is not available for this problem")
     run = next((r for r in c["runs"] if r.get("run_id") == run_id), None)
     if run is None:
         raise HTTPException(404, "run not found")
     inst = w.inst.get_instance(run["instance_hash"])
+    meta = dict(run_id=run_id, method_id=run["method_id"], accepted=run["accepted"], metrics=run["validation"]["metrics"])
+    if overrides(prob, "playback"):                         # the problem draws its own routes
+        try:
+            return dict(prob.playback(inst, run["decisions"]), **meta)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
     nid = (inst.get("network") or {}).get("network_id")
     net = None
     if nid:
@@ -363,7 +473,61 @@ def playback(cid: str, run_id: str, request: Request):
     if net is None:                                         # replay geometry imported with a bundle, else straight lines
         legs = (GeometryStore(w.root).get(inst["instance_hash"]) or {}).get("legs")
     try:
-        return dict(PB.plan(inst, run["decisions"], net, legs), run_id=run_id, method_id=run["method_id"],
-                    accepted=run["accepted"], metrics=run["validation"]["metrics"])
+        return dict(PB.plan(inst, run["decisions"], net, legs), **meta)
     except BenchError as e:
         raise HTTPException(e.status, str(e)) from None
+
+
+# ---------------------------------------------------------------- scenario packages (see :mod:`..scenario_packages`)
+#
+#   GET  /api/geo/scenarios/{sid}/package          export a library scenario (move-openlab-scenario/1)
+#   GET  /api/geo/instances/{hash}/package         export an experiment's frozen scenario
+#   POST /api/geo/scenario-packages/inspect        verify a package completely; nothing is written
+#   POST /api/geo/scenario-packages/import         verify, then add the scenario to the account's library
+def _package_response(data: bytes, meta: dict) -> Response:
+    return Response(data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{meta["filename"]}"',
+                             "X-Package-SHA256": meta["package_sha256"]})
+
+
+@router.get("/scenarios/{sid}/package")
+def scenario_package(sid: str, request: Request):
+    w = ws(request)
+    rec = _call(w.scenario, sid)
+    return _package_response(*_call(w.export_scenario_package, rec["instance_hash"], rec))
+
+
+@router.get("/instances/{instance_hash}/package")
+def instance_package(instance_hash: str, request: Request):
+    instance(instance_hash, request)                        # same access rule as the instance itself
+    return _package_response(*_call(ws(request).export_scenario_package, instance_hash))
+
+
+async def _upload(file: UploadFile) -> bytes:
+    data = await file.read(SP.MAX_PACKAGE_BYTES + 1)
+    if len(data) > SP.MAX_PACKAGE_BYTES:
+        raise HTTPException(413, "scenario package too large")
+    return data
+
+
+def library_entry(w, problem_id: str, h: str) -> str | None:
+    """The account's library scenario of instance ``h`` (most recent), if any."""
+    return next((s["scenario_id"] for s in w.scenarios(problem_id) if s["instance_hash"] == h), None)
+
+
+def inspect_package(w, data: bytes) -> dict:
+    rep = _call(w.verify_scenario_package, data)
+    rep["in_library"] = library_entry(w, rep["problem_id"], rep["scenario"]["instance_hash"])
+    return rep
+
+
+@router.post("/scenario-packages/inspect")
+async def inspect_scenario_package(request: Request, file: UploadFile = File(...)):
+    data = await _upload(file)
+    return dict(inspect_package(ws(request), data), filename=file.filename)
+
+
+@router.post("/scenario-packages/import")
+async def import_scenario_package(request: Request, file: UploadFile = File(...)):
+    data = await _upload(file)
+    return _call(ws(request).import_scenario_package, data)

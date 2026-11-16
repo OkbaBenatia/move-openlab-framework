@@ -45,6 +45,27 @@ lost after registration, protected path inside a mounted root) and the administr
 - The instance and configuration given to a plugin are visible to it by design; do not put secrets in them.
 - The Python installation and framework code are readable (read-only) by plugins.
 
+### Uploaded plug-ins
+
+*+ Add method → Create from template → Upload the completed plug-in* (`POST /api/problems/{id}/methods/upload`)
+lets a researcher add a plug-in without operator access. Uploads create plug-ins **only in the uploader's own
+workspace, only in sandbox mode, and never executable outside the sandbox**:
+
+| Rule | Enforcement (server side) |
+|---|---|
+| Mode | plug-ins enabled and in `sandbox` mode; in `trusted-process` mode a researcher gets 403 and even an administrator is refused (uploads only ever run in the sandbox) |
+| Archive | at most 2 MB, 16 entries, 3 MB uncompressed (declared sizes and the bytes actually read are both bounded: zip-bomb guard); no absolute path, `..`, `.` or empty component, backslash, symbolic link, special file, encrypted entry, sub-directory or nested archive (by name and by content) |
+| Contents | exactly one plug-in directory `<name>/` (`name`: lowercase letters, digits, `_`); `plugin.py` (at most 1 MB) plus only `test_plugin.py`, `README`, `README.md`, `README.txt`, `LICENSE`, `LICENSE.txt`, `LICENSE.md`, `NOTICE`, `AUTHORS`, `CHANGELOG.md` (UTF-8 text, at most 256 KB each); anything else is refused with the reason |
+| Nothing executed | the archive is checked in memory before anything is written; `METADATA` is read statically (`ast.literal_eval`) and checked against the problem; a plug-in can never take a built-in method id |
+| Storage | `<data>/workspaces/<user>/plugins/<name>@<version>/` (directory 0700, files 0600), with `upload.json` (code SHA-256, upload SHA-256, files); never the approved directory; another account gets 404 and never sees it listed |
+| Identity | the same method id and version with other code is refused (bump the version); an identical re-upload changes nothing |
+| Registration and runs | the same sandboxed self-test as any plug-in; the registration records `origin: "uploaded"`, the code SHA-256 and the upload SHA-256; before every run the stored file is hashed again and the worker executes exactly the verified bytes; only that one file is bound read-only at `/sandbox/plugin.py` — the data directory it lives in stays invisible |
+| Audit | `plugin_uploaded`, `plugin_upload_refused` and `plugin_registered` are written to the audit log |
+
+`tests/test_plugin_onboarding.py` covers every refusal above, isolation between accounts, hash pinning and a probe
+plug-in, uploaded and run from a data directory outside `/tmp`, that cannot read the data directory, the credential
+store, its own stored copy, or another account's plug-in and campaign.
+
 ### Trusted-process mode
 
 A trusted-process plugin runs as the server user. It can read and modify everything that user can: the data
@@ -115,6 +136,7 @@ the process umask (`move_openlab.privatefiles`):
 |---|---|---|---|
 | `<data>/auth.sqlite3` (or `MOVE_OPENLAB_AUTH_DB`) | accounts, scrypt hashes | created empty with `0600` before SQLite opens it; SQLite gives its `-journal` / `-wal` / `-shm` files the database's mode | tightened when the store is opened (side files too) |
 | `<data>/audit.log` | who did what to which account | appended through a descriptor opened with `0600` | tightened at server start and at the next entry |
+| `<data>/problem-grants.json` | accounts granted a restricted problem | written to a `0600` temporary file, then renamed atomically | covered by the owner-only data directory (next paragraph) |
 | `<data>/dev-credentials.json` | development passwords (`scripts/dev_provision.py`, `start-local.sh`) | written to a `0600` temporary file, then renamed atomically | tightened at server start; replaced by a `0600` file when rewritten |
 
 Only the group and other permission bits are removed; contents are never touched. The rest of the data directory
@@ -144,13 +166,51 @@ change it at first sign-in: *New password* with a red / yellow / green strength 
 ## Administration
 
 Administrators create accounts of any role (a temporary password shown once, change forced at first sign-in), set
-roles' supervision rights and students' supervisors, reset passwords, deactivate and reactivate accounts, and read
-the audit log (`GET /api/admin/audit`). They cannot deactivate themselves or the last active administrator, and cannot
+roles' supervision rights and students' supervisors, reset passwords, deactivate and reactivate accounts, grant
+restricted problems to accounts (*Administration › Extensions*, below) and read the audit log (`GET /api/admin/audit`). They cannot deactivate themselves or the last active administrator, and cannot
 reset their own password from the web interface (they use *Change password*). Deactivation and resets end every open
 session of the account. Administrators have no access to other researchers' workspaces. Every action is appended to
 `<data>/audit.log` (actor, action, target, time; never a password). Responses carrying a temporary password are sent
 with `Cache-Control: no-store`. On the host, an operator can recover any account with
 `move-openlab users reset-password <username>`.
+
+## Restricted problems
+
+A problem package may declare itself restricted (`Problem.restricted = True`): unpublished research, licensed data,
+anything an installation must not show to every account. The application stays one application; the package is
+installed next to it and granted per account ([PRIVATE_EXTENSIONS.md](PRIVATE_EXTENSIONS.md)).
+
+| Property | Mechanism |
+|---|---|
+| Per-account grant | `<data>/problem-grants.json` maps a problem id to account names (`move_openlab.access`); written atomically with mode `0600`; it is installation data, never code |
+| No role implies access | the grant is a list of names. An administrator who is not listed manages the list and sees the package's identification (identifier, title, providing distribution, versions) and nothing else |
+| Enforced on the server | at the workspace (`Workspace.problem`, `allows`, `_visible`): listings omit a problem that is not granted; lookups, experiments, scenarios, result imports, exports and bundle imports answer *not found* |
+| Indistinguishable from absence | the answer for a restricted problem that is not granted is the answer for a problem that is not installed, with the same message |
+| Fail closed | a missing or unreadable grants file grants nothing; an invalid account name in a grant is refused; only existing accounts can be granted |
+| Administrator routes | `GET /api/admin/extensions` and `PUT /api/admin/extensions/{problem_id}/access` check the administrator role on every request; a grant on an open problem is refused |
+| Audited | every change of a grant (`set_problem_access`, with the resulting list) and every refused request for a restricted problem (`refused_restricted_problem`) is appended to the audit log |
+| Revocation | takes effect at the account's next request; its records stay on disk and are neither listed nor opened |
+| Interface | the *Private Research* entry is shown only to an account granted at least one restricted problem; it adds no access of its own |
+
+Problems shipped with the framework are open, and an installation without a restricted package has nothing to grant.
+
+**Evidence.** `tests/test_restricted_problems.py` marks the open synthetic problem as restricted for the duration of a
+test — no private package is needed — and checks that an account without a grant, including an administrator, cannot
+list the problem, read it, its methods or its metrics, create an experiment or import results; that a granted account
+can run, lock and export; that another account cannot read that experiment, its scenario or its bundle, nor import
+the bundle; that revocation hides the records without deleting them; and that grants and refusals are in the audit
+log.
+
+**Remaining risks.**
+- It is access control in the application, not encryption at rest: whoever can read the data directory on the host
+  can read the records. The data directory is owner-only ([Owner-only files](#owner-only-files)); protect the host and
+  its backups.
+- An exported bundle is a file outside the application's control. It imports only where the same package is installed
+  and granted, but its JSON content is readable by whoever holds it.
+- Plug-ins read the Python installation (read-only), which includes an installed restricted package and any data file
+  shipped in it. Plug-in files reach the approved directory only through the operator, and uploaded plug-ins run
+  only in the sandbox, which can still read the Python installation: on an installation with a restricted package
+  keep plug-ins disabled, or admit only files that have been read.
 
 ## External services and open data
 
@@ -188,10 +248,63 @@ minutes). MOVE OpenLab keeps no identifiers; a generated scenario resamples publ
 re-drawn departure times, so on a small area it can closely mirror the published records. That reuse is allowed by
 the licence; users remain bound by it and by personal-data law, which forbid re-identification.
 
+## Secrets and credentials
+
+The application needs one secret of its own, and no key for any external service: the services it contacts
+(Overpass, the place search, the open-data portal, the tile server) are used without credentials.
+
+| Item | Where it lives | Never |
+|---|---|---|
+| Session signing key (`SESSION_SECRET`) | the environment of the server process, set by the operator or the service manager; random at each start in development | in the repository, in a committed `.env` file, in a bundle, in a log |
+| Passwords | only as scrypt hashes in `<data>/auth.sqlite3` (mode `0600`) | stored or logged in clear |
+| Temporary passwords | shown once to the creator in a `no-store` response, or printed once by `move-openlab users add` / `reset-password` on the host | in the audit log |
+| Development passwords | `<data>/dev-credentials.json` (mode `0600`), written by `start-local.sh` and `scripts/dev_provision.py`, which refuses production mode | printed; outside the data directory |
+| Restricted-problem grants | `<data>/problem-grants.json` (mode `0600`) | in code or in the repository |
+| Screening terms of the confidentiality gate | a file outside the repository, or the CI secret `PUBLIC_DENYLIST` | in the repository, even hashed |
+
+What must never be committed: a data directory (`.openlab-data/` is ignored by Git), a credential store
+(`*.sqlite3`), a `.env` file other than an example, a private key or an access token, a password or its hash, a
+bundle or any other archive, unpublished data, a model file, and any name of a private study, dataset or person.
+
+How secrets are kept away from code that should not see them:
+
+- workers start with a minimal environment (`PATH`, hash seed, thread and locale settings): nothing of the server's
+  environment is inherited by a method;
+- the sandbox clears the environment and hides the server process, the data directory and the credential store;
+- `move-openlab serve` marks the server process non-dumpable, so other processes of the same user cannot read its
+  environment or memory;
+- bundles contain records only: no password, no session, no server configuration;
+- the instance and the configuration given to a method are visible to it by design — do not put secrets in them.
+
 ## Repository hygiene
 
-`scripts/check_public_safety.py` runs in the test suite and in CI: secret patterns, archives and large binaries,
-absolute home paths, global import-path changes and automated attribution trailers. Project-specific screening terms
-are never stored in the repository — not even hashed, since hashes of short words are reversible by dictionary
-search. They are supplied at run time with `--denylist FILE` or the `MOVE_OPENLAB_DENYLIST` environment variable (a CI
-secret); matches are reported by file and line without printing the term.
+`scripts/check_public_safety.py` runs in the test suite (`tests/test_public_safety.py`) and in CI. It scans every file
+Git would track — tracked and untracked, honouring `.gitignore` — for:
+
+| Check | Finds |
+|---|---|
+| Screened terms | project-specific terms, matched without case or accents. The list is never stored in the repository — not even hashed, since hashes of short words are reversible by dictionary search. It is supplied with `--denylist FILE` or the `MOVE_OPENLAB_DENYLIST` environment variable (a CI secret); matches are reported by file and line without printing the term |
+| Secrets | private keys, common cloud and code-hosting token formats, database URLs with credentials, password hashes, non-example `.env` files |
+| Archives and large binaries | archive and model file extensions, and any file above 1 MB |
+| Local paths | absolute home-directory paths |
+| Import-path changes | `sys.path` manipulation in Python sources |
+| Attribution trailers | automated co-author or tool-attribution lines |
+
+Exit status 0 means clean; 1 means findings, printed as `path:line: reason`.
+
+### Confidentiality checklist before a release
+
+- [ ] `python scripts/check_public_safety.py --require-denylist --denylist <path-outside-the-repository>/public_denylist.txt`
+      exits 0 on the release branch. `--require-denylist` fails when no screening list is supplied, so the release
+      check cannot pass on the generic checks alone.
+- [ ] The CI secret `PUBLIC_DENYLIST` is configured; pull requests from forks run the generic checks only.
+- [ ] No data directory, credential store, bundle, archive or model file is in the tree or in the history to be
+      published.
+- [ ] No restricted problem package, and no reference to one, is in the tree: the public tests run without any
+      private asset.
+- [ ] Documentation, screenshots, examples and commit messages name only the framework and its public
+      demonstrations; no local path, account name or port of a particular installation.
+- [ ] Example data is synthetic or openly licensed, with its licence stated
+      ([THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)).
+- [ ] The licence, the citation details and the repository visibility are decided by the maintainer
+      ([RELEASING.md](RELEASING.md)).

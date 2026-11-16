@@ -14,6 +14,7 @@ GROUP = "move_openlab.problems"
 _lock = threading.Lock()
 _problems: dict[str, Problem] | None = None
 _errors: dict[str, str] = {}
+_origins: dict[str, dict] = {}
 
 
 class UnknownProblem(KeyError):
@@ -34,6 +35,9 @@ def _load() -> dict[str, Problem]:
                     if p.problem_id in found:
                         raise ValueError(f"duplicate problem id {p.problem_id!r}")
                     found[p.problem_id] = p
+                    dist = getattr(ep, "dist", None)
+                    _origins[p.problem_id] = dict(distribution=getattr(dist, "name", None), version=getattr(dist, "version", None),
+                                                  entry_point=ep.name)
                 except Exception as e:                       # reported by problems_status(), never hidden
                     _errors[ep.name] = f"{type(e).__name__}: {e}"
             _problems = found
@@ -58,6 +62,13 @@ def get(problem_id: str) -> Problem:
 
 def all_problems() -> list[Problem]:
     return sorted(_load().values(), key=lambda p: p.problem_id)
+
+
+def origin(problem_id: str) -> dict:
+    """The installed distribution that provides a problem: ``{distribution, version, entry_point}`` (empty for a
+    problem registered explicitly)."""
+    _load()
+    return dict(_origins.get(problem_id, {}))
 
 
 def load_errors() -> dict[str, str]:

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Activity, ChevronDown, CircleHelp, Compass, Database, EyeOff, FlaskConical, GraduationCap, KeyRound, Layers, LayoutGrid, ListChecks,
-  LogOut, MapPin, Moon, Route, Shield, Sigma, Sun, UserRound } from 'lucide-react';
+  LockKeyhole, LogOut, MapPin, Moon, Shield, Sigma, Sun, UserRound } from 'lucide-react';
 import { api, call, type Json, type User } from '../api/client';
-import { t } from '../i18n';
+import { setRequestContext } from '../api/context';
+import { t, tr } from '../i18n';
+import { LanguageSwitch } from './Language';
 import type { Section } from '../router';
 
 export type Theme = 'light' | 'dark';
@@ -56,12 +58,12 @@ function Jobs({ go }: { go: (s: Section, arg?: string) => void }) {
     return () => { alive = false; clearTimeout(timer); };
   }, []);
   const running = jobs.filter((j) => j.state === 'running').length;
-  return <Menu label={t('nav.jobs')} align="right" wide button={<><Activity size={17} />{running > 0 && <span className="count" aria-label={`${running} running`}>{running}</span>}</>}>
+  return <Menu label={t('nav.jobs')} align="right" wide button={<><Activity size={17} />{running > 0 && <span className="count" aria-label={tr('{n} running', { n: running })}>{running}</span>}</>}>
     {(close) => <>
-      <div className="mh">{running ? `${running} running` : t('jobs.none')}</div>
+      <div className="mh">{running ? tr('{n} running', { n: running }) : t('jobs.none')}</div>
       {jobs.length > 0 && <div className="mh">{t('jobs.recent')}</div>}
       {jobs.map((j) => <div key={j.job_id} className="job-line"><span className={`dot ${j.state}`} /><span className="grow ellipsis">{j.title || j.kind}</span>
-        <span className="hint">{j.state === 'running' ? (j.total ? `${j.done}/${j.total}` : j.stage) : j.state}</span></div>)}
+        <span className="hint">{j.state === 'running' ? (j.total ? `${j.done}/${j.total}` : j.stage) : tr(j.state)}</span></div>)}
       <div className="msep" />
       <Item icon={<ListChecks size={15} />} onClick={() => { close(); go('jobs'); }}>{t('jobs.all')}</Item>
     </>}
@@ -70,26 +72,34 @@ function Jobs({ go }: { go: (s: Section, arg?: string) => void }) {
 
 /** Header: the approved full logo lockup, the Workspace, a compact Library for advanced management, jobs, help and the
  *  profile menu (account, students when allowed, administration for administrators, appearance, sign out). */
-export function Header({ user, section, go, onTour, theme, setTheme }: {
+export function Header({ user, section, go, onTour, theme, setTheme, research = false, inResearch = false, onWorkspace, onResearch }: {
   user: User; section: Section; go: (s: Section, arg?: string) => void; onTour: () => void; theme: Theme; setTheme: (t: Theme) => void;
+  /** The account is granted at least one restricted problem on this installation: show its section. */
+  research?: boolean;
+  /** The tab is in the private-research context: Workspace then asks before leaving it. */
+  inResearch?: boolean; onWorkspace?: () => void; onResearch?: () => void;
 }) {
+  const workspace = onWorkspace ?? (() => go('workspace'));
   const role = user.role === 'admin' ? t('role.admin') : user.role === 'student' ? t('role.student') : t('role.researcher');
   const lib: [string, ReactNode, Section, string, string][] = [
-    [t('lib.areas'), <MapPin size={15} />, 'data', 'areas', t('lib.areas.tip')], [t('lib.networks'), <Route size={15} />, 'data', 'areas', t('lib.networks.tip')],
-    [t('lib.datasets'), <Database size={15} />, 'data', 'datasets', t('lib.datasets.tip')], [t('lib.scenarios'), <Layers size={15} />, 'data', 'library', t('lib.scenarios.tip')],
+    // one Data setup entry: areas with their road networks, then mobility data (separate objects, one workflow)
+    [tr('Data setup'), <MapPin size={15} />, 'data', 'areas', tr('Geographic areas and their road networks, then mobility data: what scenarios are built from')],
+    [t('lib.scenarios'), <Layers size={15} />, 'data', 'library', t('lib.scenarios.tip')],
     [t('lib.experiments'), <FlaskConical size={15} />, 'experiments', '', t('lib.experiments.tip')], [t('lib.benchmarks'), <Sigma size={15} />, 'benchmarks', '', t('lib.benchmarks.tip')],
-    [t('lib.jobs'), <ListChecks size={15} />, 'jobs', '', t('lib.jobs.tip')], [t('lib.hidden'), <EyeOff size={15} />, 'hidden', '', t('lib.hidden.tip')]];
-  const inLibrary = ['data', 'experiments', 'benchmarks', 'jobs', 'hidden'].includes(section);
+    [t('lib.jobs'), <ListChecks size={15} />, 'jobs', '', t('lib.jobs.tip')]];
+  const inLibrary = ['data', 'experiments', 'benchmarks', 'jobs'].includes(section);
   return <header className="hdr">
-    <a className="brand" href="#/workspace" onClick={(e) => { e.preventDefault(); go('workspace'); }} aria-label="MOVE OpenLab — workspace">
+    <a className="brand" href="#/workspace" onClick={(e) => { e.preventDefault(); workspace(); }} aria-label={tr('MOVE OpenLab — workspace')}>
       <img className="lockup" src="/brand/move-openlab-logo-1024w-transparent.png" alt="MOVE OpenLab" width={139} height={40} /></a>
     <span className="hsep" />
-    <button className={`navbtn ${section === 'workspace' || section === 'compare' ? 'on' : ''}`} onClick={() => go('workspace')}><LayoutGrid size={16} />{t('nav.workspace')}</button>
+    <button className={`navbtn ${!inResearch && (section === 'workspace' || section === 'compare' || section === 'methods') ? 'on' : ''}`} onClick={workspace}><LayoutGrid size={16} />{t('nav.workspace')}</button>
     <Menu label={t('nav.library')} button={<span className={`navlabel ${inLibrary ? 'on' : ''}`}><Database size={16} />{t('nav.library')}<ChevronDown size={14} /></span>}>
       {(close) => <><div className="mtip">{t('lib.intro')}</div>
         {lib.map(([label, icon, s, arg, tip]) => <Item key={label} icon={icon} tip={tip} onClick={() => { close(); go(s, arg); }}>{label}</Item>)}</>}
     </Menu>
+    {research && <button className={`navbtn ${inResearch ? 'on' : ''}`} aria-pressed={inResearch} onClick={() => (onResearch ? onResearch() : go('research'))} title={tr('Restricted research extensions installed on this installation and granted to your account')}><LockKeyhole size={16} />{tr('Private Research')}</button>}
     <span className="grow" />
+    <LanguageSwitch />
     <Jobs go={go} />
     <Menu label={t('nav.help')} align="right" wide button={<CircleHelp size={17} />}>
       {(close) => <>
@@ -101,22 +111,23 @@ export function Header({ user, section, go, onTour, theme, setTheme }: {
           return <div key={k}><dt>{term}</dt><dd>{def}</dd></div>; })}</dl>
       </>}
     </Menu>
-    <Menu label="profile" align="right" button={<span className="userbtn"><span className="avatar">{initials(user.display || user.username)}</span>
+    <Menu label={tr('profile')} align="right" button={<span className="userbtn"><span className="avatar">{initials(user.display || user.username)}</span>
       <span className="who"><b>{user.display}</b><span>{role}</span></span><ChevronDown size={14} /></span>}>
       {(close) => <>
-        <div className="row gap menu-user"><span className="avatar lg">{initials(user.display || user.username)}</span><div><b>{user.display}</b><div className="small muted">{role}{user.can_supervise ? ' · can supervise students' : ''}</div></div></div>
+        <div className="row gap menu-user"><span className="avatar lg">{initials(user.display || user.username)}</span><div><b>{user.display}</b><div className="small muted">{role}{user.can_supervise ? ` · ${tr('can supervise students')}` : ''}</div></div></div>
         <div className="msep" />
         <Item icon={<UserRound size={15} />} active={section === 'account'} onClick={() => { close(); go('account'); }}>{t('menu.account')}</Item>
         {user.role === 'researcher' && user.can_supervise && <Item icon={<GraduationCap size={15} />} active={section === 'students'} onClick={() => { close(); go('students'); }}>{t('menu.students')}</Item>}
         {user.role === 'admin' && <Item icon={<Shield size={15} />} active={section === 'admin'} onClick={() => { close(); go('admin'); }}>{t('menu.admin')}</Item>}
+        <Item icon={<EyeOff size={15} />} active={section === 'hidden'} tip={t('lib.hidden.tip')} onClick={() => { close(); go('hidden'); }}>{t('lib.hidden')}</Item>
         <div className="msep" />
         <div className="mh">{t('menu.appearance')}</div>
         <div className="seg menu-seg" role="group" aria-label={t('menu.appearance')}>
           <button className={theme === 'light' ? 'on' : ''} aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><Sun size={14} />{t('menu.light')}</button>
           <button className={theme === 'dark' ? 'on' : ''} aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><Moon size={14} />{t('menu.dark')}</button></div>
         <div className="msep" />
-        <Item icon={<KeyRound size={15} />} onClick={() => { close(); window.location.assign('/change-password'); }}>Change password</Item>
-        <Item icon={<LogOut size={15} />} onClick={() => { close(); api.logout().finally(() => window.location.replace('/login')); }}>{t('menu.signout')}</Item>
+        <Item icon={<KeyRound size={15} />} onClick={() => { close(); window.location.assign('/change-password'); }}>{tr('Change password')}</Item>
+        <Item icon={<LogOut size={15} />} onClick={() => { close(); api.logout().finally(() => { setRequestContext('public'); window.location.replace('/login'); }); }}>{t('menu.signout')}</Item>
       </>}
     </Menu>
   </header>;

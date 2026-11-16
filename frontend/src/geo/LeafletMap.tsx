@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { tr } from '../i18n';
 
 /** A map point. `glyph` (a driver: one letter for the vehicle type, or '') draws a small square instead of a circle;
  *  `kind` names what the point is (driver, rider, pickup, dropoff, unserved…) for the legend and for tests. */
-export interface MapPoint { lat: number; lon: number; color: string; label?: string; radius?: number; fill?: boolean; glyph?: string; kind?: string }
+export interface MapPoint { lat: number; lon: number; color: string; label?: string; radius?: number; fill?: boolean; glyph?: string; kind?: string;
+  /** The participant or vehicle this marker stands for: a click reports it (`onPoint`). */
+  ref?: string;
+  /** The marker can be dragged to another place (reported by `onPointMove`; the owner accepts or refuses the move). */
+  drag?: boolean }
+/** What a map lends to its owner: the place under a point of the screen (null outside the map). */
+export interface MapApi { toLatLng: (clientX: number, clientY: number) => [number, number] | null }
 
 /** One letter per powertrain on driver markers (the legend spells them out). */
 export const POWERTRAIN_GLYPH: Record<string, string> = { ICE: 'C', HEV: 'H', PHEV: 'P', BEV: 'E' };
@@ -49,12 +56,18 @@ const handle = (cls: string) => L.divIcon({ className: `box-handle ${cls}`, icon
  *  (e.g. playback positions) are redrawn without moving the view. Tiles and attribution come from the server config. */
 export interface MapView { center: [number, number]; zoom: number }
 
-export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor, view, onView, restore }: {
+export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rects = [], dynamic = [], fitKey, onClick, height = 460, onBounds, box, coverage, focus, cursor, view, onView, restore, onPoint, onPointMove, api }: {
   tileUrl: string; attribution: string; points?: MapPoint[]; lines?: MapLine[]; rects?: MapRect[]; dynamic?: MapPoint[];
   fitKey?: string; onClick?: (lat: number, lon: number) => void; height?: number | string; onBounds?: (b: BBox) => void;
   box?: EditBox | null; coverage?: Coverage | null; focus?: { key: string; bbox: BBox } | null; cursor?: 'crosshair';
   /** Synchronised maps: `view` is applied when it differs from the current one; `onView` reports the user's moves. */
   view?: MapView | null; onView?: (v: MapView) => void;
+  /** A click on a marker that stands for a participant or vehicle (a point with `ref`). */
+  onPoint?: (p: MapPoint) => void;
+  /** A draggable marker (a point with `drag`) dropped at a new place. */
+  onPointMove?: (p: MapPoint, lat: number, lon: number) => void;
+  /** Filled with the map's helpers while the map exists. */
+  api?: { current: MapApi | null };
   /** A view to restore instead of fitting the layers (the researcher's own view of this subject, kept from a visit). */
   restore?: MapView | null;
 }) {
@@ -65,6 +78,12 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   const click = useRef(onClick);
   const bounds = useRef(onBounds);
   const viewCb = useRef(onView);
+  const pointCb = useRef(onPoint);
+  pointCb.current = onPoint;
+  const moveCb = useRef(onPointMove);
+  moveCb.current = onPointMove;
+  const apiRef = useRef(api);
+  apiRef.current = api;
   const restoreRef = useRef(restore);
   restoreRef.current = restore;
   const fitted = useRef<string | undefined>(undefined);
@@ -102,13 +121,31 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     };
     m.on('moveend', report);
     map.current = m;
+    const host = el.current;
+    if (apiRef.current) apiRef.current.current = { toLatLng: (x, y) => {
+      const r = host.getBoundingClientRect();
+      if (map.current !== m || x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+      const ll = m.containerPointToLatLng([x - r.left, y - r.top]);
+      return [Number(ll.lat.toFixed(6)), Number(ll.lng.toFixed(6))];
+    } };
     // the container can change size without a window resize (expanded map, side panels): keep tiles and layers right
     let alive = true;
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
       if (alive && map.current === m && m.getPane('mapPane')) m.invalidateSize({ pan: false, animate: false });
     });
     ro?.observe(el.current);
-    return () => { alive = false; ro?.disconnect(); m.remove(); map.current = null; fitted.current = undefined; focused.current = undefined; };
+    return () => {
+      alive = false; ro?.disconnect();
+      if (apiRef.current) apiRef.current.current = null;
+      // a map removed while it is still animating (a zoom in progress) lets its canvas renderer redraw once more on a
+      // context that no longer exists: stop the animation and silence the renderers of this map before removing it
+      type Renderer = Record<string, unknown>;
+      const inner = m as unknown as { _renderer?: Renderer; _paneRenderers?: Record<string, Renderer> };
+      const renderers = [inner._renderer, ...Object.values(inner._paneRenderers ?? {})].filter((r): r is Renderer => !!r);
+      m.stop(); m.remove();
+      for (const r of renderers) for (const k of ['_redraw', '_update', '_updatePaths', '_draw', '_clear', '_onMouseMove', '_handleMouseHover']) r[k] = () => { /* removed map */ };
+      map.current = null; fitted.current = undefined; focused.current = undefined;
+    };
   }, [tileUrl, attribution]);
 
   // synchronised view: applied only when it differs from the map's own (no feedback loop between two maps)
@@ -146,12 +183,12 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
     const corners: [number, number][] = [[s, w], [s, e], [n, e], [n, w]];
     corners.forEach(([la, lo], i) => {
       const opp = corners[(i + 2) % 4];
-      const mk = L.marker([la, lo], { draggable: true, icon: handle('corner'), keyboard: false, title: 'drag to resize' }).addTo(g);
+      const mk = L.marker([la, lo], { draggable: true, icon: handle('corner'), keyboard: false, title: tr('drag to resize') }).addTo(g);
       const bounds = () => { const p = mk.getLatLng(); return L.latLngBounds([p.lat, p.lng], opp); };
       mk.on('drag', () => rect.setBounds(bounds()));
       mk.on('dragend', () => { const b = bounds(); boxChange.current?.([r5(b.getSouth()), r5(b.getWest()), r5(b.getNorth()), r5(b.getEast())]); });
     });
-    const c = L.marker([(s + n) / 2, (w + e) / 2], { draggable: true, icon: handle('centre'), keyboard: false, title: 'drag to move' }).addTo(g);
+    const c = L.marker([(s + n) / 2, (w + e) / 2], { draggable: true, icon: handle('centre'), keyboard: false, title: tr('drag to move') }).addTo(g);
     c.on('drag', () => { const p = c.getLatLng(), dl = p.lat - (s + n) / 2, dn = p.lng - (w + e) / 2; rect.setBounds([[s + dl, w + dn], [n + dl, e + dn]]); });
     c.on('dragend', () => { const p = c.getLatLng(), dl = p.lat - (s + n) / 2, dn = p.lng - (w + e) / 2; boxChange.current?.([r5(s + dl), r5(w + dn), r5(n + dl), r5(e + dn)]); });
   }, [boxKey]);
@@ -190,9 +227,10 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
       seen.set(k, i + 1);
       all.push([p.lat, p.lon]);
       const icon0 = markerHtml(p);
-      if (n === 1 && !icon0) {
+      if (n === 1 && !icon0 && !p.drag) {
         const c = L.circleMarker([p.lat, p.lon], { radius: p.radius ?? 6, color: p.color, weight: 2, fillColor: p.color, fillOpacity: p.fill === false ? 0 : 0.85 }).addTo(g);
         if (p.label) c.bindTooltip(text(p.label));
+        if (p.ref) c.on('click', () => pointCb.current?.(p));
         continue;
       }
       const [sw, sh] = icon0 ? icon0.size : [2 * (p.radius ?? 6) + 2, 2 * (p.radius ?? 6) + 2];
@@ -203,17 +241,23 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
       el.style.setProperty('--c', sq ? (GLYPH_STYLE[p.glyph!] ?? GLYPH_STYLE['']).color : p.color); el.style.width = `${sw}px`; el.style.height = `${sh}px`;
       if (icon0) el.innerHTML = icon0.html;
       if (p.kind) el.dataset.kind = p.kind;
+      if (p.ref) el.dataset.ref = p.ref;
       if (sq) el.dataset.glyph = p.glyph;
       const icon = L.divIcon({ className: 'mk-icon', html: el, iconSize: [sw, sh],
         iconAnchor: [sw / 2 - off * Math.cos(ang), sh / 2 - off * Math.sin(ang)], tooltipAnchor: [off * Math.cos(ang), off * Math.sin(ang) - sh / 2] });
-      const mk = L.marker([p.lat, p.lon], { icon, keyboard: false }).addTo(g);
-      if (p.label) mk.bindTooltip(text(n > 1 ? `${p.label} · ${n} at this place` : p.label), { direction: 'top' });
+      const mk = L.marker([p.lat, p.lon], { icon, keyboard: false, draggable: !!p.drag }).addTo(g);
+      if (p.drag) mk.on('dragend', () => { const ll = mk.getLatLng(); moveCb.current?.(p, Number(ll.lat.toFixed(6)), Number(ll.lng.toFixed(6))); });
+      if (p.label) mk.bindTooltip(text(n > 1 ? `${p.label} · ${tr('{n} at this place', { n })}` : p.label), { direction: 'top' });
+      if (p.ref) mk.on('click', () => pointCb.current?.(p));
       if (n > 1 && i === 0) L.circleMarker([p.lat, p.lon], { radius: 2, color: '#6b7a8c', weight: 1, fillColor: '#6b7a8c', fillOpacity: 1, interactive: false }).addTo(g);
     }
     // refit only when the displayed subject changes (fitKey), never on edits: clicks must stay where the user aims
     if (all.length && fitKey !== undefined && fitted.current !== fitKey) {
-      const r = restoreRef.current;
-      if (r) m.setView(r.center, r.zoom, { animate: false }); else m.fitBounds(L.latLngBounds(all), { padding: [24, 24], maxZoom: 16 });
+      const r = restoreRef.current, b = L.latLngBounds(all);
+      if (r) m.setView(r.center, r.zoom, { animate: false });
+      // a saved view is kept only while it still shows the subject: one that misses it, or is zoomed far out of it
+      // (e.g. saved while the map had another size), is replaced by the fitted view
+      if (!r || !m.getBounds().intersects(b) || m.getZoom() < m.getBoundsZoom(b, false, L.point(48, 48)) - 3) m.fitBounds(b, { padding: [24, 24], maxZoom: 16 });
       fitted.current = fitKey;
     }
   }, [points, lines, rects, fitKey]);
@@ -231,8 +275,8 @@ export function LeafletMap({ tileUrl, attribution, points = [], lines = [], rect
   // the Leaflet element keeps a constant className: React must never rewrite the classes Leaflet adds to it
   return (
     <div className={`map-wrap${cursor ? ' map-crosshair' : ''}${tilesDown ? ' map-no-tiles' : ''}`} style={{ height }}>
-      <div ref={el} className="map" style={{ height: '100%' }} role="region" aria-label="map" />
-      {tilesDown && <div className="map-banner" role="status">Basemap unavailable — data still shown</div>}
+      <div ref={el} className="map" style={{ height: '100%' }} role="region" aria-label={tr('map')} />
+      {tilesDown && <div className="map-banner" role="status">{tr('Basemap unavailable — data still shown')}</div>}
     </div>
   );
 }

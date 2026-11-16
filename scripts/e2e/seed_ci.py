@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic, synthetic data directory for the browser journeys (CI and local runs).
 
-Creates two researcher accounts with random passwords (written to ``<data>/dev-credentials.json``, mode 0600, never
+Creates two researcher accounts and one administrator with random passwords (written to ``<data>/dev-credentials.json``, mode 0600, never
 printed) and gives each workspace an area named *Synthetic grid* with a generated road network: a square grid of
 two-way streets far from any real place (no download, no real map or mobility data). The shipped Montbéliard
 demonstration is installed by the application itself at the first sign-in, as for any researcher.
@@ -22,6 +22,7 @@ from move_openlab.geo.osm import NetworkStore
 from move_openlab.settings import Settings
 
 USERS = ("researcher1", "researcher2")
+ADMIN = "administrator1"                                 # an ordinary administrator, as on any public installation
 LAT0, LON0, STEP, N = 10.0, 20.0, 0.004, 21            # 21 × 21 streets, about 8.8 km wide, in the open sea off Africa
 AREA = "Synthetic grid"
 
@@ -54,14 +55,19 @@ def main() -> int:
             auth.create_user(u, u.replace("researcher", "Researcher "), role="researcher", password=pw, created_by="seed_ci")
             auth.store.set_password(u, hash_password(pw), must_change=False)
             creds[u] = pw
+    if not auth.store.get(ADMIN):
+        pw = secrets.token_urlsafe(18)
+        auth.create_user(ADMIN, "Administrator 1", role="admin", password=pw, created_by="seed_ci")
+        auth.store.set_password(ADMIN, hash_password(pw), must_change=False)
+        creds[ADMIN] = pw
     privatefiles.write(f, json.dumps(creds, indent=1))
     bbox = [LAT0 - 0.001, LON0 - 0.001, LAT0 + (N - 1) * STEP + 0.001, LON0 + (N - 1) * STEP + 0.001]
     prov = NetworkStore(s.data_dir).save(grid(), dict(name=AREA, bbox=bbox), "synthetic://seed_ci")
-    for u in USERS:
+    for u in (*USERS, ADMIN):
         areas = AreaStore(Path(s.data_dir) / "workspaces" / u)
         if not any(a["name"] == AREA for a in areas.list()):
             areas.create(AREA, bbox, network_id=prov["network_id"])
-    print(f"seeded {len(USERS)} accounts and the area {AREA!r} (network {prov['network_id']}, {prov['nodes']} nodes) in {s.data_dir}")
+    print(f"seeded {len(USERS) + 1} accounts and the area {AREA!r} (network {prov['network_id']}, {prov['nodes']} nodes) in {s.data_dir}")
     return 0
 
 

@@ -32,10 +32,15 @@ def available() -> bool:
 @lru_cache(maxsize=1)
 def bundle_bytes() -> bytes:
     """The sample as a bundle archive, rebuilt deterministically (sorted members, fixed timestamps)."""
+    return _pack(ROOT)
+
+
+def _pack(root: Path) -> bytes:
+    """An unpacked package as a ZIP archive, deterministically: sorted members, fixed timestamps."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(p for p in ROOT.rglob("*") if p.is_file()):
-            z.writestr(zipfile.ZipInfo(f.relative_to(ROOT).as_posix(), date_time=ZIP_TIME), f.read_bytes())
+        for f in sorted(p for p in root.rglob("*") if p.is_file()):
+            z.writestr(zipfile.ZipInfo(f.relative_to(root).as_posix(), date_time=ZIP_TIME), f.read_bytes())
     return buf.getvalue()
 
 
@@ -45,3 +50,54 @@ def info() -> dict:
         return json.loads(INFO.read_text())
     except (OSError, ValueError):
         return {}
+
+
+# ---------------------------------------------------------------- sample trip dataset (scenario import example)
+TRIPS_DIR = HERE / "trips"
+TRIPS_INFO = TRIPS_DIR / "trips.json"
+
+
+@lru_cache(maxsize=1)
+def trips_info() -> dict:
+    """The public sample trip dataset: a small synthetic CSV (CC0) built by ``scripts/build_sample_trips.py``. It is a
+    *dataset* example (trips to sample scenarios from), not an experiment bundle; the two are not interchangeable."""
+    try:
+        return json.loads(TRIPS_INFO.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def trips_available() -> bool:
+    i = trips_info()
+    return bool(i.get("filename")) and (TRIPS_DIR / i["filename"]).is_file()
+
+
+def trips_bytes() -> bytes:
+    return (TRIPS_DIR / trips_info()["filename"]).read_bytes()
+
+
+# ---------------------------------------------------------------- sample scenario package (scenario import example)
+SCENARIO_ROOT = HERE / "scenario"
+SCENARIO_INFO = HERE / "scenario-sample.json"
+SCENARIO_FILENAME = "sample_scenario.zip"
+EXPERIMENT_EXAMPLE = "sample_experiment.zip"       # examples/ name of the sample bundle (the same bytes as FILENAME)
+
+
+@lru_cache(maxsize=1)
+def scenario_info() -> dict:
+    """The public sample scenario package (format ``move-openlab-scenario/1``): one frozen scenario of the Montbéliard
+    demonstration with its composition and replay geometry, built by ``scripts/build_sample_scenario.py``."""
+    try:
+        return json.loads(SCENARIO_INFO.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def scenario_available() -> bool:
+    return (SCENARIO_ROOT / "manifest.json").is_file() and bool(scenario_info().get("packed_sha256"))
+
+
+@lru_cache(maxsize=1)
+def scenario_bytes() -> bytes:
+    """The sample scenario as a package archive, packed deterministically like the sample bundle."""
+    return _pack(SCENARIO_ROOT)

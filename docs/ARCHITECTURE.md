@@ -1,7 +1,10 @@
 # Architecture
 
+*MOVE OpenLab was conceived, designed, developed and implemented by Dr. Okba BEN ATIA.*
+
 MOVE OpenLab separates a **problem-agnostic framework** from **problem packages**. The framework never knows what a
-driver, a route or a cost is; a problem package tells it how to generate, validate, rank and compare.
+driver, a route or a cost is; a problem package tells it how to generate, validate, rank and compare. The diagrams of
+this page and the others, with their Mermaid sources, are collected in [DIAGRAMS.md](DIAGRAMS.md).
 
 ```mermaid
 flowchart LR
@@ -42,7 +45,7 @@ entry points.
 
 | Layer | Modules |
 |---|---|
-| Core | `problem`, `registry`, `methods`, `plugins`, `worker`, `runner`, `sandbox`, `store`, `bundles`, `method_tools`, `analysis.*`, `comparability.*`, `scoring`, `jobs`, `limits`, `auth`, `api.experiments`, `api.admin`, `api.lab` (workspace summaries), `api.web`; frontend `lab/` (workspace shell, results, compare, A/B, replay, trace), `components/` |
+| Core | `problem`, `registry`, `access`, `methods`, `plugins`, `worker`, `runner`, `sandbox`, `store`, `bundles`, `method_tools`, `analysis.*`, `comparability.*`, `scoring`, `jobs`, `limits`, `auth`, `api.experiments`, `api.admin`, `api.lab` (workspace summaries), `api.web`; frontend `lab/` (workspace shell, results, compare, A/B, replay, trace), `components/` |
 | Mobility | `geo.*` (areas, OSM networks, routing, scenarios, playback, replay geometry), `datasets.*`, `integrations.rpc`, `mobility.vehicles`, `mobility.emissions` (+ `mobility/presets`), `benchmarks.ride_matching`, `demo`, `api.geo`, `api.areas`, `api.datasets`; frontend `geo/`, `mobility/` (wizard, vehicle editor) |
 
 New domain concepts go under `move_openlab.mobility`; the historical modules stay where they are (no disruptive
@@ -52,12 +55,16 @@ claim and carried by bundles), `aggregate_domain` and `domain_metric_definitions
 
 ## Web interface
 
-The header (`frontend/src/shell`) holds the logo lockup, **Workspace**, a compact **Library** menu (geographic areas,
-road networks, mobility data, scenarios, experiments, benchmarks, jobs and traces, hidden records), the jobs indicator,
-help (Quick Tour) and the profile menu (My account, My students for a supervising researcher, Administration for
-administrators, Appearance light/dark, Change password, Sign out). Light is the default whatever the system setting;
-the choice is a per-user preference. Interface strings live in one catalogue (`frontend/src/i18n/en.ts`) so that a
-French version can be added without touching the components. The main screen is a map-first **workspace**
+The header (`frontend/src/shell`) holds the logo lockup, **Workspace**, a compact **Library** menu (*Data setup* —
+areas with their road networks, then mobility data — Scenarios, Experiments, Benchmarks, Jobs and traces), a *Private
+Research* entry shown only to an account granted a restricted problem, the **EN | FR** language switch, the jobs
+indicator, help (Quick Tour) and the profile menu (My account, My students for a supervising researcher,
+Administration for administrators, Hidden records, Appearance light/dark, Change password, Sign out). Light is the
+default whatever the system setting; the choice is a per-user preference. English is the default language; French is
+provided by the catalogues under `frontend/src/i18n/` (keyed strings in `en.ts` / `fr.ts`, and a map from the English
+text written in the components to French), and the sign-in and change-password pages carry the same switch. A switch
+applies to the browser session; *Make this my default language?* stores it for the account (preference `language`).
+The main screen is a map-first **workspace**
 (`frontend/src/lab`): a bar with the grouped experiment picker (Public mobility demonstration, My experiments,
 Imported, Reproductions, Benchmarks — each with area, data, scenarios, problem, methods and status), the evidence
 chips (*Validated n/n*, *Locked*) and Generate, Import, Run, Compare, Export; the experiment with its Area, Road
@@ -69,7 +76,7 @@ meaningful, runtimes in ms below one second), CO₂ of the selected method, and 
 independent validation, reproducibility (only for re-executions) and semantic comparability with *Why?* — on the
 right. On first use the demonstration's area is added to the workspace (once; never recreated after removal) and
 the baseline opens with a start card (*Compare with the variant*, *Generate your own*, *Try an imported experiment*,
-*Quick tour*). *Import → Try an imported experiment* is a guided cycle on the shipped sample bundle (download,
+*Quick tour*). *Import → Try a sample → Try an imported experiment* is a guided cycle on the shipped sample bundle (download,
 integrity report, import, reproduce, add a method, extend, compare; `GET /api/lab/sample/bundle`, `POST
 /api/lab/sample/verify`, `POST /api/lab/sample`). **Export** opens a dialog that lists what the bundle will contain
 (`GET /api/lab/export/{id}`: lineage, scenarios, references, methods, vehicle and emission parameters, replay geometry
@@ -93,8 +100,12 @@ map with a route preview; ICE, HEV, PHEV, BEV or custom profiles), Constraints, 
 *+ Add method*, repetitions, seed, CO₂ calculation and baseline), Review & Save — nothing is stored before *Save
 Scenario* or *Save & Run* (`POST /api/lab/run`: scenario, experiment and execution in one call). *Run* on an existing experiment
 executes a draft, or derives from a locked experiment: a re-execution with the same methods, an extension when
-methods were added. **Compare** opens the table and charts of one experiment; *Compare with…* lists the candidates (`GET
-/api/lab/compatible?a=`): every executed experiment of the same problem with its relation to A (reproduction,
+methods were added. **Compare** is the single entry to the comparison page, which has two tabs. *Methods*
+(`#/methods/<experiment>`) compares the methods of one experiment — or the members of a saved study — on the same
+frozen scenarios: Results with *Choose metrics* (groups Optimization, ML, Performance, Mobility and emissions, Custom
+metrics; saved per account and problem), Charts, Maps (two synchronised maps for two methods) and ML evaluation
+(`GET /api/lab/experiments/{id}/evaluation`). *Experiments* compares experiments with each other; its *Edit selection*
+lists the candidates (`GET /api/lab/compatible?a=`): every executed experiment of the same problem with its relation to A (reproduction,
 controlled variant, extension, same scenario, same problem in another file, different scenario) and the verdicts of
 the semantic engine, directly and conditionally comparable ones first, incompatible ones under *Show incompatible (n)*
 with their reasons; verdicts are cached per pair of record checksums. *Compare selected* opens the **comparison
@@ -112,6 +123,7 @@ first official release (`display_version()`).
 |---|---|
 | `move_openlab.problem` | `Problem` interface, metric and objective-level definitions, variants |
 | `move_openlab.registry` | Problem discovery (`move_openlab.problems` entry points); no import-path manipulation |
+| `move_openlab.access` | Per-account grants of restricted problems (`Problem.restricted`); enforced by the workspace, fail closed |
 | `move_openlab.methods` | Method metadata and output contract, registry, read-only views |
 | `move_openlab.plugins` | Approved plugin directory: static metadata, path confinement, code hashes |
 | `move_openlab.worker`, `runner` | Isolated execution, timing, independent validation of every run |
@@ -132,7 +144,7 @@ first official release (`display_version()`).
 | `move_openlab.mobility` | `vehicles` (profiles, documented parameter records, versioned presets with sources, per-workspace store), `emissions` (scopes, baselines, formulas, descriptor and fingerprint, aggregation) |
 | `move_openlab.limits` | Daily quotas and one-at-a-time locks for external services; bounded upload parsing |
 | `move_openlab.auth`, `api` | Accounts (versioned SQLite schema) and sessions; HTTP API routers `experiments`, `geo`, `areas`, `datasets`, `admin`, `lab` (workspace preferences, demonstration, experiment summaries); request-size limits; single-origin web application |
-| `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment problem (methodological tests; the separate synthetic scientific benchmark is planned) |
+| `move_openlab.benchmarks.synthetic_assignment` | Synthetic capacitated assignment problem: the public methodological benchmark, certified against an independent oracle |
 | `move_openlab.benchmarks.ride_matching` | Ride matching on road networks (exact MILP, greedy, variants, relative-detour scorer) |
 
 ## Experimentation pipeline
@@ -210,6 +222,8 @@ cancellation, errors) with the raw events under *Technical details*.
 <data>/workspaces/<user>/campaigns/<id>/campaign.json
 <data>/workspaces/<user>/campaigns/<id>/import_record.json
 <data>/workspaces/<user>/methods.json          registered plugins (id, version, code hash, self-test)
+<data>/workspaces/<user>/metrics.json          registered custom metrics
+<data>/workspaces/<user>/studies.json          saved study views (presentation only; never inside a record)
 <data>/workspaces/<user>/scenarios/<id>.json    scenario library entry (scenario, provenance, parent, instance hash)
 <data>/workspaces/<user>/areas/<id>.json        named area: box, profile, attached network id
 <data>/workspaces/<user>/datasets/<key>/        uploaded dataset: normalised trips + validation report (no raw file)
@@ -221,6 +235,8 @@ cancellation, errors) with the raw events under *Technical details*.
 <data>/cache/geocode/                           cached place-search results
 <data>/jobs/<user>/<job_id>.json                job state, progress and events
 <data>/audit.log                                administrative actions (no secrets)
+<data>/problem-grants.json                      accounts granted a restricted problem (only when one is granted)
+<data>/auth.sqlite3                             accounts and password hashes (SQLite); there is no database server
 ```
 
 A campaign records: specification (problem, objective, constraints, instance schema, validator and framework

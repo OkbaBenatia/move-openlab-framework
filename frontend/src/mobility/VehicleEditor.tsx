@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Copy, Plus, Save, X } from 'lucide-react';
 import { errText } from '../components/common';
-import { POWERTRAIN_LABEL, mob, type ParamDef, type ParamRecord, type VehicleProfile, type VehiclesInfo } from './api';
+import { tr } from '../i18n';
+import { POWERTRAIN_LABEL, mob, vehicleName, type ParamDef, type ParamRecord, type VehicleProfile, type VehiclesInfo } from './api';
 
 const FUEL = ['fuel_consumption_l_100km', 'fuel_emission_factor_g_per_l'];
 const ELEC = ['electricity_consumption_kwh_100km', 'electricity_emission_factor_g_per_kwh'];
@@ -18,17 +19,17 @@ export function VehicleEditor({ info, onChange, onClose, setErr }: { info: Vehic
   const [busy, setBusy] = useState(false);
   const isPreset = (p: VehicleProfile | null) => !!p && info.presets.some((x) => x.id === p.id) && !info.mine.some((x) => x.id === p.id);
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); setErr(null); try { await fn(); onChange(); } catch (e) { setErr(errText(e)); } finally { setBusy(false); } };
-  return <div className="overlay" role="dialog" aria-label="vehicle profiles" onClick={onClose}>
+  return <div className="overlay" role="dialog" aria-label={tr('vehicle profiles')} onClick={onClose}>
     <div className="drawer wide" onClick={(e) => e.stopPropagation()}>
-      <div className="row gap drawer-head"><h2>Vehicles</h2><span className="grow" /><button className="btn icon" aria-label="close" onClick={onClose}><X size={15} /></button></div>
+      <div className="row gap drawer-head"><h2>{tr('Vehicles')}</h2><span className="grow" /><button className="btn icon" aria-label={tr('close')} onClick={onClose}><X size={15} /></button></div>
       <div className="veh-grid">
         <div>
-          <div className="row gap"><button className="btn sm" onClick={() => setSel(blank())}><Plus size={12} /> New</button></div>
+          <div className="row gap"><button className="btn sm" onClick={() => setSel(blank())}><Plus size={12} /> {tr('New')}</button></div>
           {[['Presets', info.presets], ['My profiles', info.mine]].map(([label, list]) => <div key={label as string}>
-            <h3>{label as string}</h3>
-            {(list as VehicleProfile[]).length === 0 ? <p className="small muted">None yet.</p> : <ul className="people" aria-label={label as string}>
+            <h3>{tr(label as string)}</h3>
+            {(list as VehicleProfile[]).length === 0 ? <p className="small muted">{tr('None yet.')}</p> : <ul className="people" aria-label={tr(label as string)}>
               {(list as VehicleProfile[]).map((p) => <li key={p.id}><button onClick={() => setSel(p)} className={sel?.id === p.id ? 'hl' : ''}>
-                <b>{p.name}</b><span className="muted small">{POWERTRAIN_LABEL[p.powertrain]} · {p.passenger_capacity} seats</span></button></li>)}</ul>}
+                <b>{vehicleName(p)}</b><span className="muted small">{tr(POWERTRAIN_LABEL[p.powertrain])} · {tr('{n} seats', { n: p.passenger_capacity })}</span></button></li>)}</ul>}
           </div>)}
         </div>
         {sel && <ProfileForm key={sel.id || 'new'} profile={sel} defs={info.parameters} powertrains={info.powertrains} readOnly={isPreset(sel)} busy={busy}
@@ -55,37 +56,37 @@ function ProfileForm({ profile, defs, powertrains, readOnly, busy, onSave, onDup
   };
   const shown = defs.filter((d) => relevant(p.powertrain).includes(d.id));
   const dis = readOnly || busy;
-  return <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(p); }} aria-label="vehicle profile">
-    <label>Name <input value={p.name} disabled={dis} aria-label="vehicle name" onChange={(e) => setP({ ...p, name: e.target.value, id: auto ? slug(e.target.value) : p.id })} /></label>
+  return <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(p); }} aria-label={tr('vehicle profile')}>
+    <label>{tr('Name')} <input value={p.name} disabled={dis} aria-label={tr('vehicle name')} onChange={(e) => setP({ ...p, name: e.target.value, id: auto ? slug(e.target.value) : p.id })} /></label>
     <div className="row gap">
-      <label>Powertrain <select value={p.powertrain} disabled={dis} aria-label="powertrain" onChange={(e) => set({ powertrain: e.target.value as VehicleProfile['powertrain'] })}>
-        {powertrains.map((x) => <option key={x} value={x}>{POWERTRAIN_LABEL[x] ?? x}</option>)}</select></label>
-      <label>Energy <input value={p.energy} disabled={dis} aria-label="energy" onChange={(e) => set({ energy: e.target.value })} style={{ width: '9em' }} /></label>
-      <label>Passenger seats <input type="number" min={1} max={60} value={p.passenger_capacity} disabled={dis} aria-label="passenger capacity" onChange={(e) => set({ passenger_capacity: Number(e.target.value) })} style={{ width: '5em' }} /></label>
+      <label>{tr('Powertrain')} <select value={p.powertrain} disabled={dis} aria-label={tr('powertrain')} onChange={(e) => set({ powertrain: e.target.value as VehicleProfile['powertrain'] })}>
+        {powertrains.map((x) => <option key={x} value={x}>{tr(POWERTRAIN_LABEL[x] ?? x)}</option>)}</select></label>
+      <label>{tr('Energy')} <input value={p.energy} disabled={dis} aria-label={tr('energy')} onChange={(e) => set({ energy: e.target.value })} style={{ width: '9em' }} /></label>
+      <label>{tr('Passenger seats')} <input type="number" min={1} max={60} value={p.passenger_capacity} disabled={dis} aria-label={tr('passenger capacity')} onChange={(e) => set({ passenger_capacity: Number(e.target.value) })} style={{ width: '5em' }} /></label>
     </div>
-    <table className="compact" aria-label="vehicle parameters"><thead><tr><th>Parameter</th><th>Value</th><th>Unit</th><th>Source</th></tr></thead>
+    <table className="compact" aria-label={tr('vehicle parameters')}><thead><tr><th>{tr('Parameter')}</th><th>{tr('Value')}</th><th>{tr('Unit')}</th><th>{tr('Source')}</th></tr></thead>
       <tbody>{shown.map((d) => { const r = rec(d.id); return <tr key={d.id}>
-        <td>{d.label}</td>
-        <td><input type="number" min={0} step="any" value={r.value ?? ''} disabled={dis} aria-label={d.label} style={{ width: '7em' }} onChange={(e) => setRec(d.id, { value: e.target.value === '' ? null : Number(e.target.value) })} /></td>
-        <td className="small">{r.unit}{d.factor && <> <select value={r.basis ?? 'CO2'} disabled={dis} aria-label={`${d.label} basis`} onChange={(e) => setRec(d.id, { basis: e.target.value as 'CO2' | 'CO2e' })}><option>CO2</option><option>CO2e</option></select></>}</td>
+        <td>{tr(d.label)}</td>
+        <td><input type="number" min={0} step="any" value={r.value ?? ''} disabled={dis} aria-label={tr(d.label)} style={{ width: '7em' }} onChange={(e) => setRec(d.id, { value: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+        <td className="small">{r.unit}{d.factor && <> <select value={r.basis ?? 'CO2'} disabled={dis} aria-label={tr('{label} basis', { label: tr(d.label) })} onChange={(e) => setRec(d.id, { basis: e.target.value as 'CO2' | 'CO2e' })}><option>CO2</option><option>CO2e</option></select></>}</td>
         <td className="small">{readOnly ? <span className="desc">{r.source ?? '—'}{r.source_version ? ` · ${r.source_version}` : ''}{r.applicability ? ` · ${r.applicability}` : ''}</span>
-          : <input value={r.source ?? ''} disabled={dis} aria-label={`${d.label} source`} placeholder="source" onChange={(e) => setRec(d.id, { source: e.target.value || undefined })} />}</td></tr>; })}</tbody></table>
-    {!readOnly && <details className="small"><summary>Advanced</summary>
+          : <input value={r.source ?? ''} disabled={dis} aria-label={tr('{label} source', { label: tr(d.label) })} placeholder={tr('source')} onChange={(e) => setRec(d.id, { source: e.target.value || undefined })} />}</td></tr>; })}</tbody></table>
+    {!readOnly && <details className="small"><summary>{tr('Advanced')}</summary>
       <div className="form">
-        <div className="row gap"><label>Id <input value={p.id} disabled={!!profile.id} aria-label="vehicle id" onChange={(e) => { setAuto(false); set({ id: e.target.value }); }} /></label>
-          <label>Category <input value={p.category} aria-label="category" onChange={(e) => set({ category: e.target.value })} style={{ width: '8em' }} /></label></div>
-        {shown.map((d) => { const r = rec(d.id); return <fieldset key={d.id}><legend className="small">{d.label}</legend>
+        <div className="row gap"><label>{tr('Id')} <input value={p.id} disabled={!!profile.id} aria-label={tr('vehicle id')} onChange={(e) => { setAuto(false); set({ id: e.target.value }); }} /></label>
+          <label>{tr('Category')} <input value={p.category} aria-label={tr('category')} onChange={(e) => set({ category: e.target.value })} style={{ width: '8em' }} /></label></div>
+        {shown.map((d) => { const r = rec(d.id); return <fieldset key={d.id}><legend className="small">{tr(d.label)}</legend>
           <div className="row gap">
-            <label className="small">Source version <input value={r.source_version ?? ''} aria-label={`${d.label} source version`} onChange={(e) => setRec(d.id, { source_version: e.target.value || undefined })} /></label>
-            <label className="small">Applicability <input value={r.applicability ?? ''} aria-label={`${d.label} applicability`} onChange={(e) => setRec(d.id, { applicability: e.target.value || undefined })} /></label>
-            <label className="small grow">Notes <input value={r.notes ?? ''} aria-label={`${d.label} notes`} onChange={(e) => setRec(d.id, { notes: e.target.value || undefined })} /></label>
-          </div>{r.recorded_at && <span className="small muted">recorded {r.recorded_at.slice(0, 10)}</span>}</fieldset>; })}
+            <label className="small">{tr('Source version')} <input value={r.source_version ?? ''} aria-label={tr('{label} source version', { label: tr(d.label) })} onChange={(e) => setRec(d.id, { source_version: e.target.value || undefined })} /></label>
+            <label className="small">{tr('Applicability')} <input value={r.applicability ?? ''} aria-label={tr('{label} applicability', { label: tr(d.label) })} onChange={(e) => setRec(d.id, { applicability: e.target.value || undefined })} /></label>
+            <label className="small grow">{tr('Notes')} <input value={r.notes ?? ''} aria-label={tr('{label} notes', { label: tr(d.label) })} onChange={(e) => setRec(d.id, { notes: e.target.value || undefined })} /></label>
+          </div>{r.recorded_at && <span className="small muted">{tr('recorded {date}', { date: r.recorded_at.slice(0, 10) })}</span>}</fieldset>; })}
       </div></details>}
-    {readOnly && p.provenance?.notes && <p className="small muted">{p.provenance.notes}</p>}
+    {readOnly && p.provenance?.notes && <p className="small muted">{tr(p.provenance.notes)}</p>}
     <div className="row gap">
-      {!readOnly && <button className="btn primary sm" type="submit" disabled={busy || p.name.trim().length < 1}><Save size={12} /> Save</button>}
-      {profile.id && <button className="btn sm" type="button" disabled={busy} onClick={onDuplicate}><Copy size={12} /> Duplicate</button>}
-      {p.version && <span className="small muted">version {p.version}{p.updated_at ? ` · ${p.updated_at.slice(0, 10)}` : ''}</span>}
+      {!readOnly && <button className="btn primary sm" type="submit" disabled={busy || p.name.trim().length < 1}><Save size={12} /> {tr('Save')}</button>}
+      {profile.id && <button className="btn sm" type="button" disabled={busy} onClick={onDuplicate}><Copy size={12} /> {tr('Duplicate')}</button>}
+      {p.version && <span className="small muted">{tr('version {n}', { n: p.version })}{p.updated_at ? ` · ${p.updated_at.slice(0, 10)}` : ''}</span>}
     </div>
   </form>;
 }

@@ -145,7 +145,8 @@ await journey('generate', 'Generate and Save & Run', 'A seeded synthetic scenari
 await journey('compare-two', 'Compare exactly two experiments', 'The picker counts exactly what is ticked; the comparison shows A (reference) and B and nothing else.', async () => {
   const titles = Object.fromEntries((await api('/api/lab/experiments')).body.experiments.map((x) => [x.campaign_id, x.title]));
   await goHash(`#/workspace/${demoBase}`, 3000);
-  await p.click('Compare', '.labbar button'); await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'picker'); await sleep(600);
+  // one Compare entry: it opens the Methods tab when the experiment has several methods; experiments are chosen on the Experiments tab
+  await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500); if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); } await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'picker'); await sleep(600);
   const ok = await p.eval(`(() => { const i = [...document.querySelectorAll('.picker-drawer input[type=checkbox]')].find((x) => x.getAttribute('aria-label') === ${JSON.stringify(titles[demoVariant])} && !x.disabled); if (!i) return false; i.click(); return true; })()`);
   expect(ok, 'variant not offered'); await sleep(400);
   const foot = await text('.picker-drawer .drawer-foot');

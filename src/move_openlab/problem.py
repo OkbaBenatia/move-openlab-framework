@@ -12,7 +12,9 @@ The framework itself never knows what a driver, a route or a cost is. A problem 
 * **semantic comparability** — the data that define the feasible region and the objective, and a component-level
   explanation of differences between two instances;
 * **controlled variants** — optional instance-level or configuration-level perturbation operators;
-* **candidate scoring** — optional candidate decisions that a scorer may prune before solving (threshold studies).
+* **candidate scoring** — optional candidate decisions that a scorer may prune before solving (threshold studies);
+* **presentation** — optional capabilities the interface may use (map, route playback), the plural noun of what the
+  ``served`` metric counts, and a per-scenario summary (counts and the denominator of ``served``).
 
 Problems are registered with the ``move_openlab.problems`` entry-point group (see :mod:`move_openlab.registry`).
 """
@@ -34,9 +36,16 @@ class MetricDefinition:
     unit: str
     definition: str
     better: str | None = None          # "higher" | "lower" | None (descriptive metric)
+    # presentation only (never part of the evaluation contract or of a fingerprint):
+    category: str | None = None        # metric group in the interface: "optimization" (default) | "mobility" | "performance" | "ml"
+    note: str | None = None            # how to read the metric (a boundary, a caveat), shown with its definition
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        for k in ("category", "note"):  # records and reports made before these existed stay identical
+            if d[k] is None:
+                del d[k]
+        return d
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,9 @@ class Problem(ABC):
     reference_method: tuple[str, str] | None = None      # (method_id, version) used as the quality reference
     decision_description: str = ""
     default_time_budget_s: float = 60.0
+    #: A restricted problem is visible only to the accounts an administrator granted it to on this installation
+    #: (:mod:`move_openlab.access`). No role implies the grant. Problems shipped with the framework are open.
+    restricted: bool = False
 
     def spec_record(self) -> dict:
         return dict(problem_id=self.problem_id, problem_spec_version=self.problem_spec_version,
@@ -86,6 +98,7 @@ class Problem(ABC):
 
     def describe(self) -> dict:
         return dict(spec=self.spec_record(), title=self.title, description=self.description, synthetic=self.synthetic,
+                    restricted=bool(self.restricted),
                     validator_version=self.validator_version, objective=[o.to_dict() for o in self.objective],
                     metrics=[m.to_dict() for m in self.metrics],
                     reference_method=list(self.reference_method) if self.reference_method else None,
@@ -93,7 +106,7 @@ class Problem(ABC):
                     variants=[v.to_dict() for v in self.variants().values()],
                     scorers=[dict(id=s.id, label=s.label, description=s.description, learned=s.learned)
                              for s in self.scorers().values()],
-                    candidate_scoring=self.supports_candidates())
+                    candidate_scoring=self.supports_candidates(), presentation=self.presentation())
 
     # ---------------------------------------------------------------- scenarios
     @abstractmethod
@@ -153,6 +166,107 @@ class Problem(ABC):
     def environment(self) -> dict:
         """Extra environment fields relevant to this problem's methods (e.g. solver versions)."""
         return {}
+
+    def archived_methods(self) -> frozenset[str]:
+        """Ids of built-in methods kept only so that earlier records stay readable and reproducible (pilots, superseded
+        versions). The interface lists them under *History*, not among the methods offered for a new run."""
+        return frozenset()
+
+    # ---------------------------------------------------------------- presentation (optional, read by the interface)
+    #: ``"map"``: instances carry ``drivers`` / ``riders`` with ``origin`` / ``destination`` coordinates for the map;
+    #: ``"playback"``: route playback of a run (see :meth:`playback`; implies ``"map"``).
+    capabilities: frozenset[str] = frozenset()
+    #: Plural noun of what the ``served`` metric counts (e.g. "riders"); default: that metric's unit.
+    participants: str | None = None
+    #: Why scenarios of this problem cannot be edited or generated in the interface (shown where editing is offered for
+    #: other problems); ``None`` when the problem has no such limit to state.
+    authoring_note: str | None = None
+
+    def participant_properties(self, instance: dict) -> dict[str, list[list[str]]]:
+        """What the interface may show about a participant or vehicle of a scenario when its marker is clicked, beyond
+        the generic fields it reads itself (identifier, time window, vehicle profile): ``{participant id: [[label,
+        value], ...]}``. Display only, from the frozen instance; never computed by a method."""
+        return {}
+
+    def playback(self, instance: dict, decisions: list) -> dict:
+        """Route playback of one run: ``{t_min, t_max, vehicles: [{driver, rider, path: [[lat, lon, t]], stops}],
+        unserved: [{rider, at}], served, riders, geometry, attribution}``. Overriding it declares ``"playback"``.
+        A problem that declares ``"playback"`` without overriding it uses the built-in mobility planner (instances with
+        ``drivers``, ``riders`` and a road network). Raise ``ValueError`` when no playback exists for this instance."""
+        raise NotImplementedError
+
+    def candidate_view(self, instance: dict, run: dict) -> dict:
+        """Read-only view of the candidate reduction behind one run, for methods that remove candidates (e.g. arcs)
+        before an exact solve: ``{stops: [{node, lat, lon}], vehicles: [{vehicle_id, label}], edges: [{edge_id, i, j}],
+        removed, protected, selected: [[vehicle_id, edge_id]], counts: {candidates, retained, removed, protected,
+        selected, reduction_pct}, policy, checks, sources, geometry}``. Built from recorded data only, never recomputed.
+        Overriding it declares ``"candidates"`` (implies ``"map"``). Raise ``ValueError`` when the data behind a run is
+        not available."""
+        raise NotImplementedError
+
+    def candidate_preview(self, instance: dict, method: dict, config: dict) -> dict:
+        """The candidate reduction a method would apply to one instance with the given (already validated) settings,
+        before any solve: the same shape as :meth:`candidate_view` plus ``preview: true``, ``policy``, ``timings``
+        (e.g. inference time) and ``provenance`` (model, policy, feature pipeline). Nothing is solved or stored.
+        Overriding it declares ``"candidate-preview"``. Raise ``ValueError`` when the method removes no candidates or
+        the data needed for this instance are not available."""
+        raise NotImplementedError
+
+    def method_display_name(self, method_id: str, config: dict) -> str | None:
+        """A display alias of a method in an experiment with the given settings (e.g. its publication name); ``None``
+        keeps the recorded name. Display only: stored records keep their names."""
+        return None
+
+    def run_fact_definitions(self) -> list[dict]:
+        """Per-run figures a method records (see :meth:`run_facts`): ``[{id, label, unit, kind: "number" | "text",
+        aggregate: "sum" | "median" | "ratio" | "none", of?: [numerator id, denominator id] (ratio, in %), group}]``.
+        ``none``: shown per scenario only, never summed over scenarios. Optional keys for the interface: ``category``
+        (``"optimization"`` (default) | ``"performance"`` | ``"ml"`` | ``"mobility"``: the group in *Choose metrics*),
+        ``default`` (shown without being chosen; default: aggregated numbers), ``help`` (a definition), ``speedup``
+        (``true`` on one time fact: reference ÷ this is offered as a speed-up, a ratio of sums)."""
+        return []
+
+    def run_facts(self, run: dict, instance: dict) -> dict:
+        """``{fact id: value}`` of one run, from what the run recorded (never recomputed by solving). Display only:
+        validation, ranking and comparability never use them."""
+        return {}
+
+    def ml_evaluations(self, method_id: str, config: dict) -> list[dict]:
+        """Classification evaluations of a learned method, from real predictions and real labels on a named population:
+        ``[{population, split, graphs, candidates, positives, prevalence_pct, decision, positive_label, convention,
+        confusion: {tp, fn, fp, tn}, metrics: {accuracy, balanced_accuracy, precision, recall, specificity, f1, pr_auc,
+        roc_auc}, source: {name, sha256}, notes: [str]}]``. ``decision`` says which score and threshold or policy produced
+        the matrix. Return ``[]`` when no labelled evaluation exists: the interface then says so and shows no figure.
+        Display only; a problem must never derive these from solver outcomes alone."""
+        return []
+
+    def scenario_notes(self, instance: dict) -> list[str]:
+        """Documented limitations of a scenario, shown next to its results."""
+        return []
+
+    def presentation(self) -> dict:
+        """What the interface may show for this problem; derived from the declarations above and the metrics."""
+        caps = set(self.capabilities)
+        if overrides(self, "playback"):
+            caps.add("playback")
+        if overrides(self, "candidate_view"):
+            caps.add("candidates")
+        if overrides(self, "candidate_preview"):
+            caps.add("candidate-preview")
+        if caps & {"playback", "candidates", "candidate-preview"}:
+            caps.add("map")
+        served = next((m for m in self.metrics if m.id == "served"), None)
+        return dict(capabilities=sorted(caps), participants=self.participants or (served.unit if served else None),
+                    served_label=served.label if served else None, authoring_note=self.authoring_note)
+
+    def scenario_summary(self, instance: dict) -> dict:
+        """Counts shown per scenario. ``served_of`` (the denominator of ``served``) comes from an integer
+        ``served_denominator`` in the instance; without it the interface uses the number of riders."""
+        out = {k: len(instance[k]) for k in ("drivers", "riders", "pairs") if isinstance(instance.get(k), list)}
+        d = instance.get("served_denominator")
+        if isinstance(d, int) and not isinstance(d, bool) and d >= 0:
+            out["served_of"] = d
+        return out
 
     # ---------------------------------------------------------------- semantic comparability
     def evaluation_contract(self) -> dict:
@@ -231,3 +345,8 @@ class Problem(ABC):
 
     def scorers(self) -> dict:
         return {}
+
+
+def overrides(problem: Problem, name: str) -> bool:
+    """Whether a problem implements an optional :class:`Problem` hook itself."""
+    return getattr(type(problem), name, None) is not getattr(Problem, name)

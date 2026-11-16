@@ -1,0 +1,11 @@
+flowchart LR
+  GUI["GUI<br/>web interface"] --> API["HTTP API<br/>accounts, roles"]
+  CLI["CLI<br/>move-openlab"] -->|"serve"| API
+  CLI -->|"users, method"| CORE
+  API --> CORE["Core<br/>store, runner,<br/>bundles"]
+  AD["Adapters<br/>problems, solvers,<br/>ML, data, metrics"] --> CORE
+  CORE --> RUN["Execution<br/>sandbox"]
+  RUN --> V{{"Independent<br/>validation"}}
+  V --> OUT["Metrics, maps,<br/>comparison"]
+  OUT --> EX["Export, import,<br/>reproduction"]
+  EX -.->|"another installation"| CORE

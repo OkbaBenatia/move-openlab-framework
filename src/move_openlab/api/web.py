@@ -169,7 +169,10 @@ button{width:100%;font:inherit;font-weight:650;color:#fff;background:var(--accen
 .meter{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:-8px 0 6px}
 .meter span{display:block;height:100%;width:0;background:var(--bad);transition:width .2s}.hint{font-size:12px;color:var(--muted);margin:0 0 12px}
 .hint.weak{color:var(--bad)}.hint.acceptable{color:var(--warn)}.hint.strong{color:var(--ok)}.hint.ok{color:var(--ok)}
-.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin:10px 0 0}.legend i{display:inline-block;width:10px;height:5px;border-radius:2px;margin-right:5px;vertical-align:2px}"""
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin:10px 0 0}.legend i{display:inline-block;width:10px;height:5px;border-radius:2px;margin-right:5px;vertical-align:2px}
+main{position:relative}.lang{position:absolute;top:12px;right:14px;display:flex;gap:4px}
+.lang button{width:auto;margin:0;padding:3px 9px;font-size:12px;font-weight:600;letter-spacing:.03em;background:var(--panel);color:var(--muted);border:1px solid var(--strong)}
+:root[data-theme=dark] .lang button{color:var(--muted)}.lang button.on,:root[data-theme=dark] .lang button.on{color:var(--text);border-color:var(--accent)}"""
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><script src="/theme.js"></script><style>{style}</style></head>
@@ -194,6 +197,50 @@ CHANGE_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-l
 <form method="post" action="/api/auth/logout"><button class="linkbtn" type="submit">Log out</button></form>"""
 
 AUTH_JS = """(function () {
+  // Interface language of these two pages: English by default, French on request. The choice is the same session
+  // value the application reads (EN | FR in its header), so it carries over after sign-in.
+  var FR = {
+    'Sign in': 'Se connecter', 'Use the account your administrator created for you.': 'Utilisez le compte que votre administrateur a créé pour vous.',
+    'Username': 'Identifiant', 'Password': 'Mot de passe', 'Choose your password': 'Choisissez votre mot de passe',
+    'Your password is temporary: choose a personal password to continue. Signed in as': 'Votre mot de passe est temporaire : choisissez un mot de passe personnel pour continuer. Connecté en tant que',
+    'Choose a new personal password. Signed in as': 'Choisissez un nouveau mot de passe personnel. Connecté en tant que',
+    'Current password': 'Mot de passe actuel', 'New password': 'Nouveau mot de passe', 'Repeat password': 'Répétez le mot de passe',
+    'At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).': 'Au moins 12 caractères avec trois types de caractères (minuscules, majuscules, chiffres, symboles).',
+    'Save and continue': 'Enregistrer et continuer', 'Weak': 'Faible', 'Acceptable': 'Acceptable', 'Strong': 'Fort',
+    'Checked again by the server': 'Vérifié à nouveau par le serveur', 'Log out': 'Se déconnecter', 'Back to MOVE OpenLab': 'Retour à MOVE OpenLab',
+    'Invalid username or password.': 'Identifiant ou mot de passe incorrect.', 'Too many attempts. Try again later.': 'Trop de tentatives. Réessayez plus tard.',
+    'Sign-in is not configured on this server.': 'La connexion n’est pas configurée sur ce serveur.',
+    'Your session has expired. Please sign in again.': 'Votre session a expiré. Veuillez vous reconnecter.',
+    'Request failed.': 'La requête a échoué.', 'Weak: needs ': 'Faible : il manque ', 'Passwords match.': 'Les mots de passe correspondent.',
+    'Passwords do not match.': 'Les mots de passe ne correspondent pas.', 'Change password': 'Changer le mot de passe', 'developed by': 'développé par'
+  };
+  var lang = 'en';
+  try { lang = sessionStorage.getItem('move-openlab-lang') === 'fr' ? 'fr' : 'en'; } catch (e) { /* storage unavailable */ }
+  function tr(s) { return lang === 'fr' && FR[s] ? FR[s] : s; }
+  (function localise() {
+    var main = document.querySelector('main');
+    if (!main) return;
+    document.documentElement.setAttribute('lang', lang);
+    if (lang === 'fr') {
+      var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT), nodes = [], x;
+      while ((x = w.nextNode())) nodes.push(x);
+      nodes.forEach(function (t) {
+        var raw = t.nodeValue, key = raw.replace(/\\s+/g, ' ').trim();
+        if (FR[key]) t.nodeValue = raw.replace(raw.trim(), FR[key]);
+        else if (key.indexOf(' · developed by ') > 0) t.nodeValue = raw.replace('developed by', FR['developed by']);
+      });
+      document.title = document.title.replace('Sign in', FR['Sign in']).replace('Change password', FR['Change password']);
+    }
+    var box = document.createElement('div'); box.className = 'lang'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'language');
+    ['en', 'fr'].forEach(function (l) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = l.toUpperCase(); b.lang = l; b.title = l === 'en' ? 'English' : 'Français';
+      if (l === lang) b.className = 'on';
+      b.setAttribute('aria-pressed', String(l === lang));
+      b.addEventListener('click', function () { if (l === lang) return; try { sessionStorage.setItem('move-openlab-lang', l); } catch (e) { /* */ } location.reload(); });
+      box.appendChild(b);
+    });
+    main.insertBefore(box, main.firstChild);
+  })();
   var params = new URLSearchParams(location.search);
   function safeNext(n) { return n && n.charAt(0) === '/' && n.charAt(1) !== '/' && n.indexOf('/login') !== 0 ? n : '/'; }
   var next = safeNext(params.get('next'));
@@ -201,7 +248,7 @@ AUTH_JS = """(function () {
   function showError(form, msg) {
     var p = form.querySelector('.err');
     if (!p) { p = document.createElement('p'); p.className = 'err'; p.setAttribute('role', 'alert'); form.insertBefore(p, form.firstChild); }
-    p.textContent = msg;
+    p.textContent = tr(msg);
   }
   function intercept(form, url, body, done) {
     form.addEventListener('submit', function (e) {
@@ -223,7 +270,7 @@ AUTH_JS = """(function () {
   if (change) {
     var n = change.new_password, r = change.confirm_password, bar = document.getElementById('bar'),
         st = document.getElementById('strength'), mt = document.getElementById('match'), timer = null;
-    var LEVEL = { weak: ['Weak: needs ', 33, 'var(--bad)'], acceptable: ['Acceptable', 66, '#d4a72c'], strong: ['Strong', 100, '#1a7f37'] };
+    var LEVEL = { weak: [tr('Weak: needs '), 33, 'var(--bad)'], acceptable: [tr('Acceptable'), 66, '#d4a72c'], strong: [tr('Strong'), 100, '#1a7f37'] };
     function paint(pol) {
       var l = LEVEL[pol.level] || LEVEL.weak;
       bar.style.width = n.value ? l[1] + '%' : '0'; bar.style.background = l[2];
@@ -231,7 +278,7 @@ AUTH_JS = """(function () {
     }
     function match() {
       if (!r.value) { mt.textContent = ''; mt.className = 'hint'; return; }
-      var ok = r.value === n.value; mt.textContent = ok ? 'Passwords match.' : 'Passwords do not match.'; mt.className = 'hint ' + (ok ? 'ok' : 'weak');
+      var ok = r.value === n.value; mt.textContent = tr(ok ? 'Passwords match.' : 'Passwords do not match.'); mt.className = 'hint ' + (ok ? 'ok' : 'weak');
     }
     st.setAttribute('data-default', st.textContent);
     function check() {

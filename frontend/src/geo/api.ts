@@ -37,7 +37,9 @@ export const geo = {
   generate: (body: Json) => post('/geo/scenarios/generate', body),
   fromDataset: (body: Json) => post('/geo/scenarios/from-dataset', body),
   instance: (h: string) => call(`/geo/instances/${h}`),
+  participants: (h: string) => call<{ properties: Record<string, [string, string][]>; authoring_note: string | null }>(`/geo/instances/${h}/participants`),
   playback: (cid: string, run: string) => call(`/geo/playback/${cid}/${run}`),
+  candidates: (cid: string, run: string) => call(`/geo/candidates/${cid}/${run}`),
 };
 
 export const hhmm = (s: number) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };

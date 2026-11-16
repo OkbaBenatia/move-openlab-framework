@@ -127,7 +127,13 @@ EXACT_META = dict(method_id="exact-matching-highs", name="Exact matching MILP (H
                   author="MOVE OpenLab",
                   description="Two-stage lexicographic MILP on the compatible pairs: (1) max matched riders; (2) fix that "
                               "level, min total detour. HiGHS, one thread, zero MIP gap.",
-                  default_config=dict(time_limit_s=60.0, threads=1, random_seed=0, mip_rel_gap=0.0, mip_abs_gap=0.0))
+                  default_config=dict(time_limit_s=60.0, threads=1, random_seed=0, mip_rel_gap=0.0, mip_abs_gap=0.0),
+                  config_schema=dict(
+                      time_limit_s=dict(type="number", label="Time limit", unit="s", min=1, max=3600),
+                      mip_rel_gap=dict(type="number", label="Relative MIP gap", min=0, max=1),
+                      mip_abs_gap=dict(type="number", label="Absolute MIP gap", min=0),
+                      threads=dict(type="integer", label="Threads", min=1, max=64),
+                      random_seed=dict(type="integer", label="Random seed", min=0, max=2147483647)))
 
 
 def _mip_info(h) -> dict:

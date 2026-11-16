@@ -37,7 +37,7 @@
     "solver_time_s": {"type": ["number", "null"]},
     "method_time_s": {"type": ["number", "null"]},
     "total_time_s": {"type": ["number", "null"], "description": "Platform wall time of the isolated execution."},
-    "isolation": {"enum": ["process", "sandbox"]},
+    "isolation": {"enum": ["process", "sandbox", "external"], "description": "external: a result computed outside this platform and imported (re-validated here, not executed here)"},
     "trace": {"type": "array", "items": {"type": "object", "required": ["stage", "duration_s"]}},
     "domain": {
       "type": ["object", "null"],

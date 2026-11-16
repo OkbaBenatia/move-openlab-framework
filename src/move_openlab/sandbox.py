@@ -19,7 +19,8 @@ The sandbox (one per run):
 * environment: cleared; only PATH, locale and thread settings are set;
 * filesystem: an empty root with read-only binds of the system libraries (``/usr`` and its compatibility links), the
   Python installation and the installed framework packages, plus the single plugin file; a private ``/tmp``;
-  the installation data directory, the credential store, the plugin directory and home directories are not mounted.
+  the installation data directory, the credential store, the plugin directory and home directories are not mounted
+  (an uploaded plugin file lives under the data directory: only that one file is bound, read-only, at PLUGIN_MOUNT).
   A bind that would expose a protected path is refused.
 
 Remaining risks: no seccomp filter (the kernel attack surface of unprivileged user namespaces remains), no cgroup

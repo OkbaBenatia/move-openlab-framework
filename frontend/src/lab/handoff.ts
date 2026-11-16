@@ -2,9 +2,10 @@
  *  (start Generate with an area and mobility data, or a new experiment with chosen scenarios). */
 export const OPEN_WIZARD = 'move-openlab.open-wizard';   // '1', or JSON {area_id?, dataset_key?} from Library › Use
 export const OPEN_NEW = 'move-openlab.open-new';         // JSON {hashes, label} from Library › Scenarios › Use
+export const OPEN_ACTION = 'move-openlab.open-action';   // JSON {action: 'add-method' | 'reproduce', cid} from Compare › Experiments
 
 /** Hand-offs from the Library to the workspace (stored for the next workspace visit of this browser tab). */
-export function handOff(key: typeof OPEN_WIZARD | typeof OPEN_NEW, value: unknown) {
+export function handOff(key: typeof OPEN_WIZARD | typeof OPEN_NEW | typeof OPEN_ACTION, value: unknown) {
   try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable: the workspace opens normally */ }
 }
 export function takeHandOff<T>(key: string): T | null {

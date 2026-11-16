@@ -81,6 +81,8 @@ class RideMatching(Problem):
                                 "lower"))
     reference_method = ("exact-matching-highs", "1.0.0")
     decision_description = "[driver_id, rider_id] for every match"
+    capabilities = frozenset({"map", "playback"})          # playback: the built-in mobility planner (geo/playback.py)
+    participants = "riders"
 
     def scenario_parameters(self) -> dict:
         return dict(fields=[dict(id="instance_hashes", label="Scenarios", type="scenario-library",

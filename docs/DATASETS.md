@@ -10,7 +10,7 @@ The workspace always states the current *Area · Dataset · Scenario*.
 ## Areas and road networks
 
 An **area** is a name, a bounding box and a road-network profile, saved in the researcher's workspace
-(*Scenarios & maps → Areas*). It is created by:
+(*Library › Data setup › 1 · Area and road network*). It is created by:
 
 - **place search** — a city, locality or region (Nominatim, see the usage rules below); very large results start
   from a 8 × 8 km box around the place;
@@ -43,7 +43,7 @@ counted, and a dataset with none is refused.
 ### RPC open data (France only)
 
 The national carpooling proof registry publishes one file per month on data.gouv.fr (Licence Ouverte / Open
-Licence, Etalab). *Datasets → RPC open carpooling data* lists the releases; importing one for an area streams the
+Licence, Etalab). *Library › Data setup › 2 · Mobility data* lists the releases; importing one for an area streams the
 file once, keeps the trips that start and end inside the area, drops identifiers and records the release, size,
 SHA-256, cleaning rules and rejection counts. The area must lie in France (metropolitan France, Corsica or an overseas
 department); other areas are refused, because the registry has no data there. Imported subsets are shared,

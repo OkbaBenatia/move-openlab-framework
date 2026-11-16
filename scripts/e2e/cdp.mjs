@@ -97,6 +97,25 @@ export async function launch(chrome, { width = 1440, height = 900 } = {}) {
     async clickAt(x, y) {
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await s('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     },
+    /** Press the left button, move in steps and release: a real drag (pointer and mouse events, as a person does). */
+    async drag(x0, y0, x1, y1, steps = 14) {
+      await s('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+      await s('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
+      for (let i = 1; i <= steps; i++) { await s('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0 + ((x1 - x0) * i) / steps, y: y0 + ((y1 - y0) * i) / steps, button: 'left', buttons: 1 }); await sleep(15); }
+      await s('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x1, y: y1, button: 'left', buttons: 0, clickCount: 1 });
+    },
+    /** Touch input as on a phone (call once before `tap`). */
+    async touch(enabled = true) { await s('Emulation.setTouchEmulationEnabled', { enabled, maxTouchPoints: 1 }); },
+    /** One finger tap (touch events). */
+    async tap(x, y) {
+      await s('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await sleep(40);
+      await s('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(120);
+    },
+    /** A key pressed with modifiers (Alt 1, Ctrl 2, Meta 4, Shift 8), e.g. `chord('z', 'KeyZ', 90, 2)` for Ctrl+Z. */
+    async chord(key, code, vk, modifiers) {
+      await s('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, modifiers });
+      await s('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk, modifiers });
+    },
     async click(text, scope, exact) {
       let p = null;
       for (let i = 0; i < 60 && !p; i++) { p = await page.find(text, scope, exact); if (!p) await sleep(150); }

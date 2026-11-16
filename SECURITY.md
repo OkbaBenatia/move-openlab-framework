@@ -22,9 +22,25 @@ In scope, in particular:
 - authentication, session or workspace-isolation flaws;
 - bundle import accepting tampered or unsafe content;
 - leaks of secrets or other researchers' data through the API or the web interface;
+- access to a restricted problem, its experiments, scenarios or bundles by an account that was not granted it;
 - uploads, downloads or place searches that bypass their size limits, quotas or host restrictions.
 
 Trusted-process plugin mode is documented as not being a sandbox; code execution by an administrator-approved
 trusted plugin is expected behaviour, not a vulnerability.
 
 The security design and its known limitations are described in [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
+
+## Secrets and private material
+
+- Never commit credentials, a data directory, a credential store, a `.env` file, a bundle or other archive, or
+  unpublished data. `.gitignore` covers the usual locations; `scripts/check_public_safety.py` checks the rest and runs
+  in CI.
+- The only secret the application needs is `SESSION_SECRET`, set in the environment of the server process. Passwords
+  are kept as scrypt hashes in the data directory; temporary passwords are shown once.
+- A restricted problem package, its data and the names of private studies stay outside this repository
+  ([docs/PRIVATE_EXTENSIONS.md](docs/PRIVATE_EXTENSIONS.md)).
+- If you find a secret or private material in the repository or its history, report it privately as a vulnerability:
+  do not quote it in a public issue.
+
+Where credentials live, how they are protected and the confidentiality checklist of a release:
+[docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md#secrets-and-credentials).

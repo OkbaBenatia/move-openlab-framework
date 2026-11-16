@@ -1,0 +1,26 @@
+flowchart TB
+  ADM["Administrator"]
+  RES["Researcher"]
+  SUP["Researcher allowed<br/>to supervise students"]
+  STU["Student"]
+  ACC["Accounts<br/>create, reset, deactivate"]
+  OWN["Own students only<br/>create, reset, deactivate"]
+  EXT["Extensions<br/>grant restricted problems"]
+  AUD["Audit log"]
+  W1["Own isolated workspace"]
+  W2["Own isolated workspace"]
+  W3["Own isolated workspace"]
+  W4["Own isolated workspace"]
+  RP["Restricted problem"]
+  ADM --> W1
+  ADM --> ACC
+  ADM --> EXT
+  ADM --> AUD
+  RES --> W2
+  SUP --> W3
+  SUP --> OWN
+  STU --> W4
+  EXT -.->|"per-account grant, no role implies it"| RP
+  ACC -.->|"recorded"| AUD
+  OWN -.->|"recorded"| AUD
+  EXT -.->|"recorded"| AUD

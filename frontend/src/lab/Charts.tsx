@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import type { Metric } from '../api/client';
+import { tr } from '../i18n';
 import { domainValue, sameEmissionSemantics } from '../mobility/api';
 import type { ResultRow } from './api';
+import { gapLabel } from './scenarioMatch';
 
 /** A metric that can be charted for every row of a comparison. Only metrics with a value for at least one row are
  *  offered: unsupported metrics are never shown. Emission figures are offered only when every row that has them
@@ -13,19 +15,19 @@ export type DomainMetric = { id: string; label: string; unit: string; better: st
 export function chartMetrics(metrics: Metric[], rows: ResultRow[], domain: DomainMetric[] = []): ChartMetric[] {
   const emissions = sameEmissionSemantics(rows.map((r) => r.domain)) && rows.every((r) => !r.domain || r.domain.complete);
   const all: ChartMetric[] = [
-    ...metrics.map((m) => ({ id: m.id, label: m.label, unit: m.unit, better: m.better, group: 'Objective', get: (r: ResultRow) => r.totals[m.id] ?? null })),
-    ...(rows[0]?.descriptive ?? []).map((d) => ({ id: d.id, label: d.label, unit: d.unit, better: d.better, group: 'Mobility', get: (r: ResultRow) => r.descriptive.find((x) => x.id === d.id)?.value ?? null })),
-    ...(emissions ? domain.map((d) => ({ id: `domain:${d.id}`, label: d.unit === '%' ? `${d.label} (%)` : d.label, unit: d.unit, better: d.better, group: 'Emissions', get: (r: ResultRow) => domainValue(r.domain, d.id) })) : []),
-    { id: 'gap_pct', label: 'Gap to the exact reference', unit: '%', better: 'lower', group: 'Quality', get: (r) => r.gap_pct },
-    { id: 'total_time_s', label: 'Median total time', unit: 's', better: 'lower', group: 'Runtime', get: (r) => r.total_time_s },
-    { id: 'solver_time_s', label: 'Median solver time', unit: 's', better: 'lower', group: 'Runtime', get: (r) => r.solver_time_s },
+    ...metrics.map((m) => ({ id: m.id, label: tr(m.label), unit: m.unit, better: m.better, group: tr('Objective'), get: (r: ResultRow) => r.totals[m.id] ?? null })),
+    ...(rows[0]?.descriptive ?? []).map((d) => ({ id: d.id, label: tr(d.label), unit: d.unit, better: d.better, group: tr('Mobility'), get: (r: ResultRow) => r.descriptive.find((x) => x.id === d.id)?.value ?? null })),
+    ...(emissions ? domain.map((d) => ({ id: `domain:${d.id}`, label: d.unit === '%' ? `${tr(d.label)} (%)` : tr(d.label), unit: d.unit, better: d.better, group: tr('Emissions'), get: (r: ResultRow) => domainValue(r.domain, d.id) })) : []),
+    { id: 'gap_pct', label: tr(gapLabel(rows)), unit: '%', better: 'lower', group: tr('Quality'), get: (r) => r.gap_pct },
+    { id: 'total_time_s', label: tr('Median total time'), unit: 's', better: 'lower', group: tr('Runtime'), get: (r) => r.total_time_s },
+    { id: 'solver_time_s', label: tr('Median solver time'), unit: 's', better: 'lower', group: tr('Runtime'), get: (r) => r.solver_time_s },
   ];
   return all.filter((m) => rows.some((r) => typeof m.get(r) === 'number'));
 }
 
 const ORIGIN_SHORT: Record<string, string> = { baseline: 'original', variant: 'original', reproduction: 're-run', extended: 'added' };
 export const rowLabel = (r: ResultRow, rows: ResultRow[]) =>
-  rows.filter((x) => x.method_id === r.method_id).length > 1 ? `${r.name} (${ORIGIN_SHORT[r.campaign_kind] ?? r.campaign_kind})` : r.name;
+  rows.filter((x) => x.method_id === r.method_id).length > 1 ? `${r.name} (${tr(ORIGIN_SHORT[r.campaign_kind] ?? r.campaign_kind)})` : r.name;
 
 const fmt = (v: number, unit: string) => (unit === 's' ? (v < 1 ? `${(v * 1000).toFixed(1)} ms` : v < 120 ? `${v.toFixed(2)} s` : `${(v / 60).toFixed(1)} min`)
   : unit === 'g' ? (Math.abs(v) < 1000 ? `${Math.round(v)} g` : `${(v / 1000).toFixed(1)} kg`)
@@ -39,7 +41,7 @@ export function Charts({ metrics, rows, title, domain = [] }: { metrics: Metric[
   const [mid, setMid] = useState(options[0]?.id ?? '');
   const svg = useRef<SVGSVGElement>(null);
   const m = options.find((o) => o.id === mid) ?? options[0];
-  if (!m) return <p className="muted small">No metric to chart yet.</p>;
+  if (!m) return <p className="muted small">{tr('No metric to chart yet.')}</p>;
   const data = rows.map((r) => ({ label: rowLabel(r, rows), value: m.get(r) }));
   const max = Math.max(...data.map((d) => d.value ?? 0), 0) || 1;
   const W = 560, LW = 190, BH = 22, GAP = 10, TOP = 8, H = TOP + data.length * (BH + GAP) + 20;
@@ -67,22 +69,22 @@ export function Charts({ metrics, rows, title, domain = [] }: { metrics: Metric[
   };
   return <div className="chart-panel">
     <div className="row gap">
-      <label className="row small">Metric <select aria-label="chart metric" value={m.id} onChange={(e) => setMid(e.target.value)}>
+      <label className="row small">{tr('Metric')} <select aria-label={tr('chart metric')} value={m.id} onChange={(e) => setMid(e.target.value)}>
         {groups.map((g) => <optgroup key={g} label={g}>{options.filter((o) => o.group === g).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>)}</select></label>
-      {m.better && <span className="small muted">{m.better} is better</span>}
+      {m.better && <span className="small muted">{m.better === 'lower' ? tr('lower is better') : m.better === 'higher' ? tr('higher is better') : `${m.better} is better`}</span>}
       <span className="grow" />
       <button className="btn sm" onClick={csv}><Download size={12} /> CSV</button>
       <button className="btn sm" onClick={() => save(new Blob([serialise()], { type: 'image/svg+xml' }), 'svg')}><Download size={12} /> SVG</button>
       <button className="btn sm" onClick={png}><Download size={12} /> PNG</button>
     </div>
-    <div className="chart"><svg ref={svg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${m.label} by method`} fontFamily="system-ui, sans-serif">
+    <div className="chart"><svg ref={svg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tr('{metric} by method', { metric: m.label })} fontFamily="system-ui, sans-serif">
       <line x1={LW} x2={LW} y1={TOP - 4} y2={H - 16} data-stroke="--line" stroke="var(--line)" />
       {data.map((d, i) => { const y = TOP + i * (BH + GAP); const w = d.value == null ? 0 : Math.max(6, x(d.value));
         return <g key={d.label}>
-          <title>{`${d.label}: ${d.value == null ? 'not available' : fmt(d.value, m.unit)}`}</title>
+          <title>{`${d.label}: ${d.value == null ? tr('not available') : fmt(d.value, m.unit)}`}</title>
           <text x={LW - 8} y={y + BH / 2 + 4} textAnchor="end" fontSize="12" data-fill="--text" fill="var(--text)">{d.label.length > 30 ? d.label.slice(0, 29) + '…' : d.label}</text>
           {d.value != null && <path d={`M${LW},${y} h${w - 4} q4,0 4,4 v${BH - 8} q0,4 -4,4 h${-(w - 4)} z`} data-fill="--accent" fill="var(--accent)" />}
-          <text x={LW + w + 6} y={y + BH / 2 + 4} fontSize="12" data-fill="--muted" fill="var(--muted)">{d.value == null ? 'n/a' : fmt(d.value, m.unit)}</text>
+          <text x={LW + w + 6} y={y + BH / 2 + 4} fontSize="12" data-fill="--muted" fill="var(--muted)">{d.value == null ? tr('n/a') : fmt(d.value, m.unit)}</text>
         </g>; })}
       <text x={LW} y={H - 3} fontSize="10" data-fill="--muted" fill="var(--muted)">{m.label}{m.unit ? ` (${m.unit})` : ''}</text>
     </svg></div>

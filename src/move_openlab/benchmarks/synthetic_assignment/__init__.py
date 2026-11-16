@@ -30,6 +30,7 @@ class SyntheticAssignment(Problem):
                                 "lower"))
     reference_method = ("exact-milp-highs", "1.0.0")
     decision_description = "[driver_id, passenger_id] for every assignment"
+    participants = "passengers"                           # no map: instances carry no coordinates
 
     # scenarios
     def scenario_parameters(self) -> dict:

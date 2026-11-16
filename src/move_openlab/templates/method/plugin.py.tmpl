@@ -15,7 +15,8 @@ Contract (docs/EXTENDING.md):
     operator installed more.
 
 Instance fields of this problem (see the problem's documentation): $instance_keys.
-This starting point returns no decision (always valid, serves nothing); replace the body of solve with your method.
+This starting point returns no decision: the result is valid but serves no one, so it passes the self-test without
+being a method. Replace the body of solve with your method (the platform does not write it for you).
 """
 from __future__ import annotations
 
@@ -23,12 +24,12 @@ METADATA = {
     "method_id": $method_id_lit,
     "name": $name_lit,
     "version": "0.1.0",
-    "kind": "heuristic",
+    "kind": $kind_lit,
     "problem_id": $problem_id_lit,
     "objective_spec_id": $objective_lit,
     "deterministic": True,
     "author": $author_lit,
-    "description": "Describe the rule your method follows.",
+    "description": $description_lit,
     "default_config": {},
 }
 

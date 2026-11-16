@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { t } from '../i18n';
+import { t, tr } from '../i18n';
 
 export const TOUR_STEPS: { anchor: string; title: string; text: string }[] = [
   { anchor: 'scenario', title: 'Public demonstration', text: 'Opens first: demand sampled from RPC observed trips on the Montbéliard road network, with validated results.' },
@@ -42,18 +42,18 @@ export function Tour({ onClose }: { onClose: (dontShowAgain: boolean) => void })
   const vw = window.innerWidth, vh = window.innerHeight, cw = Math.min(320, vw - 32);
   const below = box ? box.bottom + 12 + 190 < vh : false;
   const card = box ? { left: Math.max(16, Math.min(vw - cw - 16, box.left)), top: below ? box.bottom + 12 : Math.max(16, box.top - 12 - 190) } : { left: (vw - cw) / 2, top: vh / 3 };
-  return <div className="tour" role="dialog" aria-label="quick tour" aria-modal="true">
+  return <div className="tour" role="dialog" aria-label={tr('quick tour')} aria-modal="true">
     {box ? <div className="tour-spot" style={{ left: box.left - 4, top: box.top - 4, width: box.width + 8, height: box.height + 8 }} /> : <div className="tour-dim" />}
     <div className="tour-card" style={{ ...card, width: cw }}>
       <div className="small muted">{i + 1} / {TOUR_STEPS.length}</div>
-      <h3>{step.title}</h3>
-      <p>{step.text}</p>
-      <label className="row small"><input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Don't show again</label>
+      <h3>{tr(step.title)}</h3>
+      <p>{tr(step.text)}</p>
+      <label className="row small"><input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> {tr("Don't show again")}</label>
       <p className="tiny muted">{t('tour.reopen')}</p>
       <div className="row gap">
-        <button className="btn sm" onClick={() => onClose(never)}>Skip</button><span className="grow" />
-        {i > 0 && <button className="btn sm" onClick={() => setI(i - 1)}>Back</button>}
-        <button className="btn sm primary" onClick={() => (last ? onClose(true) : setI(i + 1))}>{last ? 'Done' : 'Next'}</button>
+        <button className="btn sm" onClick={() => onClose(never)}>{tr('Skip')}</button><span className="grow" />
+        {i > 0 && <button className="btn sm" onClick={() => setI(i - 1)}>{tr('Back')}</button>}
+        <button className="btn sm primary" onClick={() => (last ? onClose(true) : setI(i + 1))}>{last ? tr('Done') : tr('Next')}</button>
       </div>
     </div>
   </div>;

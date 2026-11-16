@@ -15,16 +15,19 @@ Every summary is computed from the locked or stored records; nothing here change
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 from .. import bundles, custom_metrics, demo, samples
-from ..analysis.common import SCOPE_FULL, by_cell, med
-from ..analysis.compare import compare
+from ..analysis.common import SCOPE_FULL, SCOPE_REDUCED, SCOPE_TIME_LIMIT, by_cell, med
+from ..analysis.compare import compare, compare_members
+from ..analysis import ml_evaluation as ML
+from ..ml_evidence import EvidenceStore, stored_bytes
 from ..analysis.reproducibility import reproducibility
 from ..analysis.semantic import semantic_compare
 from ..datasets import DatasetStore
@@ -38,6 +41,8 @@ from .experiments import _call, _problem, ws
 from .geo import RIDE, ComposeBody, ScenarioBody
 from .geo import store as network_store
 from .geo import save_scenario as geo_save_scenario
+from .geo import inspect_package as inspect_scenario_package, library_entry
+from .. import scenario_packages
 
 router = APIRouter(prefix="/api/lab")
 PREFS = "preferences.json"
@@ -112,6 +117,8 @@ class PrefsBody(BaseModel):
     start_dismissed: bool | None = None                              # the first-use "start here" card
     details_open: bool | None = None                                 # Workspace: "Experiment details" expanded
     theme: str | None = Field(None, pattern=r"^(light|dark)$")       # appearance; light unless the user chooses dark
+    language: str | None = Field(None, pattern=r"^(en|fr)$")         # interface language kept for the account
+    metrics: dict[str, list[str]] | None = Field(None, max_length=40)   # {problem id: metric ids shown in tables and charts}
     last_experiment: str | None = Field(None, max_length=128)
     area_id: str | None = Field(None, max_length=64)
     hidden_ids: list[str] | None = Field(None, max_length=1000)     # records hidden from lists (never deleted)
@@ -125,11 +132,27 @@ def state(request: Request):
     # "installed" means *this* demonstration (by bundle digest): a newer shipped demonstration is imported next to the
     # previous one, which stays in the workspace (nothing is ever deleted)
     installed = demo.available() and p.get("demo_installed") == sha256_bytes(demo.bundle_bytes())
-    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "details_open", "theme", "last_experiment", "area_id", "workspace")}
+    return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "details_open", "theme", "language", "metrics", "last_experiment", "area_id", "workspace")}
                 | dict(hidden_ids=p.get("hidden_ids") or []),
                 demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or [],
                           area=p.get("demo_area")),
-                sample=_sample_state(p))
+                sample=_sample_state(p),
+                sample_scenario=_sample_scenario_state(w),
+                sample_trips=({k: samples.trips_info().get(k) for k in ("filename", "title", "rows", "bytes", "sha256", "format",
+                                                                         "mapping", "synthetic", "licence", "source")}
+                              if samples.trips_available() else None))
+
+
+def _sample_scenario_state(w) -> dict:
+    """The public sample scenario package and, when it is in this account's library, its library entry."""
+    if not samples.scenario_available():
+        return dict(available=False)
+    i = samples.scenario_info()
+    return dict(available=True, title=i.get("title"), filename=samples.SCENARIO_FILENAME, bytes=i.get("packed_bytes"),
+                sha256=i.get("packed_sha256"), format=i.get("format"), drivers=i.get("drivers"), riders=i.get("riders"),
+                pairs=i.get("pairs"), instance_hash=i.get("instance_hash"), licences=i.get("licences") or [],
+                experiment_filename=samples.EXPERIMENT_EXAMPLE,
+                scenario_id=library_entry(w, i.get("problem_id") or RIDE, i.get("instance_hash") or ""))
 
 
 def _sample_state(p: dict) -> dict:
@@ -151,6 +174,16 @@ def sample_bundle(request: Request):
         raise HTTPException(404, "the sample bundle is not available in this installation")
     return Response(samples.bundle_bytes(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{samples.FILENAME}"'})
+
+
+@router.get("/sample/trips")
+def sample_trips(request: Request):
+    """Download the public sample trip dataset (CSV). Import it under Data setup › Mobility data like any CSV file."""
+    ws(request)
+    if not samples.trips_available():
+        raise HTTPException(404, "the sample trip dataset is not available in this installation")
+    return Response(samples.trips_bytes(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{samples.trips_info()["filename"]}"'})
 
 
 @router.post("/sample/verify")
@@ -175,6 +208,34 @@ def import_sample(request: Request):
     return rep
 
 
+def _require_sample_scenario() -> None:
+    if not samples.scenario_available():
+        raise HTTPException(404, "the sample scenario is not available in this installation")
+
+
+@router.get("/sample/scenario")
+def sample_scenario(request: Request):
+    """Download the public sample scenario package (the exact bytes that "Try a sample › Sample scenario" imports)."""
+    ws(request)
+    _require_sample_scenario()
+    return Response(samples.scenario_bytes(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{samples.SCENARIO_FILENAME}"'})
+
+
+@router.post("/sample/scenario/verify")
+def verify_sample_scenario(request: Request):
+    """Verify the sample scenario package without importing it."""
+    _require_sample_scenario()
+    return inspect_scenario_package(ws(request), samples.scenario_bytes())
+
+
+@router.post("/sample/scenario")
+def import_sample_scenario(request: Request):
+    """Import the public sample scenario through the normal, fully verified scenario-package import."""
+    _require_sample_scenario()
+    return _call(ws(request).import_scenario_package, samples.scenario_bytes())
+
+
 @router.put("/preferences")
 def set_preferences(body: PrefsBody, request: Request):
     w = ws(request)
@@ -183,6 +244,12 @@ def set_preferences(body: PrefsBody, request: Request):
         raise HTTPException(400, "invalid experiment id")
     if upd.get("hidden_ids") is not None and not all(CID.match(str(x)) for x in upd["hidden_ids"]):
         raise HTTPException(400, "invalid record id")
+    if upd.get("metrics") is not None:                 # merged per problem; ids are plain identifiers
+        ok = all(isinstance(k, str) and len(k) <= 120 and isinstance(v, list) and len(v) <= 80
+                 and all(isinstance(x, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", x) for x in v) for k, v in upd["metrics"].items())
+        if not ok:
+            raise HTTPException(400, "invalid metric selection")
+        upd["metrics"] = {**(_prefs(w).get("metrics") or {}), **upd["metrics"]}
     if upd.get("area_id"):                       # the working area (Library › Use, the area filter); "" clears it
         if not AREA_ID.match(upd["area_id"]):
             raise HTTPException(400, "invalid area id")
@@ -318,10 +385,65 @@ def _dataset_label(request: Request, w, prov: dict) -> str | None:
     return {"editor": "map editor"}.get(prov.get("source"), prov.get("source"))
 
 
+class StudyMember(BaseModel):
+    campaign_id: str = Field(min_length=3, max_length=80)
+    method_id: str = Field(min_length=3, max_length=80)
+    label: str | None = Field(None, max_length=120)             # display name in the study (the record keeps its own)
+    note: str | None = Field(None, max_length=120)              # e.g. which policy or version this member is
+
+
+class StudyBody(BaseModel):
+    study_id: str | None = Field(None, max_length=80)
+    title: str = Field(min_length=3, max_length=160)
+    description: str = Field("", max_length=600)
+    members: list[StudyMember] = Field(min_length=1, max_length=12)
+    featured_instance: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
+
+
+def _study_view(w, st: dict) -> dict:
+    """A study with what its members are: the experiment each method comes from, and how that experiment was made."""
+    members = []
+    for m in st["members"]:
+        c = w.get(m["campaign_id"])
+        ref = next((x for x in c["methods"] if x["method_id"] == m["method_id"]), {})
+        cfg = (c["config"].get("method_configs") or {}).get(m["method_id"]) or {}
+        members.append(dict(m, experiment=display_title(c["title"]), locked=bool(c.get("checksum")), kind=c["kind"],
+                            name=m.get("label") or problem_for(c).method_display_name(m["method_id"], cfg) or ref.get("name") or m["method_id"],
+                            runs=sum(1 for r in c["runs"] if r["method_id"] == m["method_id"]),
+                            imported_results=bool(c.get("result_import")), imported=bool(w.import_record(m["campaign_id"])),
+                            checksum=c.get("checksum")))
+    return dict(st, members=members)
+
+
+@router.get("/studies")
+def studies(request: Request):
+    """Saved study views of this workspace (methods of several experiments shown together on the same scenarios)."""
+    w = ws(request)
+    return dict(studies=[_study_view(w, st) for st in w.studies()])
+
+
+@router.put("/studies")
+def save_study(body: StudyBody, request: Request):
+    w = ws(request)
+    st = _call(w.save_study, body.title, [m.model_dump(exclude_none=True) for m in body.members], body.featured_instance,
+               body.description, body.study_id)
+    return _study_view(w, st)
+
+
+@router.delete("/studies/{study_id}")
+def delete_study(study_id: str, request: Request):
+    _call(ws(request).delete_study, study_id)
+    return dict(ok=True)
+
+
 @router.get("/experiments/{cid}")
-def experiment(cid: str, request: Request):
+def experiment(cid: str, request: Request, view: str = "", study: str = ""):
+    """One experiment for the Workspace. ``view=records`` shows the experiment's own record lineage; by default an
+    experiment that is a member of a saved study opens in that study's view (``study`` chooses one of several)."""
     w = ws(request)
     c = _call(w.get, cid)
+    mine = [st for st in w.studies() if any(m["campaign_id"] == cid for m in st["members"])]
+    st_view = None if view == "records" or not mine else next((x for x in mine if x["study_id"] == study), mine[0])
     problem = _call(problem_for, c)
     imp = w.import_record(cid)
     insts = [w.inst.get_instance(h) for h in c["scenario_set"]["instance_hashes"]]
@@ -332,37 +454,56 @@ def experiment(cid: str, request: Request):
         campaign=dict(campaign_id=cid, title=display_title(c["title"]), record_title=c["title"], kind=c["kind"], status=c["status"],
                       locked=bool(c.get("checksum")), owner_display=c["owner_display"], created_at=c["created_at"],
                       imported=bool(imp), imported_from=imp and imp["original_owner_display"],
+                      result_import=c.get("result_import") and dict(source=(c["result_import"].get("source") or {}).get("name"),
+                                                                     counts=c["result_import"].get("counts")),
                       parent=parent and dict(campaign_id=parent["campaign_id"], relation=parent["relation"],
                                              kind=parent["kind"]),
                       variant=(c.get("semantic_variant") or {}).get("description"), problem_id=problem.problem_id,
                       repetitions=c["config"]["repetitions"], emissions=c["config"].get("emissions"),
+                      method_configs=c["config"].get("method_configs") or {},
                       category=category_of(c["kind"], bool(imp), cid in set(_prefs(w).get("demo_campaigns") or []))),
         context=dict(area=_area_label(request, w, nid), dataset=_dataset_label(request, w, prov),
                      scenario=f"{len(insts)} scenario{'s' if len(insts) != 1 else ''}"),
         problem=dict(title=problem.title, synthetic=problem.synthetic, metrics=[m.to_dict() for m in problem.metrics],
-                     objective=[o.to_dict() for o in problem.objective], domain_metrics=problem.domain_metric_definitions()),
+                     objective=[o.to_dict() for o in problem.objective], domain_metrics=problem.domain_metric_definitions(),
+                     presentation=problem.presentation(), facts=problem.run_fact_definitions()),
         scenarios=[dict(instance_hash=i["instance_hash"], instance_id=i["instance_id"], name=i.get("name"),
                         derived_from=(i.get("derivation") or {}).get("parent_instance_hash"),
                         seed=(i.get("provenance") or {}).get("seed"),
                         edited=list((i.get("provenance") or {}).get("edited_agents") or []),
                         vehicles=_vehicle_summary(i), emissions=E.config_of(i, c["config"]),
-                        **{k: len(i[k]) for k in ("drivers", "riders", "pairs") if isinstance(i.get(k), list)})
+                        notes=problem.scenario_notes(i), **problem.scenario_summary(i))
                    for i in insts],
-        methods=[dict(method_id=m["method_id"], version=m["version"], name=m.get("name"), kind=m.get("kind"),
-                      source=m["source"]) for m in c["methods"]],
+        methods=[dict(method_id=m["method_id"], version=m["version"], kind=m.get("kind"), source=m["source"], recorded_name=m.get("name"),
+                      name=problem.method_display_name(m["method_id"], (c["config"].get("method_configs") or {}).get(m["method_id"]) or {}) or m.get("name"))
+                 for m in c["methods"]],
         validation=validation_of(c), provenance=_provenance(request, w, insts),
         runs=[], job_id=next((j["job_id"] for j in request.app.state.jobs.history(w.user, 1, subject=f"{w.user}/{cid}")), None),
         results=None, comparability=None, reproduction=None)
+    out["view"] = dict(mode="study" if st_view else "records", study=st_view and _study_view(w, st_view),
+                       studies=[dict(study_id=x["study_id"], title=x["title"]) for x in mine])
     if c["runs"]:
-        cmp = _call(compare, w, cid)
-        scope = {r["campaign_id"] for r in cmp["rows"]} | {cid}          # the campaigns the comparison shows
+        if st_view:                                              # the study's members, each from its own experiment
+            cmp = _call(compare_members, w, st_view["members"])
+            pairs = {(m["campaign_id"], m["method_id"]) for m in st_view["members"]}
+            sources = [w.get(x) for x in dict.fromkeys(m["campaign_id"] for m in st_view["members"])]
+        else:
+            cmp = _call(compare, w, cid)
+            scope = {r["campaign_id"] for r in cmp["rows"]} | {cid}      # the campaigns the comparison shows
+            sources = [x for x in _call(w.lineage, cid) if x["campaign_id"] in scope]
+            pairs = None
         out["runs"] = [dict(run_id=r["run_id"], campaign_id=x["campaign_id"], instance_hash=r["instance_hash"],
                             method_id=r["method_id"], accepted=r["accepted"], status=r.get("status_declared"))
-                       for x in _call(w.lineage, cid) if x["campaign_id"] in scope
-                       for r in x["runs"] if r.get("repetition") == 1]
+                       for x in sources for r in x["runs"]
+                       if r.get("repetition") == 1 and (pairs is None or (x["campaign_id"], r["method_id"]) in pairs)]
         customs = _customs(w, problem, insts, cmp["rows"])
-        out["results"] = dict(rows=[_row(problem, insts, r, cu) for r, cu in zip(cmp["rows"], customs)], warnings=cmp["warnings"],
-                              reference=cmp["reference"], metrics=cmp["metrics"])
+        rows = [_row(problem, insts, r, cu) for r, cu in zip(cmp["rows"], customs)]
+        titles = {x["campaign_id"]: display_title(x["title"]) for x in sources}
+        notes = {(m["campaign_id"], m["method_id"]): m for m in (st_view["members"] if st_view else [])}
+        for r in rows:                                           # where each row comes from; a study may rename a member
+            m = notes.get((r["campaign_id"], r["method_id"]), {})
+            r.update(experiment=titles.get(r["campaign_id"]), note=m.get("note"), method_name=r["name"], name=m.get("label") or r["name"])
+        out["results"] = dict(rows=rows, warnings=cmp["warnings"], reference=cmp["reference"], metrics=cmp["metrics"])
         if parent:
             try:
                 out["comparability"] = _comparability(semantic_compare(w, parent["campaign_id"], cid))
@@ -386,13 +527,18 @@ def _observed_trips(request: Request, key: str | None) -> int | None:
         return demo.OBSERVED_TRIPS.get(key)
 
 
+def _licence_name(lic) -> str | None:
+    return lic.get("name") if isinstance(lic, dict) else lic if isinstance(lic, str) and lic else None
+
+
 def _provenance(request: Request, w, insts: list[dict]) -> dict:
     """Where the scenarios come from, kept apart from the scenarios themselves: the *source* (observed trips of an open
     data release, an uploaded file, a generator, the map editor) and how the participants were *derived* from it."""
     prov = (insts[0].get("provenance") or {}) if insts else {}
     src = prov.get("source")
     out = dict(source=src, sampled=src in ("open-data", "dataset"), release=prov.get("release"),
-               attribution=prov.get("attribution"), licence=(prov.get("licence") or {}).get("name"),
+               # an open-data release records its licence as {id, name, url}; an uploaded file as the uploader's statement
+               attribution=prov.get("attribution"), licence=_licence_name(prov.get("licence")),
                method=prov.get("method"), generator=prov.get("generator"), window=prov.get("window"),
                pool_size=prov.get("pool_size"), seeds=[(i.get("provenance") or {}).get("seed") for i in insts],
                observed_trips=_observed_trips(request, prov.get("dataset_key")) if src == "open-data" else None,
@@ -446,7 +592,9 @@ def _row(problem, insts, r: dict, customs: tuple[dict, dict, dict] = ({}, {}, {}
     return dict(method_id=r["method_id"], version=r["version"], name=r["name"], kind=r["kind"], source=r["source"],
                 campaign_id=r["campaign_id"], origin=r["origin"], campaign_kind=r["campaign_kind"],
                 researcher=r["researcher"], scenarios=r["scenarios"], valid=r["all_feasible"],
-                proven_optimal=proven, optimal=r.get("optimal"), totals=r["totals"],
+                proven_optimal=proven, reduced_optimal=sc.get(SCOPE_REDUCED, 0), time_limited=sc.get(SCOPE_TIME_LIMIT, 0),
+                facts=r.get("facts") or {}, recorded_name=r.get("recorded_name"),
+                optimal=r.get("optimal"), totals=r["totals"],
                 descriptive=problem.descriptive_metrics(insts, r["totals"]), domain=r.get("domain"),
                 gap_pct=(r.get("final_level_gap_pct") or {}).get("mean"),
                 solver_time_s=r["median_solver_time_s"], total_time_s=r["median_total_time_s"],
@@ -802,9 +950,12 @@ def evidence_doc(cid: str, request: Request) -> dict:
 async def inspect_bundle(request: Request, file: UploadFile = File(...)):
     """Check a bundle completely without importing it, and say what importing it would do here: what it contains, which
     records are new, already present or in conflict, whether its methods are available for a re-execution, and what can
-    be compared. Nothing is written."""
+    be compared. Nothing is written. A scenario package (its manifest names ``move-openlab-scenario/1``) is verified by
+    the scenario-package importer instead; its report says ``kind: "scenario"``."""
     data = await file.read(MAX_BUNDLE_BYTES + 1)
     w = ws(request)
+    if scenario_packages.is_package(data):
+        return dict(inspect_scenario_package(w, data), filename=file.filename)
     rep = _call(w.verify_bundle, data)[0]
     present: dict[str, str] = {}
     for ent in rep["campaigns_verified"]:
@@ -841,7 +992,7 @@ def metrics(request: Request, problem_id: str = ""):
     w = ws(request)
     if not problem_id:
         return dict(metrics=[], available=[], errors={}, can_register=False)
-    problem = _problem(problem_id)
+    problem = _problem(problem_id, request)
     listed, errors = [], {}
     for meta, ev in w.metric_evaluations(problem, []):
         listed.append(meta)
@@ -862,7 +1013,177 @@ class MetricRegisterBody(BaseModel):
 def register_metric(body: MetricRegisterBody, request: Request):
     """Register a metric file of the approved plugin directory for this workspace (pinned SHA-256, isolated
     self-test). Same rules as method plugins: plugins enabled; trusted-process mode: administrators only."""
-    return _call(ws(request).register_metric, _problem(body.problem_id), body.plugin, admin=request.state.session.is_admin)
+    return _call(ws(request).register_metric, _problem(body.problem_id, request), body.plugin, admin=request.state.session.is_admin)
+
+
+# ---------------------------------------------------------------- ML evaluation of learned methods (labelled data only)
+#
+#   GET  /api/lab/experiments/{cid}/evaluation?method_id=&threshold=   evaluations of one method: those the problem
+#                                                                      package provides, then the imported evidence
+#   POST /api/lab/experiments/{cid}/evaluation                         import evaluation evidence (JSON, or CSV + metadata)
+#   GET  /api/lab/experiments/{cid}/evaluation/evidence/{sha}          download one stored evidence document
+#   POST /api/lab/experiments/{cid}/evaluation/evidence/{sha}/withdraw hide one imported evidence (the file is kept)
+#
+# Evidence is stored beside the experiment (owner-only, named by its SHA-256), never in the experiment record: a locked
+# experiment keeps its checksum. Every route goes through the signed-in account's own workspace.
+NO_PREDICTIONS = ("exact", "heuristic")
+NOT_APPLICABLE = "Not applicable: this method makes no predictions (it has no learned classifier)."
+NO_EVIDENCE = ("Not available: labelled predictions are needed (true labels and the method's predictions on a named "
+               "evaluation population). None are provided for this method.")
+
+
+def _ml_method(w, cid: str, method_id: str, missing: int = 404):
+    """The experiment (through the account's workspace: another account's, or a restricted problem's, is not found),
+    its problem, the method reference, its settings and its display name."""
+    c = _call(w.get, cid)
+    problem = _call(problem_for, c)
+    ref = next((m for m in c["methods"] if m["method_id"] == method_id), None)
+    if ref is None:
+        raise HTTPException(missing, "method not in this experiment" if missing == 404 else
+                            f"the evidence is about method {method_id[:80]!r}, which is not a method of this experiment "
+                            f"(its methods: {', '.join(m['method_id'] for m in c['methods'])})")
+    cfg = (c["config"].get("method_configs") or {}).get(method_id) or {}
+    return c, problem, ref, cfg, problem.method_display_name(method_id, cfg) or ref.get("name") or method_id
+
+
+def _imported(entry: dict, ev: dict) -> dict:
+    return dict(ev, origin="imported", source=dict(name=entry["source"]["name"], sha256=entry["source"]["sha256"]),
+                evidence_sha256=entry["sha256"], evidence_format=entry.get("format", ML.FORMAT),
+                imported_by=entry["imported_by"], imported_at=entry["imported_at"])
+
+
+def _reference(entry: dict) -> dict:
+    """Evidence received as a reference only: the exporter's recorded figures and provenance, never recomputed here."""
+    r, rec = entry["reference"], entry["reference"].get("recorded") or {}
+    n, pos = r.get("records") or 0, r.get("positives") or 0
+    ds = r.get("dataset") or {}
+    return dict(origin="bundle-reference", recomputable=False, reference_only=True,
+                reason="Received as a reference: the predictions and labels were not included in the bundle, so these "
+                       "figures are the exporter's and cannot be recomputed here.",
+                population=ds.get("population"), split=ds.get("split"), unit=ds.get("unit"), graphs=None, candidates=n,
+                records=n, positives=pos, prevalence_pct=round(100 * pos / n, 4) if n else None, decision=rec.get("decision"),
+                positive_label=r.get("positive_label"), convention="as recorded by the exporter",
+                confusion=rec.get("confusion"), metrics=rec.get("metrics") or {}, metric_reasons=rec.get("metric_reasons") or {},
+                extra_metrics=[], notes=list(r.get("notes") or []),
+                provenance=dict(dataset=ds, model=r.get("model"), feature_pipeline=r.get("feature_pipeline"),
+                                decision=r.get("decision"), method_id=entry["method_id"]),
+                has_scores=r.get("has_scores"), threshold_adjustable=False, threshold=(r.get("decision") or {}).get("threshold"),
+                exploratory=False, recorded_decision=None, sweep=[], score_range=None,
+                source=dict(name=entry["source"].get("name"), sha256=entry["sha256"]), evidence_sha256=entry["sha256"],
+                evidence_format=entry.get("format", ML.FORMAT), imported_by=entry["imported_by"], imported_at=entry["imported_at"])
+
+
+@router.get("/experiments/{cid}/evaluation")
+def ml_evaluation(cid: str, method_id: str, request: Request, threshold: float | None = None):
+    """Classification evaluations of one method of an experiment: first those the problem provides from real predictions
+    and labels (``origin: "adapter"``), then those computed from evidence imported for this experiment (``origin:
+    "imported"``, with provenance, the evidence SHA-256, who imported it and when, and a threshold sweep). ``threshold``
+    recomputes the threshold-adjustable ones at an exploratory threshold (``exploratory: true``; the recorded decision
+    is still returned). Without any evaluation the answer says why; nothing is derived from solver outcomes."""
+    w = ws(request)
+    _c, problem, ref, cfg, name = _ml_method(w, cid, method_id)
+    base = dict(method_id=method_id, name=name, kind=ref.get("kind"))
+    if ref.get("kind") in NO_PREDICTIONS:
+        return dict(base, available=False, evaluations=[], reason=NOT_APPLICABLE, can_import=False)
+    if threshold is not None and not math.isfinite(threshold):
+        raise HTTPException(422, "threshold must be a finite number")
+    adapter_error = None
+    try:
+        evs = [dict(dict(e), origin="adapter", threshold_adjustable=False, exploratory=False)
+               for e in problem.ml_evaluations(method_id, cfg)]
+    except (OSError, ValueError, KeyError) as e:
+        evs, adapter_error = [], f"Not available: the evaluation data could not be read ({type(e).__name__})."
+    store, errors = EvidenceStore(w.root), []
+    index = _call(store.index, cid)
+    for entry in index:
+        if entry["method_id"] != method_id or entry.get("withdrawn"):
+            continue
+        if entry.get("reference_only"):                         # came with a bundle without its predictions and labels
+            evs.append(_reference(entry))
+            continue
+        try:
+            evs.append(_imported(entry, store.evaluation(cid, entry["sha256"], threshold)))
+        except (BenchError, ML.EvidenceError, OSError) as e:    # a stored file that no longer verifies: said, not hidden
+            errors.append(dict(evidence_sha256=entry["sha256"], reason=f"Not available: {e}"))
+    out = dict(base, can_import=True, evidence_errors=errors, adapter_error=adapter_error,
+               withdrawn=sum(1 for e in index if e["method_id"] == method_id and e.get("withdrawn")))
+    if not evs:
+        return dict(out, available=False, evaluations=[], reason=adapter_error or NO_EVIDENCE)
+    return dict(out, available=True, evaluations=evs, reason=None)
+
+
+@router.post("/experiments/{cid}/evaluation")
+def import_ml_evidence(cid: str, request: Request, file: UploadFile = File(...), method_id: str | None = Form(None),
+                       metadata: str | None = Form(None)):
+    """Import evaluation evidence (real predictions and ground-truth labels) for one method of an experiment: a JSON
+    document of the format ``move-openlab/ml-evaluation-evidence@1``, or a CSV of records (``id,label,score[,prediction]``)
+    with ``method_id`` and ``metadata`` (a JSON object holding the other fields of the format). The evidence is
+    validated, stored content-addressed in an owner-only file beside the experiment and recorded in the audit log. The
+    experiment record is not modified."""
+    w = ws(request)
+    c = _call(w.get, cid)                                         # authorisation first: unknown here answers 404
+    raw = file.file.read(ML.MAX_EVIDENCE_BYTES + 1)
+    name = (file.filename or "evidence").replace("\\", "/").rsplit("/", 1)[-1][:160]
+    try:
+        if raw.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] in (b"{", b"[") or name.lower().endswith(".json"):
+            if metadata:
+                raise ML.EvidenceError("a JSON evidence file carries its own metadata: send the metadata fields only with a CSV file")
+            evidence, kind = ML.validate(ML.parse_json(raw)), "json"
+            if method_id and method_id != evidence["method_id"]:
+                raise ML.EvidenceError(f"this evidence is about method {evidence['method_id'][:80]!r}, not {method_id[:80]!r}: "
+                                       "it can only be imported for the method it names")
+            data = raw
+        else:
+            try:
+                meta = json.loads(metadata) if metadata else {}
+            except (ValueError, RecursionError):
+                raise ML.EvidenceError("metadata must be a JSON object") from None
+            if isinstance(meta, dict) and method_id:
+                if meta.get("method_id") not in (None, method_id):
+                    raise ML.EvidenceError("method_id and metadata.method_id differ")
+                meta = dict(meta, method_id=method_id)
+            evidence, kind = ML.validate(ML.from_csv(raw, meta)), "csv"
+            data = stored_bytes(evidence)
+    except ML.EvidenceError as e:
+        raise HTTPException(e.status, str(e)) from None
+    _c, _problem_, ref, _cfg, _name = _ml_method(w, c["campaign_id"], evidence["method_id"], missing=422)
+    if ref.get("kind") in NO_PREDICTIONS:
+        raise HTTPException(422, NOT_APPLICABLE + " Evaluation evidence can be imported for a learned or hybrid method only.")
+    ses = request.state.session
+    entry, created = _call(EvidenceStore(w.root).add, cid, evidence, data,
+                           dict(name=name, sha256=sha256_bytes(raw), bytes=len(raw), kind=kind), ses.display, ses.username)
+    if created:
+        from .admin import audit
+        audit(request, ses.username, "import_ml_evidence", f"{cid}:{evidence['method_id']}:{entry['sha256']}")
+    return dict(campaign_id=cid, method_id=evidence["method_id"], evidence_sha256=entry["sha256"], created=created,
+                records=entry["records"], source=entry["source"], imported_by=entry["imported_by"],
+                imported_at=entry["imported_at"], stored="owner-only file beside the experiment; the experiment record is unchanged")
+
+
+@router.get("/experiments/{cid}/evaluation/evidence/{sha}")
+def ml_evidence_file(cid: str, sha: str, request: Request):
+    """The stored evidence document, byte for byte (its SHA-256 is its name)."""
+    w = ws(request)
+    _call(w.get, cid)
+    data = _call(EvidenceStore(w.root).read, cid, sha)
+    return Response(data, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="ml-evaluation-evidence-{sha[:16]}.json"',
+                             "X-Evidence-SHA256": sha, "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/experiments/{cid}/evaluation/evidence/{sha}/withdraw")
+def withdraw_ml_evidence(cid: str, sha: str, request: Request):
+    """Hide one imported evidence from the evaluation. Nothing is deleted: the file and its index entry are kept, and
+    importing the same file again shows it again. Recorded in the audit log."""
+    w = ws(request)
+    _call(w.get, cid)
+    store, ses = EvidenceStore(w.root), request.state.session
+    already = bool(_call(store.entry, cid, sha).get("withdrawn"))
+    entry = _call(store.withdraw, cid, sha, ses.display)
+    if not already:
+        from .admin import audit
+        audit(request, ses.username, "withdraw_ml_evidence", f"{cid}:{entry['method_id']}:{sha}")
+    return dict(campaign_id=cid, method_id=entry["method_id"], evidence_sha256=sha, withdrawn=entry["withdrawn"])
 
 
 # ---------------------------------------------------------------- public synthetic benchmark (methodological)
@@ -887,9 +1208,9 @@ def _benchmark_definition() -> dict:
         optional_plugin=dict(plugin="regret_greedy", note="the example plug-in; register it with + Add method to include it"),
         validator=p.validator_version, oracle="independent min-cost maximum flow (successive shortest paths), not the MILP",
         command="python scripts/benchmark_synthetic_assignment.py --out <dir>",
-        scope="A methodological benchmark with its own measured results. It is not the separate synthetic scientific "
-              "study (semantic comparability stress test), which stays Planned until its protocol is published and "
-              "independently reproduced.")
+        scope="A methodological benchmark with its own measured results: a fixed protocol (scenarios, methods, repetitions, "
+              "validator, oracle) that anyone can repeat and compare run by run. Its data is artificial: it is not the "
+              "mobility demonstration, and it reproduces the results of no other study.")
 
 
 @router.get("/benchmark/public")

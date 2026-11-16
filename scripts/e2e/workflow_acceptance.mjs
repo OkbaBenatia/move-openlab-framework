@@ -132,11 +132,12 @@ await check('A2', 'Participants list and marker types', 'Drivers and riders list
 await check('A3', 'Compare Exact MILP and Greedy inside the experiment', 'Compare methods opens on the same frozen experiment: the selected methods side by side, reference A, validation, runtime, objective, CO₂; no other experiment needed.',
   async () => {
     await goHash(`#/workspace/${base}`, 2500);
-    await p.click('Compare methods', '.lab-right button'); await p.waitFor('location.hash.startsWith("#/methods/") && !!document.querySelector(".cmp-table")', 30000, 'methods table'); await sleep(1500);
+    // one Compare entry: it opens the Methods tab when the experiment has several methods; experiments are chosen on the Experiments tab
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") && !!document.querySelector(".cmp-table")', 30000, 'methods table'); await sleep(1500);
     const heads = await p.eval(`[...document.querySelectorAll('.cmp-table thead th')].map((t) => t.innerText.trim())`);
     const rows = await p.eval(`[...document.querySelectorAll('.cmp-table tbody tr:not(.grp)')].map((t) => t.cells[0]?.innerText)`);
     const s = await shot('12-compare-methods', 400);
-    expect(heads.some((h) => /A · Exact/.test(h)) && heads.some((h) => /B · Greedy/.test(h)) && ['Status', 'Served riders', 'Runtime', 'Emissions'].every((r) => rows.includes(r)), `${heads} | ${rows}`);
+    expect(heads.some((h) => /A · Exact/.test(h)) && heads.some((h) => /B · Greedy/.test(h)) && ['Status', 'Served riders', 'Runtime', 'CO₂e emissions'].every((r) => rows.includes(r)), `${heads} | ${rows}`);
     // unticking a method leaves exactly the ticked ones
     await p.eval(`document.querySelector('.method-picks input[aria-label^="Greedy"]').click()`); await sleep(800);
     const one = await p.eval(`[...document.querySelectorAll('.cmp-table thead th')].length`);
@@ -166,7 +167,7 @@ await check('A4b', 'Exactly two experiments; charts at 160 % zoom and on a phone
   async () => {
     await goHash(`#/workspace/${base}`, 2500);
     const titles = Object.fromEntries((await api('/api/lab/experiments')).body.experiments.map((x) => [x.campaign_id, x.title]));
-    await p.click('Compare', '.labbar button'); await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'picker'); await sleep(800);
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500); if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); } await p.waitFor('!!document.querySelector(".picker-drawer .cands")', 30000, 'picker'); await sleep(800);
     await p.eval(`[...document.querySelectorAll('.picker-drawer input[type=checkbox]')].find((x) => x.getAttribute('aria-label') === ${JSON.stringify(titles[variant])}).click()`); await sleep(400);
     const foot = await text('.picker-drawer .drawer-foot');
     expect(/^2 selected/.test(foot), foot);
@@ -282,7 +283,7 @@ await check('B1', 'Generate 20 drivers and 30 riders, seed 21, Exact and Greedy;
     expect(e.validation.accepted === e.validation.runs && e.validation.runs === 6, `validation ${JSON.stringify(e.validation)}`);
     expect(toWorkspace < 3000, `Workspace after ${toWorkspace} ms`);
     const rows = e.results.rows.map((r) => ({ method: r.method_id, served: r.totals.served, detour_min: Math.round(r.totals.detour_s / 6) / 10, co2_kg: r.domain?.complete ? Math.round(r.domain.solution_g / 100) / 10 : null, avoided_kg: r.domain?.complete ? Math.round(r.domain.avoided_g / 100) / 10 : null }));
-    await p.click('Compare methods', '.lab-right button'); await p.waitFor('!!document.querySelector(".cmp-table")', 30000, 'methods'); await sleep(1200);
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") && !!document.querySelector(".cmp-table")', 30000, 'methods'); await sleep(1200);
     const s4 = await shot('12b-compare-methods-new-experiment', 300);
     F.scenario_b = { campaign_id: mine, preview, ms_to_workspace: toWorkspace, ms_to_progress: toJob, stages, rows };
     return { actual: `“${preview}”; Workspace ${toWorkspace} ms after Save & Run, progress ${toJob} ms (${stages.join(' › ')}); ${e.validation.accepted}/${e.validation.runs} validated; ${rows.map((r) => `${r.method} ${r.served} served, ${r.detour_min} min, CO₂ ${r.co2_kg} kg (avoided ${r.avoided_kg})`).join('; ')}.`, evidence: [s0, s1, s2, s3, s4] };
@@ -308,7 +309,7 @@ await check('C1', 'Add My Greedy Matching: register if needed, Run with this met
     const row = e.results.rows.find((r) => r.method_id === 'my-greedy-matching');
     expect(ext !== base && e.campaign.kind === 'extended' && row && e.validation.accepted === e.validation.runs && !row.proven_optimal, `${ext} ${e.campaign.kind} ${JSON.stringify(e.validation)}`);
     expect(/ — Extension \d+ \(My Greedy Matching\)$/.test(e.campaign.title), `title ${e.campaign.title}`);
-    await p.click('Compare methods', '.lab-right button'); await p.waitFor('!!document.querySelector(".cmp-table")', 30000, 'methods'); await sleep(1500);
+    await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") && !!document.querySelector(".cmp-table")', 30000, 'methods'); await sleep(1500);
     const heads = await p.eval(`[...document.querySelectorAll('.cmp-table thead th')].map((t) => t.innerText.trim())`);
     const s3 = await shot('19-custom-method-comparison', 300);
     await p.click('Charts', '.tabs button'); await sleep(2500); const s4 = await shot('19b-custom-method-charts', 300);
@@ -349,10 +350,12 @@ await check('E1', '+ Driver and + Rider from the Participants panel', 'The wizar
     return { actual: `D21 placed by two clicks, route “${routeText?.slice(0, 120)}”; R31 waiting for its start point; nothing saved (closed without Save).`, evidence: [s1, s2, s3] };
   });
 
-await check('E2', 'Randomize with a typed seed (deterministic)', 'Randomize opens the participants step with new places; seed 4242 and 4243 give different places, 4242 again the same places as before; ids and time windows stay.',
+await check('E2', 'Randomize with a typed seed (deterministic)', 'Randomize opens the participants step (with the Randomize dialog, closed here); seed 4242 and 4243 give different places, 4242 again the same places as before; ids and time windows stay.',
   async () => {
     await goHash(`#/workspace/${base}`, 3000);
     await p.click('Randomize', '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard table[aria-label=drivers]")', 30000, 'wizard'); await sleep(2500);
+    // the Workspace button opens the editor with the Randomize dialog on top; this check uses the seed-only control under it
+    await p.waitFor('!!document.querySelector(".rz-modal")', 15000, 'Randomize dialog'); await p.click('Cancel', '.rz-modal button', true); await p.waitFor('!document.querySelector(".rz-modal")', 8000, 'dialog closed'); await sleep(500);
     const places = () => p.eval(`[...document.querySelectorAll('.wizard table[aria-label=drivers] tbody tr')].slice(0, 5).map((r) => [...r.cells[1].querySelectorAll('button')].map((b) => b.dataset.at).join(' > ')).join(' | ')`);
     const times = () => p.eval(`[...document.querySelectorAll('.wizard table[aria-label=drivers] tbody tr')].slice(0, 5).map((r) => [r.cells[2]?.querySelector('input')?.value, r.cells[3]?.querySelector('input')?.value].join('-')).join(' | ')`);
     const ready = () => p.waitFor('[...document.querySelectorAll(".wizard button")].some((b) => /Randomize locations/.test(b.innerText) && !b.disabled)', 60000, 'Randomize enabled');
@@ -369,11 +372,11 @@ await check('E2', 'Randomize with a typed seed (deterministic)', 'Randomize open
   });
 
 // ===================================================================================================== Benchmark, picker, phone
-await check('BM', 'Public synthetic benchmark: definition, run, oracle check', 'Library › Benchmarks shows the public benchmark (inputs, methods, checks, reproduction command) apart from the Planned scientific study; Run executes it; every Exact run equals the min-cost-flow oracle optimum.',
+await check('BM', 'Public synthetic benchmark: definition, run, oracle check', 'Library › Benchmarks shows the public benchmark (inputs, methods, checks, reproduction command) with no placeholder for unfinished studies; Run executes it; every Exact run equals the min-cost-flow oracle optimum.',
   async () => {
     await goHash('#/benchmarks', 2500);
     const page = await text('main, .col-page');
-    expect(/Public synthetic assignment benchmark/.test(page) && /Planned/.test(page) && /benchmark_synthetic_assignment\.py/.test(page), page.slice(0, 200));
+    expect(/Public synthetic assignment benchmark/.test(page) && !/Planned/.test(page) && /benchmark_synthetic_assignment\.py/.test(page), page.slice(0, 200));
     await armJob();
     await p.click('Run the public benchmark', 'button');
     await p.waitFor('location.hash.startsWith("#/workspace/c-")', 30000, 'workspace'); await waitJob(); await sleep(3000);
@@ -387,16 +390,35 @@ await check('BM', 'Public synthetic benchmark: definition, run, oracle check', '
     return { actual: `${b.scenarios} scenarios; ${b.methods.map((m) => `${m.method_id}: ${m.accepted}/${m.runs} validated, ${m.oracle_optimal}/${m.runs} equal to the oracle`).join('; ')}.`, evidence: [s] };
   });
 
-await check('P1', 'No comparable experiment: actionable choices', 'For an experiment with nothing comparable, the picker says “No comparable experiment found.” and offers Compare methods in this experiment, Run another method on the same scenario, Reproduce this experiment.',
+await check('P1', 'No comparable experiment: actionable choices', 'For an experiment with nothing comparable, the picker says “No comparable experiment found.” and offers Compare methods in this experiment, Run another method on the same scenario, Reproduce this experiment. For an experiment that has comparable ones, the picker lists them and does not show that message.',
   async () => {
-    await goHash(`#/workspace/${F.benchmark.campaign_id}`, 3000);
-    await p.click('Compare', '.labbar button'); await p.waitFor('!!document.querySelector(".picker-drawer") && !/Checking comparability/.test(document.querySelector(".picker-drawer").innerText)', 30000, 'picker'); await sleep(800);
-    const t = await text('.picker-drawer');
-    const s = await shot('13b-no-comparable-experiment', 300);
-    const ok = /No comparable experiment found\./.test(t) && /Compare methods in this experiment/.test(t) && /Run another method on the same scenario/.test(t);
+    // which experiments have something comparable is decided by the server; ask it instead of assuming the data
+    const comparableCount = async (cid) => { const d = (await api(`/api/lab/compatible?a=${encodeURIComponent(cid)}`)).body; return (d.candidates ?? []).filter((c) => !c.hidden && c.overall !== 'incompatible').length; };
+    const openPicker = async (cid) => {
+      await goHash(`#/workspace/${cid}`, 3000);
+      await p.click('Compare', '.labbar button'); await p.waitFor('location.hash.startsWith("#/methods/") || location.hash.startsWith("#/compare/")', 30000, 'Compare'); await sleep(500);
+      if (await p.eval('location.hash.startsWith("#/methods/")')) { await p.click('Experiments', 'nav.compare-kind button'); await sleep(600); }
+      await p.waitFor('!!document.querySelector(".picker-drawer") && !/Checking comparability/.test(document.querySelector(".picker-drawer").innerText)', 30000, 'comparability');
+      return text('.picker-drawer');
+    };
+    const bench = F.benchmark.campaign_id, nb = await comparableCount(bench);
+    const tb = await openPicker(bench);
+    const s1 = await shot('13a-benchmark-candidates', 300);
     await p.key('Escape');
+    // the benchmark run: earlier runs of the same benchmark in this account are comparable; with none, nothing is
+    const benchOk = nb > 0 ? !/No comparable experiment found\./.test(tb) : /No comparable experiment found\./.test(tb);
+    // an experiment with nothing comparable: the account's experiments, asked one by one (the benchmark first)
+    const list = (await api('/api/lab/experiments')).body.experiments.filter((x) => !x.hidden && x.status !== 'draft');
+    let lonely = nb === 0 ? bench : null;
+    for (const x of list) { if (lonely) break; if (x.campaign_id !== bench && (await comparableCount(x.campaign_id)) === 0) lonely = x.campaign_id; }
+    expect(lonely, `no experiment of this account is without a comparable one (benchmark: ${nb} comparable)`);
+    const t = await openPicker(lonely);
+    const s2 = await shot('13b-no-comparable-experiment', 300);
+    await p.key('Escape');
+    const ok = /No comparable experiment found\./.test(t) && /Compare methods in this experiment|Run another method on the same scenario/.test(t) && /Run another method on the same scenario/.test(t);
+    expect(benchOk, `benchmark run with ${nb} comparable experiment(s): ${tb.slice(0, 200)}`);
     expect(ok, t.slice(0, 300));
-    return { actual: 'Message and the actions shown (Reproduce appears once the experiment is locked).', evidence: [s] };
+    return { actual: `Benchmark run: ${nb} comparable experiment(s) in this account, ${nb > 0 ? 'listed, no empty-state message' : 'empty-state message'}. Experiment without any comparable one (${lonely}): the message and its actions (Reproduce appears once the experiment is locked).`, evidence: [s1, s2] };
   });
 
 await check('M1', 'Phone layout', 'At 390 × 844 the Workspace fits the width.', async () => {

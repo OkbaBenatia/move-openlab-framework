@@ -50,7 +50,9 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
                             geocode=DailyQuota(settings.daily_searches, "place searches"))
     app.add_middleware(AuthGuard)
     mb = 1024 * 1024
-    app.add_middleware(BodyLimit, limits=[("/api/datasets/", MAX_UPLOAD_BYTES + mb), ("/api/import", MAX_BUNDLE_BYTES + mb)],
+    from ..analysis.ml_evaluation import MAX_EVIDENCE_BYTES
+    app.add_middleware(BodyLimit, limits=[("/api/datasets/", MAX_UPLOAD_BYTES + mb), ("/api/import", MAX_BUNDLE_BYTES + mb),
+                                          ("/api/lab/experiments/", MAX_EVIDENCE_BYTES + mb)],   # evaluation evidence
                        default=2 * mb)                  # outermost: runs before authentication and body parsing
     app.include_router(web_router)
     app.include_router(experiments_router)

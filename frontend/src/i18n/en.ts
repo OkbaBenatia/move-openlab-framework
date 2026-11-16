@@ -20,7 +20,7 @@ const en = {
   'lib.datasets.tip': 'Sources of trips: observed (RPC open data, your files) or synthetic',
   'lib.scenarios.tip': 'Frozen sets of participants and travel times, ready to run',
   'lib.experiments.tip': 'Every experiment record, report and method registration',
-  'lib.benchmarks.tip': 'Problems without geography (the scientific benchmark is planned)',
+  'lib.benchmarks.tip': 'Problems without geography: the public synthetic benchmark',
   'lib.jobs.tip': 'Background runs and downloads, with their execution trace',
   'lib.hidden.tip': 'Records hidden from lists, never deleted — restore them here',
 
@@ -33,7 +33,7 @@ const en = {
   'gloss.scenario': 'Scenario — a frozen set of drivers, riders and travel times. An experiment runs methods on scenarios.',
   'gloss.library': 'Library — where areas, road networks, mobility data, scenarios and experiments are browsed and managed.',
   'gloss.hidden': 'Hidden records — kept out of normal lists, never deleted; restore them any time.',
-  'hidden.tip': 'Hidden records are kept out of normal lists and counts, never deleted; restore them under Library › Hidden records.',
+  'hidden.tip': 'Hidden records are kept out of normal lists and counts, never deleted; restore them under My account › Hidden records.',
   'hidden.purpose': 'Hide items from normal lists without deleting them. You can restore them later.',
   'tour.reopen': 'You can reopen it any time from Help (?) at the top right.',
   'menu.account': 'My account',

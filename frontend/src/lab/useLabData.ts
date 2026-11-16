@@ -47,7 +47,8 @@ export function useMethods(problemId: string, setErr: (s: string | null) => void
   const [methods, setMethods] = useState<MethodRef[]>([]);
   useEffect(() => {
     if (!problemId) return;
-    call(`/problems/${problemId}/methods`).then((r) => setMethods([...r.builtin,
+    // built-in methods carry their researcher-settable solver settings (schema and defaults), if they declare any
+    call(`/problems/${problemId}/methods`).then((r) => setMethods([...r.builtin.map((m: MethodRef) => ({ ...m, settings: r.settings?.[`${m.method_id}@${m.version}`] })),
       ...r.registered.map((m: Json) => ({ source: 'plugin', method_id: m.method_id, version: m.version, name: m.name, kind: m.kind, author: m.author, code_sha256: m.code_sha256 }))]))
       .catch((e) => setErr(errText(e)));
   }, [problemId, setErr, refresh]);

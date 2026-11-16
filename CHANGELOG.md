@@ -3,7 +3,143 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
-## Unreleased
+## 0.3.0 — 2026-11-16
+
+### Changed — public presentation
+- **README** rewritten for the public release: identity header with the official banner, navigation, *Why MOVE
+  OpenLab?*, the GUI and the CLI (commands checked against `move-openlab --help`), adapters, the three ways to add a
+  method, the demonstration, validation, metrics and ML evaluation, maps, comparison, benchmarks, exchange and
+  reproduction, the research software ecosystem (Benchopt, MLflow, Optuna, OR-Tools, from their official
+  documentation), installation, sample packages, citation, licences.
+- **Screenshots**: a new gallery of 16 screenshots of the public application with OpenStreetMap tiles
+  (`docs/assets/screenshots/gallery/`, [docs/GALLERY.md](docs/GALLERY.md)); the older screenshots are replaced.
+- **Diagram 8**, GUI and CLI (`docs/diagrams/08-gui-cli.mmd`, [docs/DIAGRAMS.md](docs/DIAGRAMS.md)).
+- **Attribution**: *Conceived, designed, developed and implemented by Dr. Okba BEN ATIA* in `NOTICE`, the README,
+  `CITATION.cff` and the architecture and presentation guides; `scripts/check_release_ready.py` checks that `NOTICE`
+  is complete.
+
+### Added — publication preparation
+- **Licence**: Apache License 2.0 for the framework (`LICENSE`, `NOTICE`; `license` in `pyproject.toml` and
+  `frontend/package.json`). Data and assets keep their own licences (ODbL 1.0, Licence Ouverte, CC0 1.0, OFL 1.1, the
+  project's marks), listed in `NOTICE` and `THIRD_PARTY_NOTICES.md`.
+- **CITATION.cff** completed from verified facts (author, affiliation, version, licence); no DOI and no release date
+  until they exist; a commented template for the platform paper once accepted.
+- **Release assets**: `sample_scenario.zip`, `sample_experiment.zip` and `SHA256SUMS`, built by
+  `scripts/pack_examples.py`, intended to be attached to each GitHub release.
+- `scripts/check_release_ready.py`: what must be true before a release (licence files, NOTICE without placeholders,
+  citation, sample assets and checksums).
+
+### Added — sample packages, ML evidence in bundles
+- **Scenario packages** (`move-openlab-scenario/1`): export a library scenario or an experiment's frozen scenario, import
+  it with full verification (checksums, problem and validator, instance hash, geometry, composition; the instance is
+  rebuilt and must be identical where the road network is installed). `scenario_packages.py`, routes under
+  `/api/geo/scenario-packages/` and `/api/geo/…/package`.
+- **Import ▾ → Try a sample**: the public *sample scenario* (`sample_scenario.zip`) and *sample experiment*
+  (`sample_experiment.zip`, the existing sample bundle). Kept unpacked; `scripts/pack_examples.py` writes both files
+  into `examples/`, byte-identical, checksums in `examples/SHA256SUMS`.
+- **ML evaluation evidence in experiment bundles** (`ml_evaluations/`, export option `ml_evidence=full|reference|none`):
+  documents re-validated and recomputed at import, or references shown as not recomputable.
+- Tests: scenario packages, ML evidence in bundles, researcher A → researcher B reproduction through the samples.
+
+### Changed
+- *Import ▾ → Try an imported experiment* moved into *Import ▾ → Try a sample*.
+- `workflow_acceptance` P1 asks the server which experiments have nothing comparable instead of assuming the test data.
+
+### Added — result views, ML evaluation evidence, participant authoring
+- **Public Workspace and restricted-research context.** A granted account now works in two explicit contexts of the
+  one application. In the public Workspace it sees what every other account sees; *Private Research* enters the
+  restricted context (a bar under the header says so); *Workspace* then asks *"Exit Private Research and return to the
+  public Workspace?"* (*Exit to Workspace* / *Cancel*) and, on confirmation, starts the public Workspace again on a
+  public experiment. Enforced by the server: requests of the public context carry `X-Move-Context: public`, and
+  restricted problems and their records are then left out of every answer (lists, lookups, scenarios, jobs, exports),
+  also for a granted account. The header only narrows an answer. An installation without a restricted package is
+  unchanged.
+- **One metric selection** for the Workspace results, Compare › Methods, Compare › Experiments, the charts and the
+  exported tables: *Choose metrics* in each view, groups Validation, Optimization, ML evaluation, Performance, Mobility
+  and CO₂, Custom metrics; select all, deselect all, per-group all / none, reset to defaults; kept for the account
+  (per problem) or for the browser tab. New validation metrics: validated runs, repetitions identical.
+- **Charts**: tick charts, *Select all charts*, *Clear selection*, *Export selected (ZIP)* — a PNG, an SVG and a CSV per
+  chart plus `manifest.json` (`move-openlab/chart-export@1`: title, metric, unit, chart type, scenario scope, method
+  labels, provenance). Exported images are the chart as drawn, with its title, legend and provenance line. A problem
+  without a map gets the same charts in the Workspace. A metric that cannot be charted says why instead of being
+  dropped.
+- **CO₂ in the Workspace** depends on the experiment and its validated data, never on the role; a problem with a map
+  but without the platform's CO₂ calculation shows *Not configured* (no value, nothing assumed) and, where the
+  problem reports one, its own mobility figure labelled as such.
+- **ML evaluation from imported evidence** (`move-openlab/ml-evaluation-evidence@1`, JSON or CSV with metadata):
+  `POST /api/lab/experiments/{id}/evaluation`, `GET …/evaluation?method_id=&threshold=`,
+  `GET …/evaluation/evidence/{sha}`, `POST …/evidence/{sha}/withdraw`. Confusion matrix, accuracy, balanced accuracy,
+  precision, recall, specificity, F1, PR-AUC and ROC-AUC where defined, a threshold sweep and an exploratory threshold
+  that never replaces the recorded decision. Additional classification metrics register through the entry-point
+  group `move_openlab.ml_metrics`. Evidence is stored content-addressed and owner-only, never changes the experiment,
+  and can travel with the experiment bundle (section `ml_evaluations/`: the documents, re-validated and recomputed at import, or references only, shown as not recomputable). Example plug-in `plugins/example_scored_filter` (kind `learned`) and a synthetic
+  fixture in `examples/ml-evaluation/`.
+- **Participant authoring** in the scenario editor: a *Randomize* dialog (counts, ratio, vehicle-type shares,
+  capacity, area, departure interval, time windows, maximum detour, seed) with seeded, server-validated generation,
+  and manual placement by drag and drop or click/tap, with an editable detail panel, repositioning, Undo and Cancel.
+- `scripts/e2e/final_corrections.mjs` (result views) and `scripts/e2e/ml_evaluation.mjs`, `scripts/e2e/authoring.mjs`;
+  `seed_ci.py` also creates one ordinary administrator.
+
+### Fixed
+- The scenario editor opened while an experiment of another problem was shown (a public benchmark run, for instance)
+  offered that problem's methods, and *Save & Run* was then refused. The editor now always offers the ride-matching
+  methods, and an error raised while it is open is shown above it.
+
+### Changed
+- Compare › Experiments reads its rows from the shared metric model: the rows are the chosen metrics, named as
+  elsewhere (*CO₂e emissions*, *CO₂e reduction*, *CO₂e per served passenger*).
+- The public benchmark's scope statement also says that its data is artificial and that it reproduces no other study.
+
+
+### Added — restricted problems, study views, comparison and metrics
+- **Restricted problems and per-account access.** A problem package may declare `Problem.restricted = True`; it is then
+  visible only to the accounts an administrator granted it to (*Administration › Extensions*, `GET /api/admin/extensions`,
+  `PUT /api/admin/extensions/{problem_id}/access`; grants in `<data>/problem-grants.json`, owner-only). Enforced on the
+  server at the workspace: without a grant the problem answers exactly like a problem that is not installed, whatever
+  the role; grants and refusals are in the audit log. One application: an installation without such a package shows
+  nothing of the kind. A granted account gets a *Private Research* entry in the header.
+- **Study views**: methods of several experiments shown together on the same scenarios without merging their records
+  (`GET` / `PUT /api/lab/studies`, `DELETE /api/lab/studies/{study_id}`, `GET /api/lab/experiments/{id}?view=records`
+  for the experiment's own records); a study is presentation only and is stored next to the experiments.
+- **Workspace**: *Displayed methods* (what is shown) is separate from *Methods to run*; earlier methods a problem keeps
+  for its records (`Problem.archived_methods()`) are listed under *History*; scenario navigation by real scenario names
+  with previous / next and search.
+- **One Compare entry, two tabs**: *Methods* (Results, Charts, Maps — two synchronised maps for two methods — and ML
+  evaluation) and *Experiments* (validation, reproducibility and semantic comparability per claim, results, charts,
+  maps, replay, diff).
+- **Choose metrics**: one dialog with the groups Optimization, ML, Performance, Mobility and emissions and Custom
+  metrics; the choice is kept per account and problem (preference `metrics`). `MetricDefinition.category` and `.note`;
+  run-fact definitions may carry `category`, `default`, `help` and `speedup`. A metric the problem cannot provide reads
+  *Not configured* or *Not available* with the reason, never zero.
+- **ML evaluation contract**: `Problem.ml_evaluations(method_id, config)` and
+  `GET /api/lab/experiments/{id}/evaluation` — a confusion matrix and classification figures only from labelled
+  predictions on a named population; otherwise the explicit reason.
+- **Participant and vehicle inspection on the map**: a card with what the frozen scenario records and what the selected
+  solution does with it (`Problem.participant_properties`, `Problem.authoring_note`,
+  `GET /api/geo/instances/{hash}/participants`).
+- **Results computed elsewhere** imported as data and re-validated (`POST /api/campaigns/import-results`); solver
+  settings declared by a method (`config_schema`) and changed as a new experiment version; candidate-reduction view and
+  preview (`Problem.candidate_view`, `candidate_preview`); `Problem.method_display_name`, `run_fact_definitions` /
+  `run_facts`, `scenario_notes`.
+- **Interface language**: EN | FR in the header and on the sign-in and change-password pages; English is the default;
+  *Make this my default language?* keeps the choice for the account (preference `language`).
+- **Library menu**: *Data setup* (areas with their road networks, then mobility data), Scenarios, Experiments,
+  Benchmarks, Jobs and traces; *Hidden records* moved to the profile menu.
+- **Public example for scenario import**: a synthetic trip dataset, CC0 1.0
+  (`examples/scenario-import/montbeliard-synthetic-trips.csv`, built by `scripts/build_sample_trips.py`, served by
+  `GET /api/lab/sample/trips`, *Import ▾ → Try the sample trip dataset*), next to the sample experiment bundle. The two
+  are not interchangeable: one is mobility data, the other an experiment with results.
+- Tests: `test_restricted_problems.py`, `test_studies.py`, `test_solver_settings.py`, `test_result_import.py`,
+  `test_problem_capabilities.py`, `test_sample_trips.py`.
+
+### Documentation
+- New guides: `docs/INSTALL.md`, `docs/ADAPTERS.md`, `docs/SOLVER_INTEGRATION.md`, `docs/ML_INTEGRATION.md`,
+  `docs/METRICS.md`, `docs/IMPORT_EXPORT.md`, `docs/MAPS.md`, `docs/MULTI_USER.md`, `docs/PRIVATE_EXTENSIONS.md`,
+  `docs/TROUBLESHOOTING.md`, and `docs/DIAGRAMS.md` with one Mermaid source per diagram under `docs/diagrams/`.
+- `THIRD_PARTY_NOTICES.md` (dependencies, fonts, map and data sources with their licences) and `CITATION.cff`.
+- `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/SECURITY_MODEL.md` (restricted problems, secrets, confidentiality
+  checklist) and `examples/README.md` (both example packages) brought up to date.
+- The licence of the project was stated as to be confirmed by the maintainer; no licence was named (superseded by Apache-2.0, see Unreleased).
 
 ### Changed — workflow and usability corrections
 - **Compact charts**: equal compact cards (fixed plot height, width following the card), *All metrics* grid, 3 / 2 / 1

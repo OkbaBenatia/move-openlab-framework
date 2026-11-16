@@ -1,0 +1,13 @@
+flowchart LR
+  A["Area and road network"] --> SC["Scenario<br/>participants, vehicles, constraints"]
+  B["Mobility data<br/>or synthetic demand"] --> SC
+  SC --> CG["Candidate generation<br/>snap to the network, travel times, compatible pairs"]
+  CG --> I["Frozen instance<br/>content-addressed"]
+  I --> RED["Optional reduction<br/>scorer and threshold"]
+  I --> SOL["Method<br/>solver, heuristic or learned"]
+  RED --> SOL
+  SOL -->|"decisions and declared status"| VAL{{"Independent validator"}}
+  VAL -->|"accepted"| RES["Results<br/>validated metrics, times, optimality scope"]
+  VAL -->|"rejected"| REJ["Rejected run<br/>kept with its errors"]
+  RES --> DOM["Domain figures<br/>CO2 from validated decisions"]
+  RES --> LOCK["Locked experiment<br/>checksum"]

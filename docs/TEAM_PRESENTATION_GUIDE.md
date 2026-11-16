@@ -1,5 +1,7 @@
 # Team presentation guide — a 15–20 minute live demonstration
 
+*MOVE OpenLab was conceived, designed, developed and implemented by Dr. Okba BEN ATIA.*
+
 A live demonstration of MOVE OpenLab for a research team, on **public-safe data only**: the shipped Montbéliard
 demonstration (participants sampled from the RPC open-data release 2026-10, OpenStreetMap road network), a seeded
 synthetic scenario on the same network, the built-in exact MILP (HiGHS) and greedy methods, the public example
@@ -31,10 +33,10 @@ extract gives the same figures; another extract gives other, equally reproducibl
 | 3 | 3 | **Generate** → area Montbéliard → *Synthetic demand* → Next → drivers **20**, riders **30**, seed **21** → Next → From **07:30**, To **08:00**, max detour **20** min, ratio **1** → Next → Exact and Greedy ticked, repetitions **3** → Next → **Save & Run** | Preview **20 drivers · 30 riders · 63 compatible pairs**; the Workspace opens on the new experiment at once with its stages *Queued › Preparing › Running methods › Validating › Results*; *Validated 6/6*: Exact **13** served (**104.2 min** detour), Greedy **11** (**76.7 min**) | A seed and a road network fully determine the scenario: anyone with the same extract regenerates it exactly |
 | 4 | 2 | The results table and *Evidence* (on the demonstration baseline) | Exact is *proven optimal* on **3/3** scenarios; Greedy is a heuristic and claims nothing; the three statements are shown apart: independent validation, reproducibility, semantic comparability | A time limit is never an optimality claim: a solver stopped by its limit is labelled *not proven (time limit)*, even when its solution is feasible |
 | 5 | 2 | CO₂ in the results; *Results › Advanced* → *Tailpipe only* → *New experiment with this calculation* | Exact: **98.2 kg** vs **107.5 kg** for everyone driving alone, **9.3 kg avoided (8.7 %)** (Greedy 99.0 kg, 8.5 kg, 7.9 %); the new experiment has the same decisions, other CO₂ figures and its own fingerprint; the original is unchanged | Changing an emission parameter creates a new, traceable configuration; the results stay directly comparable while the CO₂ figures are not |
-| 5b | 2 | Results → **Compare methods** | The two algorithms of the experiment side by side on its own frozen scenarios: **A** Exact (reference) and **B** Greedy, Δ B − A, status, served riders, detour, runtime, CO₂, fleet, custom metric; **Charts**: compact cards, three per row | Comparing methods needs no other experiment: same scenarios, constraints, objective and validator |
-| 6 | 2 | Back on the demonstration baseline → **Compare** → tick the controlled variant → **Compare selected (2)** | Footer *2 selected · reference A: Montbéliard Demo — Baseline*; exactly two columns, **A (Reference)** and **B**; a verdict per claim (results, runtime, CO₂) with *Why?*; the *Reference* selector changes the deltas | Comparability is decided per claim: two results may be comparable for quality and not for runtime or CO₂ |
+| 5b | 2 | **Compare** (it opens on the *Methods* tab) | The two algorithms of the experiment side by side on its own frozen scenarios: **A** Exact (reference) and **B** Greedy, Δ B − A, status, served riders, detour, runtime, CO₂, fleet, custom metric; **Charts**: compact cards, three per row | Comparing methods needs no other experiment: same scenarios, constraints, objective and validator |
+| 6 | 2 | Back on the demonstration baseline → **Compare** → *Experiments* tab → **Edit selection** → tick the controlled variant → **Compare selected (2)** | Footer *2 selected · reference A: Montbéliard Demo — Baseline*; exactly two columns, **A (Reference)** and **B**; a verdict per claim (results, runtime, CO₂) with *Why?*; the *Reference* selector changes the deltas | Comparability is decided per claim: two results may be comparable for quality and not for runtime or CO₂ |
 | 7 | 1.5 | In the comparison: **Charts** (All metrics: one compact card per metric; or Metric **Detour per served rider (min)**) | Tooltips on hover, chart types where the data supports them, CSV · PNG · SVG, Enlarge; Exact **0.755 min**, My Greedy Matching (after step 8) **1.081 min** | A custom metric is computed from validated figures only; third-party metric code runs only in the sandbox |
-| 8 | 3 | Demonstration baseline → **+ Add method** → **Register my method** → *My Greedy Matching* → **Register** → **Run with this method** → **Compare methods** | *Registered* (code pinned by its SHA-256, self-test in the sandbox); an **extension** titled *Montbéliard Demo — Extension 1 (My Greedy Matching)*, *Validated 9/9*: My Greedy Matching **48** served with **51.9 min** detour, against **48** and **36.3 min** for Exact and Greedy; no optimality claimed | A new method is compared on exactly the same frozen scenarios, and its solutions are validated like every other method's |
+| 8 | 3 | Demonstration baseline → **+ Add method** → **Register my method** → *My Greedy Matching* → **Register** → **Run with this method** → **Compare** (*Methods* tab) | *Registered* (code pinned by its SHA-256, self-test in the sandbox); an **extension** titled *Montbéliard Demo — Extension 1 (My Greedy Matching)*, *Validated 9/9*: My Greedy Matching **48** served with **51.9 min** detour, against **48** and **36.3 min** for Exact and Greedy; no optimality claimed | A new method is compared on exactly the same frozen scenarios, and its solutions are validated like every other method's |
 | 9 | 3 | Generated experiment → **Export** (evidence report ticked) → **Lock and export** → second window, second researcher → **Import ▾ → Import a bundle file…** → **Import experiment** → **Run again** | **One** `.zip` (about 1.4 MB) with *Bundle saved … SHA-256 …*; on import *Integrity verified*, *Importable*, *Reproducible here*, nothing stored before confirmation; the re-execution (*… — Reproduction 1*): *Validated 6/6*, **Reproduced**, comparability with the original: results direct, runtime direct, CO₂ direct | Reproduction means an independent re-execution in another workspace gives the same validated results; runtimes are reported, not required to match |
 | 10 | 1 | — | — | Validation, reproducibility and comparability are three separate statements, never merged into one score |
 
@@ -50,8 +52,8 @@ Optional (1–2 minutes each):
   refused); Randomize locations with a typed seed gives the same places for the same seed. Nothing is saved before Save.
 - **Library › Benchmarks › Run the public benchmark** (about half a minute): 30 synthetic instances, Exact and Greedy,
   5 repetitions, every result validated and checked against an independent min-cost-flow oracle (Exact: 150/150 runs
-  equal to the oracle optimum; Greedy: 35/150). It is a methodological benchmark with its own results, not the
-  scientific study, which stays *Planned*.
+  equal to the oracle optimum; Greedy: 35/150). It is a methodological benchmark with its own results, not a
+  scientific study.
 
 ## Adding a method (if asked how)
 
@@ -60,7 +62,7 @@ Optional (1–2 minutes each):
 2. Write `solve(instance, config)` returning `decisions` (and optionally a status and declared values).
 3. `.venv/bin/move-openlab method check plugins/my_method --bundle <experiment bundle>` reads the metadata without
    running it, runs the self-test in the sandbox and runs the method on the bundle's frozen scenarios.
-4. In the interface: **+ Add method → Register my method → Run with this method**, then **Compare methods**.
+4. In the interface: **+ Add method → Register my method → Run with this method**, then **Compare** (*Methods* tab).
 
 The full worked example, with its verified outputs, is [ADD_YOUR_METHOD.md](ADD_YOUR_METHOD.md).
 
@@ -116,9 +118,9 @@ May be said:
   (© OpenStreetMap contributors, ODbL).
 
 Do not say:
-- that the planned synthetic scientific benchmark is available or confirms earlier figures (it is *Planned*);
+- that a synthetic scientific benchmark beyond the public methodological one is available or confirms earlier figures;
 - that a heuristic, a time-limited solve or a runtime comparison across machines proves anything about optimality
   or speed in general;
-- that MOVE OpenLab is released, licensed or at version 1.0.0 (it is a development build; the licence is not yet
-  decided);
+- that MOVE OpenLab is released or at version 1.0.0 before a public release exists (it is a development build; the
+  Apache-2.0 licence applies from the first publication);
 - any figure from a non-public study, or the name of a private model or unpublished experiment.

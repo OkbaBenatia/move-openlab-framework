@@ -47,11 +47,12 @@ def _method_new(args) -> int:
     from pathlib import Path
     from .method_tools import new_method
     try:
-        d = new_method(args.name, args.problem, Path(args.dir), args.author or "")
+        d = new_method(args.name, args.problem, Path(args.dir), args.author or "", args.display_name or "",
+                       args.kind, args.description or "")
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    print(f"created {d}/plugin.py and {d}/test_plugin.py")
+    print(f"created {d}/plugin.py, {d}/test_plugin.py and {d}/README.md")
     print(f"next: edit solve(), then  move-openlab method check {d} --bundle <experiment bundle>")
     return 0
 
@@ -118,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     mn.add_argument("--problem", required=True, help="problem id, e.g. public-ride-matching")
     mn.add_argument("--dir", default=".", help="where to create the method directory")
     mn.add_argument("--author")
+    mn.add_argument("--display-name", help="name shown in the interface (default: from the directory name)")
+    mn.add_argument("--kind", default="heuristic", choices=("exact", "heuristic", "learned", "hybrid"))
+    mn.add_argument("--description", help="one-sentence description of the rule the method follows")
     mn.set_defaults(fn=_method_new)
     mc = me_sub.add_parser("check", help="metadata, sandboxed self-test, optional run on an experiment bundle")
     mc.add_argument("path", help="method directory (or its plugin.py)")
