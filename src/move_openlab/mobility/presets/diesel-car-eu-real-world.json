@@ -1,0 +1,36 @@
+{
+  "id": "diesel-car-eu-real-world",
+  "name": "Diesel car (EU real-world average)",
+  "category": "car",
+  "passenger_capacity": 4,
+  "powertrain": "ICE",
+  "energy": "diesel",
+  "parameters": {
+    "fuel_consumption_l_100km": {
+      "value": 6.88,
+      "unit": "L/100 km",
+      "source": "European Commission, COM(2024) 122 final, report on real-world CO2 emissions and fuel consumption of cars and vans (OBFCM), Table 3: average real-world fuel consumption of diesel cars",
+      "source_version": "2024-03-18 (cars registered in 2021)",
+      "applicability": "EU, new diesel passenger cars registered in 2021",
+      "notes": "Real-world (on-board fuel consumption meter) value; the WLTP type-approval value in the same table is 5.82 L/100 km.",
+      "recorded_at": "2026-11-08"
+    },
+    "fuel_emission_factor_g_per_l": {
+      "value": 2583.54,
+      "unit": "g/L",
+      "basis": "CO2e",
+      "source": "UK Department for Energy Security and Net Zero, Greenhouse gas reporting: conversion factors 2026, Scope 1 fuels, Diesel (average biofuel blend), kg CO2e per litre = 2.58354",
+      "source_version": "2026 edition (published 2026-06-11, flat file revised 2026-07-31)",
+      "applicability": "UK forecourt diesel blend; combustion only (tank-to-wheel), well-to-tank excluded",
+      "notes": "CO2e with AR5 global-warming potentials; the CO2-only component is 2.55035 kg/L. 100 % mineral diesel: 2.66155 kg CO2e/L.",
+      "recorded_at": "2026-11-08"
+    }
+  },
+  "provenance": {
+    "kind": "preset",
+    "preset_id": "diesel-car-eu-real-world",
+    "preset_version": "2026-11",
+    "notes": "Platform preset: consumption from an EU regulatory report, fuel factor from the UK government conversion factors. Override any value with your own documented figure."
+  },
+  "version": 1
+}

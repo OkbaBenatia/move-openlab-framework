@@ -1,0 +1,15 @@
+flowchart LR
+  UI["Web interface<br/>React, maps, charts"] --> API["HTTP API<br/>FastAPI, accounts, sessions"]
+  API --> STORE["Store<br/>workspaces, experiments, lineage, lock"]
+  PKG["Problem packages<br/>entry point move_openlab.problems"] --> REG["Problem registry"]
+  REG --> STORE
+  STORE --> RUN["Isolated execution<br/>worker process, sandbox for plug-ins"]
+  RUN -->|"decisions"| VAL{{"Independent validator"}}
+  VAL --> STORE
+  STORE --> BUN["Bundles<br/>export, verify, import"]
+  BUN --> STORE
+  STORE --> ANA["Analysis<br/>compare, reproducibility, comparability"]
+  GEO["Geography<br/>areas, road networks, routing"] --> STORE
+  DATA["Dataset providers<br/>open data, CSV, GeoJSON"] --> GEO
+  JOBS["Background jobs<br/>progress, cancel, trace"] --> RUN
+  STORE --> FILES[("Data directory<br/>JSON files, SQLite accounts")]

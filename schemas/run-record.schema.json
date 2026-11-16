@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OkbaBenatia/move-openlab-framework/schemas/run-record.schema.json",
+  "title": "MOVE OpenLab run record",
+  "description": "One execution of one method on one instance, as stored in a campaign. Written by the platform, never by the method.",
+  "type": "object",
+  "required": ["run_id", "method_id", "version", "source", "instance_hash", "instance_id", "repetition", "decisions",
+               "status_declared", "accepted", "validation", "total_time_s", "isolation", "executed_at"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "method_id": {"type": "string"},
+    "version": {"type": "string", "description": "Semantic version of the method."},
+    "source": {"enum": ["builtin", "plugin"]},
+    "code_sha256": {"type": ["string", "null"], "description": "Plugins: SHA-256 of the executed code."},
+    "instance_hash": {"type": "string", "description": "Content hash of the instance."},
+    "instance_id": {"type": "string"},
+    "repetition": {"type": "integer", "minimum": 1},
+    "decisions": {"type": "array"},
+    "status_declared": {"enum": ["OPTIMAL", "FEASIBLE", "HEURISTIC", "TIME_LIMIT", "INFEASIBLE", "ERROR"]},
+    "declared": {"type": "object"},
+    "declared_mismatch": {"type": "array", "items": {"type": "string"}},
+    "accepted": {"type": "boolean", "description": "Output contract respected and solution feasible according to the validator."},
+    "output_errors": {"type": "array", "items": {"type": "string"}},
+    "validation": {
+      "type": "object",
+      "required": ["feasible", "metrics", "errors", "validator_version"],
+      "properties": {
+        "feasible": {"type": "boolean"},
+        "metrics": {"type": "object", "additionalProperties": {"type": "number"}},
+        "errors": {"type": "array", "items": {"type": "string"}},
+        "validator_version": {"type": "string"}
+      }
+    },
+    "effective_config": {"type": "object"},
+    "method_metadata": {"type": "object"},
+    "diagnostics": {"type": "object"},
+    "solver_time_s": {"type": ["number", "null"]},
+    "method_time_s": {"type": ["number", "null"]},
+    "total_time_s": {"type": ["number", "null"], "description": "Platform wall time of the isolated execution."},
+    "isolation": {"enum": ["process", "sandbox", "external"], "description": "external: a result computed outside this platform and imported (re-validated here, not executed here)"},
+    "trace": {"type": "array", "items": {"type": "object", "required": ["stage", "duration_s"]}},
+    "domain": {
+      "type": ["object", "null"],
+      "description": "Domain figures derived by the platform from the validated decisions (ride matching: emissions under the experiment's scope and baseline). Absent when the problem defines none; complete=false with the missing parameters when data is lacking.",
+      "required": ["complete"],
+      "properties": {
+        "complete": {"type": "boolean"},
+        "scope": {"type": "string"},
+        "baseline": {"type": "string"},
+        "missing": {"type": "array", "items": {"type": "string"}},
+        "basis": {"enum": ["CO2", "CO2e", "mixed"]},
+        "unit": {"type": "string"},
+        "solution_g": {"type": "number"}, "baseline_g": {"type": "number"}, "avoided_g": {"type": "number"},
+        "avoided_pct": {"type": ["number", "null"]}, "per_vehicle_g": {"type": ["number", "null"]},
+        "per_served_request_g": {"type": ["number", "null"]}, "per_passenger_km_g": {"type": ["number", "null"]},
+        "vehicle_km": {"type": "number"}, "baseline_vehicle_km": {"type": "number"}, "passenger_km": {"type": "number"},
+        "served": {"type": "integer"}, "vehicles_used": {"type": "integer"},
+        "parameters": {"type": "object", "description": "Per vehicle profile: the parameter records (value, unit, basis, source, ...) the figures were computed with."}
+      }
+    },
+    "installation_id": {"type": "string"},
+    "executed_at": {"type": "string", "format": "date-time"},
+    "executed_by": {"type": "string"},
+    "origin": {"type": "string"}
+  }
+}

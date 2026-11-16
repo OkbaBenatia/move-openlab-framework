@@ -1,0 +1,108 @@
+name: browser
+
+# The main user journeys in a real browser (headless Chrome), on synthetic and public data only:
+# sign-in, first-use demonstration, Generate and Save & Run, compare exactly two experiments, export one ZIP,
+# workspace isolation, import into a second workspace, independent reproduction, add and validate a method
+# (sandboxed plug-in), phone layout. Same commands as a local run (docs/DEVELOPMENT.md › Browser journeys).
+
+on:
+  push:
+    branches: [main, develop, "release/**", "hotfix/**"]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MOVE_OPENLAB_PORT: "8791"
+      MOVE_OPENLAB_TILE_URL: none                            # no external map tiles
+      MOVE_OPENLAB_PLUGIN_MODE: sandbox
+    steps:
+      - name: Data directory (created empty by this job, never uploaded)
+        # the runner context is not available in jobs.<job_id>.env, so the path is set here for the later steps
+        run: echo "MOVE_OPENLAB_DATA_DIR=$RUNNER_TEMP/openlab-data" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install bubblewrap (plugin sandbox)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Prepare the application (Python environment, interface build)
+        run: ./start-local.sh --check
+      - name: Seed synthetic accounts and road network
+        # two researchers and one administrator with random passwords in a 0600 file of the data directory (never printed)
+        run: .venv/bin/python scripts/e2e/seed_ci.py
+      - name: Start the application
+        run: |
+          nohup ./start-local.sh > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$MOVE_OPENLAB_PORT/api/health" > /dev/null && exit 0; sleep 1; done
+          echo "server did not start"; tail -n 50 "$RUNNER_TEMP/server.log"; exit 1
+      - name: Browser journeys
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/ci_journeys.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/journeys"
+      - name: Result views (metric choice, charts and their export, same figures for every role)
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/final_corrections.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/result-views"
+      - name: ML evaluation from imported evidence (example plug-in, synthetic evidence)
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/ml_evaluation.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/ml-evaluation"
+      - name: ML evaluation evidence in exported bundles (include, references only, leave out)
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/ml_export.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/ml-export"
+      - name: Participant authoring (Randomize dialog, drag and drop, details, tap to place)
+        # runs after the benchmark of the previous steps is the open experiment: the editor must still build ride-matching scenarios
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/authoring.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/authoring"
+      - name: Add method (catalogue, upload, template) and the public sample packages
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/plugins.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/plugins"
+          CHROME="$(command -v google-chrome || command -v chromium)" node scripts/e2e/samples.mjs \
+            --base "http://127.0.0.1:$MOVE_OPENLAB_PORT" --creds "$MOVE_OPENLAB_DATA_DIR/dev-credentials.json" \
+            --out "$RUNNER_TEMP/samples"
+      - name: Stop the application
+        if: always()
+        run: pkill -INT -f "move-openlab serve" || true
+      - name: Upload the report and screenshots (no data directory, no credentials)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-journeys
+          path: |
+            ${{ runner.temp }}/journeys/ci-journeys.json
+            ${{ runner.temp }}/journeys/screenshots/
+            ${{ runner.temp }}/result-views/final-corrections.json
+            ${{ runner.temp }}/result-views/screenshots/
+            ${{ runner.temp }}/ml-evaluation/ml-evaluation.json
+            ${{ runner.temp }}/ml-evaluation/screenshots/
+            ${{ runner.temp }}/authoring/authoring.json
+            ${{ runner.temp }}/ml-export/ml-export.json
+            ${{ runner.temp }}/plugins/*.json
+            ${{ runner.temp }}/samples/*.json
+          retention-days: 14

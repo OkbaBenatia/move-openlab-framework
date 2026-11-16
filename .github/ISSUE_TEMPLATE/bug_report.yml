@@ -1,0 +1,46 @@
+name: Bug report
+description: Report incorrect behaviour of MOVE OpenLab.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not report security vulnerabilities here; see SECURITY.md. Do not attach private data or credentials."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Observed behaviour, including the exact error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, problem id, scenario parameters and methods. Synthetic data only.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `python -c "import move_openlab; print(move_openlab.__version__)"`
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, plugin mode, bubblewrap version if relevant.
+  - type: checkboxes
+    id: conduct
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct (CODE_OF_CONDUCT.md).
+          required: true

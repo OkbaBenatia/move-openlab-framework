@@ -1,0 +1,124 @@
+{
+ "title": "Montbéliard sample — Baseline",
+ "campaign_id": "c-20261109T220615-1c8fe1",
+ "format": "move-openlab-bundle/2",
+ "problem_id": "public-ride-matching",
+ "problem_spec_version": "1.0.0",
+ "validator_version": "1.0.0",
+ "framework_version": "0.3.0",
+ "exported_by": "Researcher A",
+ "created_at": "2026-11-09T22:06:17+00:00",
+ "methods": [
+  "exact-matching-highs@1.0.0",
+  "greedy-min-detour@1.0.0"
+ ],
+ "repetitions": 3,
+ "scenarios": 3,
+ "runs": 18,
+ "accepted": 18,
+ "manifest_sha256": "a6ea50b6a42223944f00099404ff53683597f95256a3d72333cccebc9c71154f",
+ "packed_sha256": "3346947061afda42626cf3948bc9149304b23f9c5dcba4f1651d4d0fb2d165d1",
+ "packed_bytes": 869357,
+ "filename": "move-openlab-sample-montbeliard.zip",
+ "source": "the Montbéliard demonstration's frozen baseline scenarios (demand sampled from RPC 2026-10 observed trips)",
+ "check": {
+  "ok": true,
+  "checked_at": "2026-11-09T22:06:25Z",
+  "framework_version": "0.3.0",
+  "packed_sha256": "3346947061afda42626cf3948bc9149304b23f9c5dcba4f1651d4d0fb2d165d1",
+  "integrity": {
+   "format": "move-openlab-bundle/2",
+   "files_checked": 7,
+   "instances_verified": 3,
+   "geometry_verified": 3,
+   "campaigns": 1,
+   "fingerprints_recomputed": true,
+   "spec_match": true,
+   "executable_code_in_bundle": false
+  },
+  "reproduction": {
+   "cells": 6,
+   "agreement": {
+    "identical_solution": 6,
+    "equal_objective": 0,
+    "different": 0
+   },
+   "reproduced": true,
+   "rule": "Equality is required for every validated metric; decisions may differ only when every metric is equal (alternative optima). Runtimes are reported, not required to match."
+  },
+  "comparability": {
+   "summary": {
+    "quality": {
+     "DIRECT": 9,
+     "CONDITIONAL": 0,
+     "INCOMPATIBLE": 0
+    },
+    "runtime": {
+     "DIRECT": 9,
+     "CONDITIONAL": 0,
+     "INCOMPATIBLE": 0
+    },
+    "emissions": {
+     "DIRECT": 9,
+     "CONDITIONAL": 0,
+     "INCOMPATIBLE": 0
+    }
+   }
+  },
+  "method": {
+   "method": "nearest-pickup@1.0.0",
+   "selftest": true,
+   "isolation": "sandbox",
+   "runs": 9,
+   "accepted": 9
+  },
+  "comparison": [
+   {
+    "method": "nearest-pickup",
+    "origin": "extended",
+    "valid": true,
+    "served": 47,
+    "detour_s": 2131,
+    "optimal": "1/3",
+    "reproduction": null
+   },
+   {
+    "method": "exact-matching-highs",
+    "origin": "reproduction",
+    "valid": true,
+    "served": 48,
+    "detour_s": 2175,
+    "optimal": "3/3",
+    "reproduction": "REPRODUCED"
+   },
+   {
+    "method": "greedy-min-detour",
+    "origin": "reproduction",
+    "valid": true,
+    "served": 48,
+    "detour_s": 2175,
+    "optimal": "3/3",
+    "reproduction": "REPRODUCED"
+   },
+   {
+    "method": "exact-matching-highs",
+    "origin": "baseline",
+    "valid": true,
+    "served": 48,
+    "detour_s": 2175,
+    "optimal": "3/3",
+    "reproduction": null
+   },
+   {
+    "method": "greedy-min-detour",
+    "origin": "baseline",
+    "valid": true,
+    "served": 48,
+    "detour_s": 2175,
+    "optimal": "3/3",
+    "reproduction": null
+   }
+  ],
+  "wall_time_s": 2.4
+ }
+}

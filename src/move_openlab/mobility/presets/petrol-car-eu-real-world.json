@@ -1,0 +1,37 @@
+{
+  "id": "petrol-car-eu-real-world",
+  "name": "Petrol car (EU real-world average)",
+  "category": "car",
+  "passenger_capacity": 4,
+  "powertrain": "ICE",
+  "energy": "petrol",
+  "parameters": {
+    "fuel_consumption_l_100km": {
+      "value": 7.89,
+      "unit": "L/100 km",
+      "source": "European Commission, COM(2024) 122 final, report on real-world CO2 emissions and fuel consumption of cars and vans (OBFCM), Table 3: average real-world fuel consumption of petrol cars",
+      "source_version": "2024-03-18 (cars registered in 2021)",
+      "applicability": "EU, new petrol passenger cars registered in 2021",
+      "notes": "Real-world (on-board fuel consumption meter) value; the WLTP type-approval value in the same table is 6.38 L/100 km. The report notes the sample is about 7 % heavier than the fleet.",
+      "recorded_at": "2026-11-08"
+    },
+    "fuel_emission_factor_g_per_l": {
+      "value": 2075.0,
+      "unit": "g/L",
+      "basis": "CO2e",
+      "source": "UK Department for Energy Security and Net Zero, Greenhouse gas reporting: conversion factors 2026, Scope 1 fuels, Petrol (average biofuel blend), kg CO2e per litre = 2.07500",
+      "source_version": "2026 edition (published 2026-06-11, flat file revised 2026-07-31)",
+      "applicability": "UK forecourt petrol blend; combustion only (tank-to-wheel), well-to-tank excluded",
+      "notes": "CO2e with AR5 global-warming potentials; the CO2-only component is 2.06107 kg/L. 100 % mineral petrol: 2.35372 kg CO2e/L.",
+      "recorded_at": "2026-11-08"
+    }
+  },
+  "provenance": {
+    "kind": "preset",
+    "preset_id": "petrol-car-eu-real-world",
+    "preset_version": "2026-11",
+    "default": true,
+    "notes": "Platform preset: consumption from an EU regulatory report, fuel factor from the UK government conversion factors. Override any value with your own documented figure."
+  },
+  "version": 1
+}

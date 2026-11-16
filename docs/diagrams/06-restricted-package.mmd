@@ -1,0 +1,21 @@
+flowchart TB
+  ADMIN["Administrator<br/>Administration, Extensions"]
+  U1["Granted account"]
+  U2["Any other account<br/>whatever its role"]
+  subgraph APP["One application, one installation"]
+    CORE["Framework and public problems<br/>open to every account"]
+    GR["Grants<br/>problem id and account names"]
+    CHK{"Is the account granted?"}
+    PKG["Optional restricted problem package<br/>installed next to the framework"]
+    PR["Private Research entry<br/>same Workspace and Compare pages"]
+    NF["Not found, as if not installed<br/>refusal recorded in the audit log"]
+  end
+  ADMIN -->|"sets the list of accounts"| GR
+  U1 --> CORE
+  U2 --> CORE
+  U1 --> CHK
+  U2 --> CHK
+  GR --> CHK
+  CHK -->|"yes"| PKG
+  CHK -->|"no"| NF
+  PKG --> PR

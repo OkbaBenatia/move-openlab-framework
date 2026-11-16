@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.27"]          # 1.27: licence expression and licence files (PEP 639)
+build-backend = "hatchling.build"
+
+[project]
+name = "move-openlab"
+description = "MOVE OpenLab: a reproducible experimentation framework for optimization research"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Okba BEN ATIA" }]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+dynamic = ["version"]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Exact reference method of the synthetic benchmark (HiGHS MILP solver)
+highs = ["highspy>=1.7"]
+dev = ["pytest>=8", "httpx>=0.27", "highspy>=1.7", "ruff==0.15.0"]   # ruff pinned as in CI
+
+[project.scripts]
+move-openlab = "move_openlab.cli:main"
+
+# Problems (benchmarks) are discovered through this entry-point group. A separately installed package can add its
+# own problem definitions without any change to this repository.
+[project.entry-points."move_openlab.problems"]
+synthetic-assignment = "move_openlab.benchmarks.synthetic_assignment:problem"
+ride-matching = "move_openlab.benchmarks.ride_matching:problem"
+
+[tool.hatch.version]
+path = "src/move_openlab/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/move_openlab"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/plugins", "/docs", "/examples", "/scripts", "/README.md", "/pyproject.toml", "/LICENSE", "/NOTICE",
+           "/THIRD_PARTY_NOTICES.md", "/CITATION.cff", "/CHANGELOG.md"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501", "E701", "E702", "E731", "E741", "B008", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,14 @@
+flowchart LR
+  E1["Experiment A<br/>or method A"] --> M["Scenario matching<br/>by frozen instance"]
+  E2["Experiment B<br/>or method B"] --> M
+  M --> EV["Evidence, kept separate"]
+  EV --> V["Independent validation"]
+  EV --> R["Reproducibility"]
+  EV --> S["Semantic comparability<br/>results, runtime, CO2"]
+  M --> T["Results table<br/>chosen metrics and their basis"]
+  M --> CH["Charts<br/>CSV, PNG, SVG"]
+  M --> MP["Two synchronised maps"]
+  MP --> RT["Routes<br/>validated solution on roads"]
+  MP --> CE["Candidate edges<br/>before, after, solution"]
+  MP --> RP["Replay<br/>one clock"]
+  M --> DF["Diff<br/>scenario by scenario"]

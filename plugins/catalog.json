@@ -1,0 +1,5 @@
+{
+  "format": "move-openlab/plugin-catalog@1",
+  "note": "Plug-ins of this folder shown as ready-made examples in '+ Add method'. Presentation only: it is not part of any method's contract or code hash, and editing it never changes a registration.",
+  "examples": ["example_scored_filter", "my_greedy_matching", "nearest_pickup", "regret_greedy"]
+}

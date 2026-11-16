@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop, "release/**", "hotfix/**"]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitflow:
+    # Enforces the branching model on pull requests: main <- release/* | hotfix/*;
+    # develop <- feature/* | fix/* | docs/* | release/* | hotfix/* | dependabot/*
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source and target branches
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          case "$BASE_REF" in
+            main)    pattern='^(release|hotfix)/[a-z0-9._-]+$' ;;
+            develop) pattern='^((feature|fix|docs|release|hotfix)/[a-z0-9._-]+|dependabot/.+)$' ;;
+            *)       echo "pull requests must target main or develop"; exit 1 ;;
+          esac
+          if ! printf '%s' "$HEAD_REF" | grep -Eq "$pattern"; then
+            echo "branch '$HEAD_REF' may not be merged into '$BASE_REF' (see docs/GITFLOW.md)"; exit 1
+          fi
+
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      # plugin-security tests must run, not skip: an unavailable sandbox fails the build
+      MOVE_OPENLAB_REQUIRE_SANDBOX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install bubblewrap (plugin sandbox)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q bubblewrap
+          # recent Ubuntu runners restrict unprivileged user namespaces through AppArmor
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: pip install -e ".[dev]"
+      - name: Confidentiality gate
+        # Screening terms come only from the repository secret PUBLIC_DENYLIST (one term per line); the gate never
+        # prints them, and GitHub masks secret values in logs. Without the secret (pull requests from forks) only the
+        # generic checks run.
+        env:
+          MOVE_OPENLAB_DENYLIST: ${{ secrets.PUBLIC_DENYLIST }}
+        run: python scripts/check_public_safety.py
+      - run: python -m pytest
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff==0.15.0"
+      - run: ruff check src tests scripts plugins
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
