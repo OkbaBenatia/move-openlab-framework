@@ -81,6 +81,8 @@ class RideMatching(Problem):
                                 "lower"))
     reference_method = ("exact-matching-highs", "1.0.0")
     decision_description = "[driver_id, rider_id] for every match"
+    capabilities = frozenset({"map", "playback"})          # playback: the built-in mobility planner (geo/playback.py)
+    participants = "riders"
 
     def scenario_parameters(self) -> dict:
         return dict(fields=[dict(id="instance_hashes", label="Scenarios", type="scenario-library",
@@ -123,6 +125,31 @@ class RideMatching(Problem):
             return dict(highs_version=highspy.Highs().version())
         except Exception:
             return dict(highs_version=None)
+
+    def descriptive_metrics(self, instances, totals):
+        riders = sum(len(i["riders"]) for i in instances)
+        served, detour = totals.get("served", 0), totals.get("detour_s", 0)
+        return [dict(id="service_rate", label="Service rate", unit="%", better="higher",
+                     value=round(100.0 * served / riders, 1) if riders else None),
+                dict(id="mean_detour_s", label="Mean detour per served rider", unit="s", better="lower",
+                     value=round(detour / served, 1) if served else None)]
+
+    # vehicle emissions (mobility domain): derived from validated decisions, never from the method's report
+    def domain_metrics(self, instance, decisions, experiment_config):
+        from ...mobility import emissions as E
+        return E.compute(instance, decisions, experiment_config)
+
+    def domain_descriptor(self, instance, experiment_config):
+        from ...mobility import emissions as E
+        return E.descriptor(instance, experiment_config)
+
+    def aggregate_domain(self, parts):
+        from ...mobility import emissions as E
+        return E.aggregate(parts)
+
+    def domain_metric_definitions(self):
+        from ...mobility import emissions as E
+        return list(E.METRICS)
 
     def objective_definitions(self):
         return dict(M.OBJECTIVES)

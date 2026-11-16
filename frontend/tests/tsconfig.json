@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rewriteRelativeImportExtensions": true,
+    "allowImportingTsExtensions": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "outDir": "../.unit-tests",
+    "rootDir": "..",
+    "skipLibCheck": true,
+    "noEmitOnError": true
+  },
+  "include": [
+    "./**/*.test.ts",
+    "./node-shim.d.ts"
+  ]
+}

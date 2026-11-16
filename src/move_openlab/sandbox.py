@@ -19,7 +19,8 @@ The sandbox (one per run):
 * environment: cleared; only PATH, locale and thread settings are set;
 * filesystem: an empty root with read-only binds of the system libraries (``/usr`` and its compatibility links), the
   Python installation and the installed framework packages, plus the single plugin file; a private ``/tmp``;
-  the installation data directory, the credential store, the plugin directory and home directories are not mounted.
+  the installation data directory, the credential store, the plugin directory and home directories are not mounted
+  (an uploaded plugin file lives under the data directory: only that one file is bound, read-only, at PLUGIN_MOUNT).
   A bind that would expose a protected path is refused.
 
 Remaining risks: no seccomp filter (the kernel attack surface of unprivileged user namespaces remains), no cgroup
@@ -134,7 +135,7 @@ def command(spec: SandboxSpec, plugin_file: str | None, python: str | None = Non
             argv += ["--symlink", tgt, link]
     if plugin_file:
         argv += ["--ro-bind", str(Path(plugin_file).resolve()), PLUGIN_MOUNT]
-    argv += ["--chdir", "/tmp", "--hostname", "sandbox", "--", python or sys.executable, "-I", "-m", "move_openlab.worker"]
+    argv += ["--chdir", "/tmp", "--hostname", "sandbox", "--", python or sys.executable, "-I", "-B", "-m", "move_openlab.worker"]
     return argv
 
 
@@ -186,7 +187,7 @@ def verify(spec: SandboxSpec, refresh: bool = False) -> dict:
         if not refresh and spec in _verified:
             return _verified[spec]
         argv = command(spec, None)
-        argv = argv[:argv.index("--") + 1] + [sys.executable, "-I", "-c", PROBE]
+        argv = argv[:argv.index("--") + 1] + [sys.executable, "-I", "-B", "-c", PROBE]
         import move_openlab
         payload = json.dumps(dict(protected=list(spec.protected), home=str(Path.home()), allowed_env=sorted(ENV) + ["PWD"],
                                   roots=_readonly_roots(spec),

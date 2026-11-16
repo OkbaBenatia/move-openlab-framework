@@ -1,0 +1,31 @@
+"""Local test of My Greedy Matching: runs solve() on the problem's self-test instance and validates the result independently.
+
+Run:  python -m pytest plugins/my_greedy_matching/test_plugin.py
+The full check (sandbox, imported benchmark) is:  move-openlab method check plugins/my_greedy_matching [--bundle experiment.zip]
+"""
+import importlib.util
+from pathlib import Path
+
+from move_openlab import registry
+from move_openlab.methods import check_metadata
+
+HERE = Path(__file__).resolve().parent
+
+
+def _load():
+    spec = importlib.util.spec_from_file_location("plugin", HERE / "plugin.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_metadata_is_compatible():
+    check_metadata(_load().METADATA, registry.get("public-ride-matching"))
+
+
+def test_selftest_instance_is_solved_validly():
+    problem, mod = registry.get("public-ride-matching"), _load()
+    inst = problem.selftest_instance()
+    out = mod.solve(inst, dict(mod.METADATA["default_config"]))
+    assert not problem.check_decisions(out["decisions"])
+    assert problem.validate(inst, out["decisions"])["feasible"]

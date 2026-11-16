@@ -7,6 +7,8 @@ Storage (one installation = one data directory; one workspace per authenticated 
   <data>/workspaces/<user>/campaigns/<cid>/campaign.json
   <data>/workspaces/<user>/campaigns/<cid>/import_record.json  imported campaigns only: provenance of the import
   <data>/workspaces/<user>/methods.json                       plugins registered by this researcher
+  <data>/workspaces/<user>/plugins/<name>@<version>/          plug-ins uploaded by this researcher (owner-only:
+                                                              plugin.py, small text files, upload.json)
 
 Campaign kinds: ``baseline`` · ``reproduction`` (re-executes its parent) · ``extended`` (adds methods to its parent) ·
 ``variant`` (controlled perturbation of its parent) · ``threshold-study`` (candidate pruning at several thresholds).
@@ -16,33 +18,28 @@ read-only. Derived campaigns record the parent's checksum, so a broken lineage i
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
 import secrets
 import threading
-import zipfile
-import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, registry
-from .hashing import canonical, instance_hash, json_copy, sha256, sha256_bytes
-from .methods import ContractError, builtin_registry, check_metadata
+from . import __version__, custom_metrics, registry
+from .hashing import instance_hash, json_copy, sha256, sha256_bytes
+from .methods import ContractError, builtin_registry, check_metadata, validate_config
 from .plugins import code_sha256, discover, plugin_path, read_plugin_metadata
+from . import plugins as plugin_files, privatefiles
+from .access import Access
 from .problem import Problem
 from .runner import environment, run_once
 from .sandbox import MODES, SandboxSpec, SandboxUnavailable, verify as sandbox_verify
 from .scoring import MODES as SELECTION_MODES, normalise_thresholds, select, select_share, validate_selection
 
-BUNDLE_FORMAT = "move-openlab-bundle/1"
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
-MAX_MEMBERS = 5000
-MAX_MEMBER_BYTES = 16 * 1024 * 1024
 LOCK_EXCLUDED = ("checksum", "locked_at", "status")
 KINDS = ("baseline", "reproduction", "extended", "variant", "threshold-study")
-ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: identical content -> identical bundle
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _lock = threading.RLock()
 
@@ -76,6 +73,42 @@ def _write(path: Path, obj) -> None:
     tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}.{threading.get_ident()}")
     tmp.write_text(json.dumps(obj, indent=1, sort_keys=True))
     os.replace(tmp, path)
+
+
+_OLD_PREFIX = ("Independent re-execution of ", "Extension of ")
+_DERIVED_SUFFIX = re.compile(r"\s+—\s+(?:Reproduction|Extension)(?:\s+\d+)?(?:\s+\(.*\))?$")
+
+
+def base_title(title: str) -> str:
+    """The experiment a derived title derives from, without the derivation words (old and new forms), e.g.
+    "Independent re-execution of Independent re-execution of X" or "X — Reproduction 2" -> "X"."""
+    t = (title or "").strip()
+    while True:
+        for pre in _OLD_PREFIX:
+            if t.startswith(pre):
+                t = t[len(pre):]
+                if pre == "Extension of " and " with " in t:
+                    t = t.rsplit(" with ", 1)[0]
+                break
+        else:
+            m = _DERIVED_SUFFIX.search(t)
+            if not m:
+                return t
+            t = t[:m.start()]
+
+
+def display_title(title: str) -> str:
+    """A short label for a stored title (titles are part of the record and its checksum, so old ones are never
+    rewritten): "Independent re-execution of Independent re-execution of X" -> "X — Reproduction (of a reproduction)"."""
+    t, n = title or "", 0
+    while t.startswith(_OLD_PREFIX[0]):
+        t, n = t[len(_OLD_PREFIX[0]):], n + 1
+    if n:
+        return f"{display_title(t)} — Reproduction" + (" (of a reproduction)" if n > 1 else "")
+    if t.startswith(_OLD_PREFIX[1]) and " with " in t:
+        base, added = t[len(_OLD_PREFIX[1]):].rsplit(" with ", 1)
+        return f"{display_title(base)} — Extension ({added})"
+    return t
 
 
 def campaign_checksum(c: dict) -> str:
@@ -113,6 +146,7 @@ class Installation:
         self.plugin_mode = plugin_mode if self.plugin_dir else "disabled"
         self.data.mkdir(parents=True, exist_ok=True)
         self.sandbox_spec = SandboxSpec.of(self.data, self.plugin_dir, *protected)
+        self.access = Access(self.data)                     # per-account grants of restricted problems
         info = self.data / "installation.json"
         if info.exists():
             self.id = json.loads(info.read_text())["installation_id"]
@@ -166,8 +200,8 @@ class Installation:
             raise IntegrityError(f"stored instance {h[:12]} is corrupted")
         return inst
 
-    def workspace(self, username: str, display_name: str) -> "Workspace":
-        return Workspace(self, username, display_name)
+    def workspace(self, username: str, display_name: str, public_only: bool = False) -> "Workspace":
+        return Workspace(self, username, display_name, public_only)
 
     def recover_interrupted(self) -> dict[str, list[str]]:
         """At start-up: campaigns of every workspace left 'running' by a stopped server go back to draft."""
@@ -183,12 +217,43 @@ class Installation:
 
 
 class Workspace:
-    def __init__(self, inst: Installation, username: str, display_name: str):
+    def __init__(self, inst: Installation, username: str, display_name: str, public_only: bool = False):
         if not username or not SAFE_ID.match(username):
             raise BenchError("invalid workspace user")
         self.inst, self.user, self.display = inst, username, display_name
+        # the public context of a request: restricted problems and their records are left out even for an account
+        # that is granted them (a grant is never widened by this flag; it can only narrow what a request sees)
+        self.public_only = public_only
         self.root = inst.data / "workspaces" / username
         (self.root / "campaigns").mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------ access to restricted problems
+    def allows(self, problem: Problem) -> bool:
+        """Whether this account may see a problem (always, unless the problem is restricted and not granted, or the
+        request is made in the public context)."""
+        if self.public_only and getattr(problem, "restricted", False):
+            return False
+        return self.inst.access.allows(problem, self.user)
+
+    def _visible(self, problem_id: str) -> bool:
+        try:
+            return self.allows(registry.get(problem_id))
+        except registry.UnknownProblem:
+            return True                                     # not installed: reported as such where it is used
+
+    def problem(self, problem_id: str) -> Problem:
+        """An installed problem this account may use. A restricted problem that is not granted answers exactly like a
+        problem that is not installed."""
+        try:
+            p = registry.get(problem_id)
+        except registry.UnknownProblem as e:
+            raise NotFound(str(e.args[0])) from None
+        if not self.allows(p):
+            raise NotFound(f"problem {problem_id!r} is not installed here")
+        return p
+
+    def problems(self) -> list[Problem]:
+        return [p for p in registry.all_problems() if self.allows(p)]
 
     # ------------------------------------------------------------------ campaigns
     def _cdir(self, cid: str) -> Path:
@@ -201,6 +266,8 @@ class Workspace:
         for f in sorted((self.root / "campaigns").glob("*/campaign.json")):
             c = json.loads(f.read_text())
             if problem_id and c["spec"]["problem_id"] != problem_id:
+                continue
+            if not self._visible(c["spec"]["problem_id"]):
                 continue
             out.append(dict(campaign_id=c["campaign_id"], title=c["title"], kind=c["kind"], status=c["status"],
                             problem_id=c["spec"]["problem_id"], owner_display=c["owner_display"],
@@ -215,6 +282,8 @@ class Workspace:
         if not f.exists():
             raise NotFound("campaign not found in this workspace")
         c = json.loads(f.read_text())
+        if not self._visible(c["spec"]["problem_id"]):
+            raise NotFound("campaign not found in this workspace")
         if c.get("checksum") and campaign_checksum(c) != c["checksum"]:
             raise IntegrityError(f"campaign {cid} fails its checksum: the stored record was modified")
         return c
@@ -262,6 +331,8 @@ class Workspace:
             r = json.loads(f.read_text())
             if problem_id and r["problem_id"] != problem_id:
                 continue
+            if not self._visible(r["problem_id"]):
+                continue
             sc = r["scenario"]
             out.append(dict(scenario_id=r["scenario_id"], name=r["name"], problem_id=r["problem_id"], source=r["source"],
                             created_at=r["created_at"], parent=r.get("parent"), instance_hash=r["instance_hash"],
@@ -275,7 +346,10 @@ class Workspace:
         f = self.root / "scenarios" / f"{sid}.json"
         if not f.exists():
             raise NotFound("scenario not found in this workspace")
-        return json.loads(f.read_text())
+        rec = json.loads(f.read_text())
+        if not self._visible(rec.get("problem_id", "")):
+            raise NotFound("scenario not found in this workspace")
+        return rec
 
     # ------------------------------------------------------------------ methods
     def registered_methods(self, problem_id: str | None = None) -> list[dict]:
@@ -297,10 +371,14 @@ class Workspace:
                                         f"isolation; this installation now uses {st['isolation']} (register it again)")
                 if ref.get("code_sha256") and ref["code_sha256"] != r["code_sha256"]:
                     raise ContractError(f"{ref['method_id']}@{ref['version']}: local code differs from the referenced code hash")
+                uploaded = r.get("origin") == "uploaded"
+                if uploaded and st["isolation"] != "sandbox":                 # an upload never runs outside the sandbox
+                    raise ContractError(f"{r['method_id']}@{r['version']}: an uploaded plug-in runs only in the verified sandbox")
                 try:
-                    f = plugin_path(self.inst.plugin_dir, r["plugin"])
+                    f = plugin_path(self.uploads_dir if uploaded else self.inst.plugin_dir, r["plugin"])
                 except FileNotFoundError:
-                    raise ContractError(f"{r['method_id']}@{r['version']}: plugin no longer in the approved directory") from None
+                    raise ContractError(f"{r['method_id']}@{r['version']}: plugin no longer in "
+                                        + ("your workspace" if uploaded else "the approved directory")) from None
                 if code_sha256(f) != r["code_sha256"]:
                     raise ContractError(f"{r['method_id']}@{r['version']}: plugin code changed since registration "
                                         "(register a new semantic version)")
@@ -319,36 +397,71 @@ class Workspace:
                             author=r["author"], code_sha256=r["code_sha256"])
         raise ContractError(f"unknown method {method_id}@{version}")
 
-    def available_plugins(self, problem: Problem) -> list[dict]:
-        if not self.inst.plugin_status()["enabled"]:
-            return []
-        reg = {(r["method_id"], r["version"]): r for r in self.registered_methods(problem.problem_id)}
-        out = []
-        for item in discover(self.inst.plugin_dir, problem):
-            m = item.get("metadata") or {}
-            r = reg.get((m.get("method_id"), m.get("version")))
-            item["registered"] = bool(r and r["code_sha256"] == item["code_sha256"])
-            out.append(item)
+    def method_settings(self, problem: Problem, refs: list[dict], method_configs: dict | None,
+                        base: dict | None = None) -> dict:
+        """``{method_id: settings}`` for the methods of an experiment: ``base`` (the parent's settings) updated with
+        ``method_configs``, every value checked against the method's ``config_schema`` before anything is stored. Only
+        built-in methods declare settings; a plug-in runs with its own defaults."""
+        out = {r["method_id"]: dict((base or {}).get(r["method_id"]) or {}) for r in refs}
+        if not isinstance(method_configs or {}, dict):
+            raise BenchError("method_configs must map a method id to its settings")
+        for mid, cfg in (method_configs or {}).items():
+            ref = next((r for r in refs if r["method_id"] == mid), None)
+            if ref is None:
+                raise BenchError(f"settings for {mid}, which is not a method of this experiment")
+            if not isinstance(cfg, dict):
+                raise BenchError(f"settings of {mid} must be an object")
+            if ref.get("source") != "builtin":
+                if cfg:
+                    raise BenchError(f"{mid} is a plug-in: it runs with its own default configuration")
+                continue
+            meta, _ = builtin_registry(problem).get(ref["method_id"], ref["version"])
+            out[mid] = validate_config(meta, {**out[mid], **cfg})
         return out
 
-    def register_plugin(self, problem: Problem, plugin: str, admin: bool = False) -> dict:
+    # ------------------------------------------------------------------ plug-in catalogue, uploads and checks
+    @property
+    def uploads_dir(self) -> Path:
+        """Plug-ins uploaded by this account (owner-only): never the approved directory, never another account's."""
+        return self.root / "plugins"
+
+    def _plugin_file(self, plugin: str, origin: str = "approved") -> Path:
+        if origin not in ("approved", "uploaded"):
+            raise BenchError("origin must be 'approved' or 'uploaded'")
+        try:
+            return plugin_path(self.uploads_dir if origin == "uploaded" else self.inst.plugin_dir, plugin)
+        except FileNotFoundError as e:
+            raise NotFound("plugin not found among your uploaded plug-ins" if origin == "uploaded" else str(e)) from None
+
+    def _upload_record(self, plugin: str) -> dict:
+        try:
+            return json.loads((self._plugin_file(plugin, "uploaded").parent / plugin_files.UPLOAD_RECORD).read_text())
+        except (OSError, ValueError, NotFound):
+            return {}
+
+    def _require_plugin_runs(self, origin: str, admin: bool, what: str = "register plugins") -> dict:
+        """Plug-ins enabled; trusted-process mode for administrators only; an uploaded plug-in only in sandbox mode."""
         st = self.inst.require_plugins()
         if st["isolation"] == "process" and not admin:
-            raise Forbidden("trusted-process mode: only an administrator can register plugins")
-        try:
-            f = plugin_path(self.inst.plugin_dir, plugin)
-        except FileNotFoundError as e:
-            raise NotFound(str(e)) from None
+            raise Forbidden(f"trusted-process mode: only an administrator can {what}")
+        if origin == "uploaded" and st["isolation"] != "sandbox":
+            raise ContractError("uploaded plug-ins run only in the verified sandbox; this installation uses "
+                                "trusted-process mode")
+        return st
+
+    def _contract(self, problem: Problem, f: Path):
         meta = check_metadata(read_plugin_metadata(f), problem)        # compatibility check, nothing executed
         if any(b["method_id"] == meta.method_id for b in builtin_refs(problem)):
             raise ContractError("a plugin cannot replace a built-in method")
-        with _lock:
-            regs = self.registered_methods()
-            if any((r["problem_id"], r["method_id"], r["version"]) == (problem.problem_id, meta.method_id, meta.version)
-                   for r in regs):
-                raise BenchError(f"{meta.method_id}@{meta.version} is already registered (bump the semantic version)")
-        code = code_sha256(f)
-        probe = problem.selftest_instance()                              # reserved instance, never a benchmark one
+        return meta
+
+    def _registration_of(self, problem: Problem, method_id: str, version: str) -> dict | None:
+        return next((r for r in self.registered_methods(problem.problem_id)
+                     if (r["method_id"], r["version"]) == (method_id, version)), None)
+
+    def _selftest(self, problem: Problem, meta, f: Path, code: str, st: dict) -> dict:
+        """One run on the problem's reserved self-test instance (never a benchmark one), validated independently."""
+        probe = problem.selftest_instance()
         ref = dict(source="plugin", method_id=meta.method_id, version=meta.version, plugin_file=str(f), code_sha256=code,
                    isolation=st["isolation"])
         r = run_once(problem, ref, probe, {}, timeout_s=60.0, sandbox=self.inst.sandbox_spec)
@@ -356,25 +469,247 @@ class Workspace:
                         validation=r["validation"], error=r.get("error"), declared_mismatch=r.get("declared_mismatch"))
         if not r["accepted"]:
             raise ContractError(f"contract self-test failed: {r.get('error') or r['output_errors'] or r['validation']['errors']}")
-        entry = dict(meta.to_dict(), plugin=plugin, code_sha256=code, registered_by=self.display, registered_at=now(),
-                     compatibility=dict(problem_id="ok", objective_spec_id="ok", semver="ok"), selftest=selftest,
-                     isolation_at_registration=st["isolation"],
+        return selftest
+
+    def available_plugins(self, problem: Problem) -> list[dict]:
+        """The catalogue of "+ Add method" for one problem (nothing is executed): the plug-ins of the approved directory
+        — ``catalog`` ``"example"`` (shipped with the framework, ``METADATA["catalog"] == "example"``) or
+        ``"installation"`` (provided by the operator) — and those this account uploaded (``"uploaded"``). ``state`` is
+        ``available``, ``registered`` (code pinned), ``incompatible`` (reason in ``incompatibility``), ``changed`` (the
+        file no longer holds the registered code: never silently re-registered) or ``taken`` (this method id and version
+        are registered from another plug-in)."""
+        if not self.inst.plugin_status()["enabled"]:
+            return []
+        reg = {(r["method_id"], r["version"]): r for r in self.registered_methods(problem.problem_id)}
+        builtin = {b["method_id"] for b in builtin_refs(problem)}
+        items = [dict(i, origin="approved") for i in discover(self.inst.plugin_dir, problem)]
+        for i in discover(self.uploads_dir, problem):
+            rec = self._upload_record(i["plugin"])
+            items.append(dict(i, origin="uploaded", upload_sha256=rec.get("upload_sha256"), uploaded_at=rec.get("uploaded_at")))
+        out = []
+        for item in items:
+            m = item.get("metadata") or {}
+            item["catalog"] = "uploaded" if item["origin"] == "uploaded" else (
+                "example" if plugin_files.catalog_of(m, self.inst.plugin_dir, item["plugin"]) == "example" else "installation")
+            if item.get("compatible") and m.get("method_id") in builtin:
+                item["compatible"], item["incompatibility"] = False, "a plugin cannot replace a built-in method"
+            r = reg.get((m.get("method_id"), m.get("version")))
+            if r and r.get("origin", "approved") == item["origin"] and r.get("plugin") == item["plugin"]:
+                item["state"] = "registered" if r["code_sha256"] == item["code_sha256"] else "changed"
+                item["registered_code_sha256"] = r["code_sha256"]
+            elif r:
+                item["state"] = "taken"
+                item["incompatibility"] = (f"{m.get('method_id')}@{m.get('version')} is already registered from another "
+                                           "plug-in (bump the semantic version)")
+            else:
+                item["state"] = "available" if item.get("compatible") else "incompatible"
+            item["registered"] = item["state"] == "registered"
+            out.append(item)
+        return out
+
+    def uploaded_plugins(self) -> list[dict]:
+        """Upload records of this account's plug-ins (as written by :meth:`upload_plugin`)."""
+        return [rec for i in discover(self.uploads_dir) if (rec := self._upload_record(i["plugin"]))]
+
+    def upload_plugin(self, problem: Problem, data: bytes, admin: bool = False) -> dict:
+        """Store a completed plug-in uploaded as a ZIP in this account's workspace, after every check of
+        :func:`move_openlab.plugins.inspect_archive` and a static METADATA check against the problem — nothing is
+        executed. The stored bytes are those hashed (``code_sha256``) and, once registered, executed in the sandbox. An
+        identical re-upload returns the stored record (``unchanged``); the same method id and version with other code is
+        refused (bump the version). Only in sandbox mode."""
+        self._require_plugin_runs("uploaded", admin, "add plug-ins")
+        try:
+            name, files = plugin_files.inspect_archive(data)
+        except plugin_files.UploadRefused as e:
+            raise ContractError(f"ZIP refused: {e}") from None
+        try:
+            meta = check_metadata(plugin_files.metadata_from_source(files[plugin_files.PLUGIN_FILE]), problem)
+            if any(b["method_id"] == meta.method_id for b in builtin_refs(problem)):
+                raise ContractError("a plugin cannot replace a built-in method")
+        except ContractError as e:
+            raise ContractError(f"METADATA refused: {e}") from None
+        code, key = sha256_bytes(files[plugin_files.PLUGIN_FILE]), f"{name}@{meta.version}"
+        with _lock:
+            for it in discover(self.uploads_dir):
+                m = it.get("metadata") or {}
+                if it["plugin"] == key or (m.get("method_id"), m.get("version")) == (meta.method_id, meta.version):
+                    if it["plugin"] == key and it["code_sha256"] == code and m.get("method_id") == meta.method_id:
+                        return dict(self._upload_record(key), unchanged=True)
+                    raise ImmutableError(f"{meta.method_id}@{meta.version} was already uploaded with different code: change "
+                                         "the version in METADATA (for example to the next patch version) and upload again")
+            self.uploads_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            tmp = self.uploads_dir / f".upload-{secrets.token_hex(6)}"
+            tmp.mkdir(mode=0o700)
+            try:
+                for fname, body in sorted(files.items()):
+                    privatefiles.write(tmp / fname, body)
+                rec = dict(origin="uploaded", plugin=key, directory=name, problem_id=problem.problem_id,
+                           method_id=meta.method_id, version=meta.version, name=meta.name, kind=meta.kind,
+                           code_sha256=code, upload_sha256=sha256_bytes(data),
+                           files={fn: dict(bytes=len(b), sha256=sha256_bytes(b)) for fn, b in sorted(files.items())},
+                           uploaded_by=self.display, uploaded_at=now())
+                privatefiles.write(tmp / plugin_files.UPLOAD_RECORD, json.dumps(rec, indent=1, sort_keys=True))
+                os.rename(tmp, self.uploads_dir / key)
+            except BaseException:
+                for p in (tmp.iterdir() if tmp.exists() else ()):
+                    p.unlink(missing_ok=True)
+                if tmp.exists():
+                    tmp.rmdir()
+                raise
+        return dict(rec, unchanged=False)
+
+    def check_plugin(self, problem: Problem, plugin: str, origin: str = "approved", selftest: bool = False,
+                     admin: bool = False) -> dict:
+        """Check a catalogue plug-in step by step without registering it: ``metadata`` (read statically and checked
+        against the problem — nothing executed) and ``registration`` (this id and version are not registered yet); with
+        ``selftest``, also ``self-test``: one run in the verified sandbox on the problem's reserved self-test instance,
+        validated independently. Nothing is recorded."""
+        f = self._plugin_file(plugin, origin)
+        out = dict(plugin=plugin, origin=origin, ok=False, steps=[])
+        steps = out["steps"]
+        try:
+            meta = self._contract(problem, f)
+        except (ContractError, OSError) as e:
+            steps.append(dict(step="metadata", ok=False, detail=str(e)))
+            return out
+        code = code_sha256(f)
+        out.update(method_id=meta.method_id, version=meta.version, code_sha256=code)
+        steps.append(dict(step="metadata", ok=True, detail=f"{meta.method_id}@{meta.version} ({meta.kind}) for "
+                                                           f"{problem.problem_id}, objective {meta.objective_spec_id}"))
+        r = self._registration_of(problem, meta.method_id, meta.version)
+        steps.append(dict(step="registration", ok=r is None, detail="not registered yet" if r is None else (
+            f"{meta.method_id}@{meta.version} is already registered (bump the semantic version)"
+            + ("" if r["code_sha256"] == code else "; the file now holds different code than the registered one"))))
+        if selftest:
+            st = self._require_plugin_runs(origin, admin)
+            try:
+                t = self._selftest(problem, meta, f, code, st)
+                steps.append(dict(step="self-test", ok=True, detail=f"valid result on the self-test instance "
+                                  f"{t['instance_id']} ({st['isolation']})", metrics=t["validation"]["metrics"]))
+            except ContractError as e:
+                steps.append(dict(step="self-test", ok=False, detail=str(e)))
+        out["ok"] = all(s["ok"] for s in steps)
+        return out
+
+    def register_plugin(self, problem: Problem, plugin: str, admin: bool = False, origin: str = "approved") -> dict:
+        """Register a plug-in of the approved directory (``origin="approved"``) or one this account uploaded
+        (``"uploaded"``, sandbox mode only): static compatibility check, then the sandboxed contract self-test; the code
+        SHA-256 (and the upload's) is pinned. The same method id and version is never registered twice."""
+        st = self._require_plugin_runs(origin, admin)
+        f = self._plugin_file(plugin, origin)
+        meta = self._contract(problem, f)
+        with _lock:
+            if self._registration_of(problem, meta.method_id, meta.version):
+                raise BenchError(f"{meta.method_id}@{meta.version} is already registered (bump the semantic version)")
+        code = code_sha256(f)
+        selftest = self._selftest(problem, meta, f, code, st)
+        entry = dict(meta.to_dict(), plugin=plugin, origin=origin, code_sha256=code, registered_by=self.display,
+                     registered_at=now(), compatibility=dict(problem_id="ok", objective_spec_id="ok", semver="ok"),
+                     selftest=selftest, isolation_at_registration=st["isolation"],
                      isolation=("verified bubblewrap sandbox: no network, private PID namespace, cleared environment, "
                                 "read-only installation, no data directory" if st["isolation"] == "sandbox" else
                                 "trusted process (administrator decision; not a sandbox)"))
+        if origin == "uploaded":
+            entry["upload_sha256"] = self._upload_record(plugin).get("upload_sha256")
         with _lock:
+            if self._registration_of(problem, meta.method_id, meta.version):
+                raise BenchError(f"{meta.method_id}@{meta.version} is already registered (bump the semantic version)")
             _write(self.root / "methods.json", self.registered_methods() + [entry])
         return entry
 
+    # ------------------------------------------------------------------ custom metrics (third-party: sandboxed)
+    def registered_metrics(self, problem_id: str | None = None) -> list[dict]:
+        f = self.root / "metrics.json"
+        regs = json.loads(f.read_text()) if f.exists() else []
+        return [r for r in regs if problem_id is None or problem_id in r["problems"]]
+
+    def available_metrics(self, problem: Problem) -> list[dict]:
+        """Metric files of the approved directory (static metadata only) and whether this researcher registered them."""
+        if not self.inst.plugin_status()["enabled"]:
+            return []
+        reg = {(r["id"], r["version"]): r for r in self.registered_metrics(problem.problem_id)}
+        out = []
+        for item in custom_metrics.discover(self.inst.plugin_dir, problem):
+            m = item.get("metadata") or {}
+            r = reg.get((m.get("id"), m.get("version")))
+            item["registered"] = bool(r and r["code_sha256"] == item["code_sha256"])
+            out.append(item)
+        return out
+
+    def register_metric(self, problem: Problem, plugin: str, admin: bool = False) -> dict:
+        """Register a metric file for this workspace: static contract and compatibility checks, SHA-256 pinned,
+        self-test on a reserved context in the required isolation. Nothing of the file runs in this process."""
+        st = self.inst.require_plugins()
+        if st["isolation"] == "process" and not admin:
+            raise Forbidden("trusted-process mode: only an administrator can register metrics")
+        try:
+            f = custom_metrics.metric_path(self.inst.plugin_dir, plugin)
+        except FileNotFoundError as e:
+            raise NotFound(str(e)) from None
+        code = custom_metrics.code_sha256(f)
+        try:
+            spec = custom_metrics.spec_from_metadata(custom_metrics.read_metadata(f), code)
+        except (ValueError, SyntaxError) as e:
+            raise ContractError(f"metric contract: {e}") from None
+        errs = custom_metrics.compatibility(spec, problem)
+        if errs:
+            raise ContractError("; ".join(errs))
+        if custom_metrics.is_builtin_id(spec.id):
+            raise ContractError("a registered metric cannot replace a built-in metric")
+        with _lock:
+            if any((r["id"], r["version"]) == (spec.id, spec.version) for r in self.registered_metrics()):
+                raise BenchError(f"{spec.id}@{spec.version} is already registered (bump the semantic version)")
+        probe = custom_metrics.selftest_context(spec)
+        ev = custom_metrics.evaluate_isolated(spec, [probe], str(f), st["isolation"], self.inst.sandbox_spec)
+        if ev.per[0] is None:
+            raise ContractError("metric self-test failed: " + ("; ".join(ev.issues) or "no value for the reserved context"))
+        entry = dict(spec.public(st["isolation"]), plugin=plugin, registered_by=self.display, registered_at=now(),
+                     selftest=dict(context=probe, value=ev.per[0]), isolation_at_registration=st["isolation"])
+        with _lock:
+            _write(self.root / "metrics.json", self.registered_metrics() + [entry])
+        return entry
+
+    def metric_evaluations(self, problem: Problem, contexts: list[dict]) -> list[tuple[dict, custom_metrics.Evaluation]]:
+        """Every metric of this problem for this workspace — built-in ones in this process (trusted), registered ones
+        in isolation — as (public description, evaluation). A registered metric that cannot run here (plugins off,
+        isolation unavailable or changed, file moved or modified) is listed with no values and the reason."""
+        out = [(m.public(), custom_metrics.evaluate_detailed(m, contexts)) for m in custom_metrics.builtin_for(problem.problem_id)]
+        for r in self.registered_metrics(problem.problem_id):
+            spec = custom_metrics.spec_from_metadata({k: r[k] for k in custom_metrics.METADATA_KEYS}, r["code_sha256"])
+            none = [None] * len(contexts)
+            try:
+                st = self.inst.require_plugins()
+                if r["isolation_at_registration"] != st["isolation"]:
+                    raise ContractError(f"registered for {r['isolation_at_registration']} isolation; this installation now "
+                                        f"uses {st['isolation']} (register it again)")
+                f = custom_metrics.metric_path(self.inst.plugin_dir, r["plugin"])
+                if custom_metrics.code_sha256(f) != r["code_sha256"]:
+                    raise ContractError("metric code changed since registration (register a new semantic version)")
+            except (ContractError, FileNotFoundError) as e:
+                out.append((dict(spec.public(r["isolation_at_registration"]), available=False),
+                            custom_metrics.Evaluation(none, None, [f"not computed: {e}"])))
+                continue
+            out.append((spec.public(st["isolation"]),
+                        custom_metrics.evaluate_isolated(spec, contexts, str(f), st["isolation"], self.inst.sandbox_spec)))
+        return out
+
     # ------------------------------------------------------------------ creation and execution
     def create_campaign(self, problem_id: str, title: str, scenario_params: dict, methods: list[tuple[str, str]],
-                        repetitions: int = 3, timeout_s: float = 120.0, time_budget_s: float | None = None) -> dict:
-        try:
-            problem = registry.get(problem_id)
-        except registry.UnknownProblem as e:
-            raise NotFound(str(e)) from None
+                        repetitions: int = 3, timeout_s: float = 120.0, time_budget_s: float | None = None,
+                        emissions: dict | None = None, method_configs: dict | None = None) -> dict:
+        """``emissions`` (optional ``{scope, baseline}``) is experiment configuration: it is recorded in ``config``,
+        hence in the experiment fingerprint, and reaches only the problem's domain metrics. ``method_configs``
+        (``{method_id: {setting: value}}``) are the researcher's solver settings, validated against each method's
+        ``config_schema`` before anything is stored; each run records the effective configuration."""
+        problem = self.problem(problem_id)
         if not 1 <= int(repetitions) <= 20 or not 1 <= float(timeout_s) <= 3600:
             raise BenchError("repetitions must be 1-20 and timeout 1-3600 s")
+        if emissions is not None:
+            from .mobility.emissions import validate_config
+            try:
+                emissions = validate_config(emissions)
+            except ValueError as e:
+                raise BenchError(str(e)) from None
         if not methods:
             raise BenchError("select at least one method")
         params = scenario_params or {}
@@ -398,11 +733,13 @@ class Workspace:
             raise BenchError("a method may appear only once in a campaign")
         for r in refs:
             self.resolve_method(problem, r)
+        settings = self.method_settings(problem, refs, method_configs)
         budget = float(time_budget_s) if time_budget_s is not None else problem.default_time_budget_s
         c = self._new(problem, title, "baseline",
                       dict(meta, instance_hashes=hashes, instance_ids=[i["instance_id"] for i in instances]), refs,
                       dict(repetitions=int(repetitions), timeout_s=float(timeout_s), time_budget_s=budget,
-                           order="repetition > instance > method", method_configs={r["method_id"]: {} for r in refs}),
+                           order="repetition > instance > method", method_configs=settings,
+                           **(dict(emissions=emissions) if emissions else {})),
                       None)
         self._save(c)
         return c
@@ -437,7 +774,8 @@ class Workspace:
                             from .runner import Cancelled
                             raise Cancelled("campaign execution cancelled")
                         r = run_once(problem, ref, inst, c["config"]["method_configs"].get(m["method_id"], {}),
-                                     c["config"]["timeout_s"], sandbox=self.inst.sandbox_spec, cancel=cancel)
+                                     c["config"]["timeout_s"], sandbox=self.inst.sandbox_spec, cancel=cancel,
+                                     experiment_config=c["config"])
                         if event:
                             event("run", f"{inst['instance_id']} · {m['method_id']} · rep {rep}: "
                                          + ("accepted" if r["accepted"] else "rejected"),
@@ -460,9 +798,95 @@ class Workspace:
             c = json.loads((self._cdir(cid) / "campaign.json").read_text())
             c.update(runs=runs, environment=env, status="completed", completed_at=now())
             self._save(c)
-        if event:
+        if event:   # every run was checked by the independent validator as it finished; this is the summary
+            event("validate", f"independent validation: {sum(r['accepted'] for r in runs)} of {len(runs)} solutions accepted")
             event("complete", f"{sum(r['accepted'] for r in runs)}/{len(runs)} runs accepted")
         return c
+
+    # ------------------------------------------------------------------ results computed elsewhere (data, never code)
+    IMPORT_RECORD_KEYS = {"instance_hash", "method_id", "decisions", "status_declared", "declared", "solver_time_s",
+                          "total_time_s", "method_metadata", "diagnostics", "effective_config", "executed_at", "record_sha256"}
+
+    def import_results(self, problem_id: str, title: str, instance_hashes: list[str], methods: list[tuple[str, str]],
+                       records: list[dict], source: dict, method_configs: dict | None = None) -> dict:
+        """A new, immutable experiment holding results computed OUTSIDE this platform (e.g. an archived research
+        runner). Data only — no code is imported or executed and nothing is solved. Before anything is stored:
+        every scenario must be a stored instance of the problem, every method an installed built-in method (its settings
+        checked against its schema), every record's ``record_sha256`` must match its content, and every decision set is
+        re-validated by the problem's independent validator (declared objective values are compared, never trusted).
+        Runs are recorded with ``origin = "imported-external"`` and kept distinct from runs executed here; rejected
+        records are kept as rejected runs (never dropped). The experiment is created and locked at once; existing
+        experiments are never touched."""
+        problem = self.problem(problem_id)
+        if not isinstance(records, list) or not 1 <= len(records) <= 5000:
+            raise BenchError("records must list 1-5000 results")
+        if not isinstance(source, dict) or not str(source.get("name", "")).strip():
+            raise BenchError("source must name where the results come from")
+        if not isinstance(instance_hashes, list) or not instance_hashes or len(set(instance_hashes)) != len(instance_hashes):
+            raise BenchError("instance_hashes must list distinct stored instances")
+        insts = {}
+        for h in instance_hashes:
+            i = self.inst.get_instance(h)
+            if i.get("problem_id") != problem.problem_id or problem.check_instance(i):
+                raise IntegrityError(f"instance {i.get('instance_id')} does not belong to {problem.problem_id} or fails its checks")
+            insts[h] = i
+        refs = [self.method_ref(problem, m, v) for m, v in methods]
+        if not refs or len({r["method_id"] for r in refs}) != len(refs):
+            raise BenchError("list each method once")
+        if any(r.get("source") != "builtin" for r in refs):
+            raise BenchError("imported results must refer to installed built-in methods")
+        for r in refs:
+            self.resolve_method(problem, r)
+        settings = self.method_settings(problem, refs, method_configs)
+        by_id = {r["method_id"]: r for r in refs}
+        runs, seen, counts = [], set(), dict(records=len(records), validated=0, rejected=0, declared_objective_mismatches=0)
+        for k, rec in enumerate(records):
+            if not isinstance(rec, dict) or set(rec) - self.IMPORT_RECORD_KEYS:
+                raise BenchError(f"record {k}: unknown fields {sorted(set(rec) - self.IMPORT_RECORD_KEYS) if isinstance(rec, dict) else ''}")
+            body = {x: y for x, y in rec.items() if x != "record_sha256"}
+            if rec.get("record_sha256") != sha256(body):
+                raise IntegrityError(f"record {k}: record_sha256 does not match its content")
+            h, mid = rec.get("instance_hash"), rec.get("method_id")
+            if h not in insts or mid not in by_id:
+                raise BenchError(f"record {k}: scenario or method not declared for this import")
+            if (h, mid) in seen:
+                raise BenchError(f"record {k}: a second result for the same scenario and method")
+            seen.add((h, mid))
+            decisions = rec.get("decisions") or []
+            errs = problem.check_decisions(decisions) if decisions else ["no decisions"]
+            val = problem.validate(insts[h], decisions) if not errs else dict(feasible=False, errors=errs, metrics={},
+                                                                              validator_version=problem.validator_version)
+            declared = rec.get("declared") or {}
+            mism = [m for m, v in declared.items() if isinstance(v, (int, float)) and m in val.get("metrics", {})
+                    and abs(val["metrics"][m] - v) > 1e-6 * max(1.0, abs(v))]
+            counts["declared_objective_mismatches"] += bool(mism)
+            accepted = bool(val["feasible"]) and not mism and rec.get("status_declared") in ("OPTIMAL", "FEASIBLE", "TIME_LIMIT")
+            counts["validated" if accepted else "rejected"] += 1
+            runs.append(dict(method_id=mid, version=by_id[mid]["version"], source="builtin", instance_hash=h,
+                             instance_id=insts[h]["instance_id"], isolation="external",
+                             trace=[dict(stage="imported", duration_s=0.0, detail=f"result computed by {source['name']}; re-validated here")],
+                             accepted=accepted, status_declared=rec.get("status_declared"), decisions=problem.canonical_decisions(decisions),
+                             output_errors=[] if accepted else (val.get("errors") or []) + [f"declared {m} differs" for m in mism],
+                             validation=val, declared=declared, declared_mismatch=mism, method_time_s=rec.get("total_time_s"),
+                             solver_time_s=rec.get("solver_time_s"), total_time_s=rec.get("total_time_s"),
+                             effective_config=rec.get("effective_config") or settings[mid], method_metadata=rec.get("method_metadata") or {},
+                             diagnostics=rec.get("diagnostics") or {}, run_id=f"r{len(runs) + 1:05d}", repetition=1,
+                             executed_by=str(source.get("executed_by") or source["name"]), executed_at=rec.get("executed_at") or None,
+                             origin="imported-external", record_sha256=rec["record_sha256"], installation_id=self.inst.id))
+        missing = [(h, m) for h in insts for m in by_id if (h, m) not in seen]
+        c = self._new(problem, title, "baseline", dict(params=dict(instance_hashes=list(insts)), generator=dict(name="imported results"),
+                                                        instance_hashes=list(insts), instance_ids=[i["instance_id"] for i in insts.values()]),
+                      refs, dict(repetitions=1, timeout_s=0.0, time_budget_s=problem.default_time_budget_s,
+                                 order="imported", method_configs=settings), None)
+        c.update(runs=runs, status="completed", completed_at=now(),
+                 environment=dict(source.get("environment") or {}, note=f"results computed outside this platform by {source['name']}"),
+                 result_import=dict(source=source, imported_at=now(), imported_by=self.display, into_installation=self.inst.id,
+                                    counts=dict(counts, missing_cells=len(missing)),
+                                    rule="data only; every record digest checked; every decision set re-validated by the independent "
+                                         "validator; declared values compared, never trusted; nothing was solved here"))
+        with _lock:
+            self._save(c)
+        return self.lock(c["campaign_id"])
 
     def recover_interrupted(self) -> list[str]:
         """Campaigns left 'running' by a stopped server go back to draft (no partial runs were ever stored)."""
@@ -531,12 +955,23 @@ class Workspace:
         c["config_differences_from_parent"] = diffs
         return c
 
+    def _derived_title(self, parent_title: str, word: str, detail: str = "") -> str:
+        """Short title of a derived experiment, never nested: "<root> — Reproduction 2", "<root> — Extension 1 (Method)".
+        The number counts the experiments of that kind derived from the same root in this workspace; the full lineage
+        is recorded separately (``parent``) and shown under Details."""
+        root = base_title(parent_title)
+        if root.endswith(" — Baseline"):
+            root = root[:-len(" — Baseline")]
+        kind = "reproduction" if word == "Reproduction" else "extended"
+        n = 1 + sum(1 for c in self.list() if c.get("kind") == kind and base_title(c.get("title", "")).removesuffix(" — Baseline") == root)
+        return f"{root} — {word} {n}{f' ({detail})' if detail else ''}"[:160]
+
     def create_reproduction(self, parent_id: str) -> dict:
         parent = self.get(parent_id)
         problem = problem_for(parent)
         for m in parent["methods"]:
             self.resolve_method(problem, m)
-        c = self._derive(parent_id, "reproduction", "reproduces", f"Independent re-execution of {parent['title']}",
+        c = self._derive(parent_id, "reproduction", "reproduces", self._derived_title(parent["title"], "Reproduction"),
                          parent["methods"])
         self._save(c)
         return c
@@ -552,12 +987,12 @@ class Workspace:
             if r["method_id"] in existing:
                 raise BenchError(f"{r['method_id']} is already part of the lineage")
             self.resolve_method(problem, r)
-        c = self._derive(parent_id, "extended", "extends", f"Extension of {chain[-1]['title']} with "
-                         + ", ".join(r["name"] for r in refs), refs)
+        c = self._derive(parent_id, "extended", "extends", self._derived_title(chain[-1]["title"], "Extension",
+                                                                               ", ".join(r["name"] for r in refs)), refs)
         self._save(c)
         return c
 
-    def create_variant(self, parent_id: str, variant_id: str) -> dict:
+    def create_variant(self, parent_id: str, variant_id: str, title: str | None = None) -> dict:
         """Controlled variant: derived instances are new content-addressed artifacts; the parent is never modified."""
         parent = self.get(parent_id)
         problem = problem_for(parent)
@@ -594,11 +1029,63 @@ class Workspace:
                     cfg["method_configs"].setdefault(mid, {}).update(opts)
             else:
                 cfg[k] = val
-        c = self._derive(parent_id, "variant", "perturbs", f"Controlled variant '{variant_id}' of {parent['title']}",
+        c = self._derive(parent_id, "variant", "perturbs", title or f"Controlled variant '{variant_id}' of {parent['title']}",
                          methods, dict(parent["scenario_set"], instance_hashes=hashes, instance_ids=ids), cfg)
         c["semantic_variant"] = dict(variant=variant_id, description=v.description, modifications=mods,
                                      not_applicable=na)
         c["config_differences_from_parent"].insert(0, f"controlled variant {variant_id}: {v.description}")
+        self._save(c)
+        return c
+
+    def create_settings_version(self, parent_id: str, method_configs: dict, title: str | None = None,
+                                methods: list[str] | None = None, instance_hashes: list[str] | None = None) -> dict:
+        """A new experiment version that differs from a locked parent only by method settings, on the parent's frozen
+        scenarios. Only the selected methods run: ``methods`` (method ids of the parent), by default exactly the methods
+        whose settings changed — never all methods implicitly. ``instance_hashes`` optionally restricts it to some of
+        the parent's scenarios. The changed settings are validated and recorded (``config.method_configs`` and
+        ``config_differences_from_parent``). The parent and its results are never modified."""
+        parent = self.get(parent_id)
+        problem = problem_for(parent)
+        everyone = list(parent["methods"])
+        for m in everyone:
+            self.resolve_method(problem, m)
+        cfg = json_copy(parent["config"])
+        new = self.method_settings(problem, everyone, method_configs, base=cfg.get("method_configs"))
+        changes, changed = [], []
+        for m in everyone:
+            mid = m["method_id"]
+            meta = builtin_registry(problem).get(mid, m["version"])[0] if m.get("source") == "builtin" else None
+            before = {**((meta.default_config if meta else {}) or {}), **((cfg.get("method_configs") or {}).get(mid) or {})}
+            after = {**((meta.default_config if meta else {}) or {}), **new[mid]}
+            diff = [f"settings {mid}: {k} {before.get(k)!r} -> {after.get(k)!r}"
+                    for k in sorted(set(before) | set(after)) if before.get(k) != after.get(k)]
+            changes += diff
+            changed += [mid] if diff else []
+        if not changes:
+            raise BenchError("the settings are unchanged: no new version is needed")
+        ids = list(methods) if methods else changed
+        unknown = sorted(set(ids) - {m["method_id"] for m in everyone})
+        if unknown or not ids:
+            raise BenchError(f"choose methods of this experiment to run{f' (unknown: {unknown})' if unknown else ''}")
+        if not set(changed) <= set(ids):
+            raise BenchError(f"a method whose settings changed must run: {sorted(set(changed) - set(ids))}")
+        selected = [m for m in everyone if m["method_id"] in ids]
+        hs = list(parent["scenario_set"]["instance_hashes"])
+        if instance_hashes:
+            if not set(instance_hashes) <= set(hs) or len(set(instance_hashes)) != len(instance_hashes):
+                raise BenchError("choose distinct scenarios of this experiment")
+            hs = [h for h in hs if h in set(instance_hashes)]
+        id_of = dict(zip(parent["scenario_set"]["instance_hashes"], parent["scenario_set"]["instance_ids"]))
+        cfg["method_configs"] = {m["method_id"]: new[m["method_id"]] for m in selected}
+        root = base_title(parent["title"]).removesuffix(" — Baseline")
+        n = 1 + sum(1 for c in self.list() if c["kind"] == "variant" and c["title"].startswith(f"{root} — Settings "))
+        c = self._derive(parent_id, "variant", "perturbs", (title or f"{root} — Settings {n}")[:160], selected,
+                         dict(json_copy(parent["scenario_set"]), instance_hashes=hs, instance_ids=[id_of[h] for h in hs]), cfg)
+        c["semantic_variant"] = dict(variant="solver-settings", description="solver settings changed: " + "; ".join(changes),
+                                     modifications=[], not_applicable=[])
+        scope = [f"runs {len(selected)} of {len(everyone)} methods: {', '.join(m['method_id'] for m in selected)}",
+                 f"on {len(hs)} of {len(parent['scenario_set']['instance_hashes'])} scenarios"]
+        c["config_differences_from_parent"] = changes + scope + c["config_differences_from_parent"]
         self._save(c)
         return c
 
@@ -663,149 +1150,98 @@ class Workspace:
         self._save(c)
         return c
 
-    # ------------------------------------------------------------------ bundles
-    def export_bundle(self, cid: str) -> tuple[bytes, dict]:
-        chain = self.lineage(cid)
-        if not all(c.get("checksum") for c in chain):
-            raise BenchError("lock the campaign before exporting it")
-        problem = problem_for(chain[0])
-        hashes = sorted({h for c in chain for h in c["scenario_set"]["instance_hashes"]})
-        files: dict[str, bytes] = {f"campaigns/{c['campaign_id']}.json": canonical(c) for c in chain}
-        for h in hashes:
-            files[f"instances/{h}.json"] = canonical(self.inst.get_instance(h))
-        methods = sorted({(m["method_id"], m["version"], m["source"], m.get("code_sha256") or "")
-                          for c in chain for m in c["methods"]})
-        manifest = dict(format=BUNDLE_FORMAT, created_at=now(), exported_by=self.display,
-                        exporter_installation=self.inst.id, root_campaign_id=cid, spec=problem.spec_record(),
-                        validator_version=problem.validator_version, synthetic=problem.synthetic,
-                        campaigns=[dict(campaign_id=c["campaign_id"], kind=c["kind"], checksum=c["checksum"],
-                                        owner_display=c["owner_display"]) for c in chain],
-                        instances=hashes,
-                        methods=[dict(method_id=a, version=b, source=s, code_sha256=h or None) for a, b, s, h in methods],
-                        environment_requirements=dict(python=">=3.11", framework=__version__, **problem.environment(),
-                                                      note="methods are resolved from trusted local installations by id, "
-                                                           "version and code hash; the bundle contains no executable code"),
-                        files={k: sha256_bytes(v) for k, v in sorted(files.items())})
-        mbytes = canonical(manifest)
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for k, v in sorted(files.items()):
-                z.writestr(zipfile.ZipInfo(k, date_time=ZIP_TIME), v)
-            z.writestr(zipfile.ZipInfo("manifest.json", date_time=ZIP_TIME), mbytes)
-            z.writestr(zipfile.ZipInfo("manifest.sha256", date_time=ZIP_TIME), sha256_bytes(mbytes))
-        data = buf.getvalue()
-        return data, dict(bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes), bytes=len(data),
-                          campaigns=[c["campaign_id"] for c in chain], instances=len(hashes))
+    # ------------------------------------------------------------------ studies (saved, non-destructive views)
+    def studies(self) -> list[dict]:
+        """Saved study views of this workspace: named lists of (experiment, method) members that were evaluated on the
+        same scenarios and are shown together. A study is presentation only: it is stored next to the experiments
+        (``studies.json``), never inside a record, and removing it removes nothing else. A study with a member this
+        account cannot read (removed access, missing experiment) is not listed."""
+        f = self.root / "studies.json"
+        try:
+            raw = json.loads(f.read_text()) if f.exists() else []
+        except ValueError:
+            raw = []
+        out = []
+        for st in raw if isinstance(raw, list) else []:
+            try:
+                for cid in {m["campaign_id"] for m in st["members"]}:
+                    self.get(cid)
+            except (BenchError, KeyError, TypeError):
+                continue
+            out.append(st)
+        return out
+
+    def save_study(self, title: str, members: list[dict], featured_instance: str | None = None, description: str = "",
+                   study_id: str | None = None) -> dict:
+        """Create or replace a study. Members must be methods with results in experiments of this workspace, all on
+        the same scenarios with the same problem specification and validator (checked by building the comparison)."""
+        from .analysis.compare import compare_members
+        title = " ".join(str(title).split())
+        if not 3 <= len(title) <= 160:
+            raise BenchError("a study title has 3 to 160 characters")
+        if not isinstance(members, list) or not 1 <= len(members) <= 12:
+            raise BenchError("a study lists 1 to 12 methods")
+        clean, seen = [], set()
+        for m in members:
+            if not isinstance(m, dict) or not SAFE_ID.match(str(m.get("campaign_id", ""))) or not SAFE_ID.match(str(m.get("method_id", ""))):
+                raise BenchError("a study member names an experiment and a method")
+            key = (m["campaign_id"], m["method_id"])
+            if key in seen:
+                raise BenchError("a study lists each method of an experiment once")
+            seen.add(key)
+            clean.append(dict(campaign_id=m["campaign_id"], method_id=m["method_id"],
+                              **{k: " ".join(str(m[k]).split())[:120] for k in ("label", "note") if m.get(k)}))
+        cmp = compare_members(self, clean)                       # refuses mismatched scenarios, specifications, methods
+        hashes = self.get(clean[0]["campaign_id"])["scenario_set"]["instance_hashes"]
+        if featured_instance is not None and featured_instance not in hashes:
+            raise BenchError("the featured scenario is not one of the study's scenarios")
+        with _lock:
+            cur = [x for x in self.studies_raw() if x.get("study_id") != study_id]
+            sid = study_id if study_id and SAFE_ID.match(study_id) else f"st-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{secrets.token_hex(3)}"
+            st = dict(study_id=sid, title=title, description=" ".join(str(description).split())[:600], members=clean,
+                      featured_instance=featured_instance, problem_id=cmp["problem"]["problem_id"], scenarios=len(hashes),
+                      created_by=self.display, updated_at=now())
+            _write(self.root / "studies.json", cur + [st])
+        return st
+
+    def studies_raw(self) -> list[dict]:
+        f = self.root / "studies.json"
+        try:
+            raw = json.loads(f.read_text()) if f.exists() else []
+        except ValueError:
+            raw = []
+        return raw if isinstance(raw, list) else []
+
+    def delete_study(self, study_id: str) -> None:
+        with _lock:
+            cur = self.studies_raw()
+            if not any(x.get("study_id") == study_id for x in cur):
+                raise NotFound("study not found in this workspace")
+            _write(self.root / "studies.json", [x for x in cur if x.get("study_id") != study_id])
+
+    # ------------------------------------------------------------------ bundles (see :mod:`.bundles`)
+    def export_bundle(self, cid: str, geometry: bool = True, evidence: dict | None = None,
+                      ml_evidence: str = "full") -> tuple[bytes, dict]:
+        from . import bundles
+        return bundles.export(self, cid, geometry=geometry, evidence=evidence, ml_evidence=ml_evidence)
 
     def verify_bundle(self, data: bytes) -> tuple[dict, dict, dict, Problem]:
-        """Full verification, no side effect. Any low-level archive or parsing failure is an integrity failure."""
-        try:
-            return self._verify_bundle(data)
-        except BenchError:
-            raise
-        except (zipfile.BadZipFile, zlib.error, KeyError, ValueError, TypeError, AttributeError, UnicodeDecodeError,
-                EOFError, OSError, RuntimeError) as e:
-            raise IntegrityError(f"bundle unreadable or corrupted ({type(e).__name__})") from None
-
-    def _verify_bundle(self, data: bytes) -> tuple[dict, dict, dict, Problem]:
-        if len(data) > MAX_BUNDLE_BYTES:
-            raise IntegrityError("bundle too large")
-        try:
-            z = zipfile.ZipFile(io.BytesIO(data))
-        except zipfile.BadZipFile:
-            raise IntegrityError("not a valid ZIP bundle") from None
-        infos = z.infolist()
-        names = [i.filename for i in infos]
-        if len(names) > MAX_MEMBERS or len(set(names)) != len(names):
-            raise IntegrityError("too many or duplicate bundle members")
-        if any(n.startswith("/") or ".." in n.split("/") or "\\" in n or ":" in n for n in names):
-            raise IntegrityError("unsafe bundle member names")
-        if any(i.file_size > MAX_MEMBER_BYTES for i in infos):
-            raise IntegrityError("bundle member too large")
-        if "manifest.json" not in names or "manifest.sha256" not in names:
-            raise IntegrityError("manifest missing")
-        mbytes = z.read("manifest.json")
-        if sha256_bytes(mbytes) != z.read("manifest.sha256").decode().strip():
-            raise IntegrityError("manifest digest mismatch")
-        man = json.loads(mbytes)
-        if man.get("format") != BUNDLE_FORMAT:
-            raise IntegrityError(f"unsupported bundle format {man.get('format')!r}")
-        try:
-            problem = registry.get(man["spec"]["problem_id"])
-        except registry.UnknownProblem:
-            raise IntegrityError(f"problem {man['spec']['problem_id']!r} is not installed here") from None
-        if man["spec"] != problem.spec_record() or man.get("validator_version") != problem.validator_version:
-            raise IntegrityError("problem / objective / constraint specification or validator differs from this installation")
-        extra = set(names) - set(man["files"]) - {"manifest.json", "manifest.sha256"}
-        if extra:
-            raise IntegrityError(f"unlisted files in bundle: {sorted(extra)[:3]}")
-        for name, digest in man["files"].items():
-            if name not in names:
-                raise IntegrityError(f"listed file missing: {name}")
-            if not (name.startswith("campaigns/") or name.startswith("instances/")) or not name.endswith(".json"):
-                raise IntegrityError(f"unexpected member {name}")
-            if sha256_bytes(z.read(name)) != digest:
-                raise IntegrityError(f"file checksum mismatch: {name}")
-        instances = {}
-        for h in man["instances"]:
-            inst = json.loads(z.read(f"instances/{h}.json"))
-            errs = problem.check_instance(inst)
-            if errs or inst.get("instance_hash") != h:
-                raise IntegrityError(f"instance {h[:12]} failed integrity checks: {errs or 'hash mismatch'}")
-            instances[h] = inst
-        campaigns = {}
-        for ent in man["campaigns"]:
-            if not SAFE_ID.match(str(ent["campaign_id"])):
-                raise IntegrityError("unsafe campaign identifier")
-            c = json.loads(z.read(f"campaigns/{ent['campaign_id']}.json"))
-            if not c.get("checksum") or campaign_checksum(c) != c["checksum"] or c["checksum"] != ent["checksum"]:
-                raise IntegrityError(f"campaign {ent['campaign_id']} fails its checksum")
-            if c.get("campaign_id") != ent["campaign_id"] or c["spec"]["problem_id"] != problem.problem_id:
-                raise IntegrityError(f"campaign {ent['campaign_id']} does not match its manifest entry")
-            if set(c["scenario_set"]["instance_hashes"]) - set(instances):
-                raise IntegrityError(f"campaign {ent['campaign_id']} references instances missing from the bundle")
-            campaigns[c["campaign_id"]] = c
-        if man["root_campaign_id"] not in campaigns:
-            raise IntegrityError("root campaign missing from the bundle")
-        for c in campaigns.values():
-            p = c.get("parent")
-            if p and (p["campaign_id"] not in campaigns or campaigns[p["campaign_id"]]["checksum"] != p["checksum"]):
-                raise IntegrityError(f"lineage of {c['campaign_id']} is incomplete or inconsistent in the bundle")
-        avail = []
-        for m in man["methods"]:
-            try:
-                self.resolve_method(problem, m)
-                ok, why = True, None
-            except ContractError as e:
-                ok, why = False, str(e)
-            avail.append(dict(m, available_locally=ok, reason=why))
-        report = dict(ok=True, bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes),
-                      format=man["format"], problem_id=problem.problem_id, exported_by=man["exported_by"],
-                      exporter_installation=man["exporter_installation"], root_campaign_id=man["root_campaign_id"],
-                      files_checked=len(man["files"]), instances_verified=len(instances),
-                      campaigns_verified=[dict(campaign_id=k, kind=v["kind"], checksum=v["checksum"])
-                                          for k, v in campaigns.items()],
-                      spec_match=True, methods=avail, executable_code_in_bundle=False)
-        return report, campaigns, instances, problem
+        from . import bundles
+        return bundles.verify(self, data)[:4]
 
     def import_bundle(self, data: bytes) -> dict:
-        report, campaigns, instances, problem = self.verify_bundle(data)
-        with _lock:
-            for cid, c in campaigns.items():                            # refuse before writing anything
-                f = self._cdir(cid) / "campaign.json"
-                if f.exists() and json.loads(f.read_text()).get("checksum") != c["checksum"]:
-                    raise IntegrityError(f"a different campaign {cid} already exists in this workspace")
-            for inst in instances.values():
-                self.inst.put_instance(problem, inst)
-            for cid, c in campaigns.items():
-                d = self._cdir(cid)
-                if (d / "campaign.json").exists():
-                    continue
-                _write(d / "campaign.json", c)
-                _write(d / "import_record.json", dict(imported_at=now(), imported_by=self.display,
-                                                      into_installation=self.inst.id, bundle_sha256=report["bundle_sha256"],
-                                                      verified_checksum=c["checksum"],
-                                                      original_owner_display=c["owner_display"],
-                                                      original_installation=c["installation_id"]))
-        report["imported_at"] = now()
-        return report
+        from . import bundles
+        return bundles.import_(self, data)
+
+    # ------------------------------------------------------------------ scenario packages (see :mod:`.scenario_packages`)
+    def export_scenario_package(self, instance_hash: str, record: dict | None = None, **kw) -> tuple[bytes, dict]:
+        from . import scenario_packages
+        return scenario_packages.export(self, instance_hash, record=record, **kw)
+
+    def verify_scenario_package(self, data: bytes) -> dict:
+        from . import scenario_packages
+        return scenario_packages.verify(self, data)[0]
+
+    def import_scenario_package(self, data: bytes) -> dict:
+        from . import scenario_packages
+        return scenario_packages.import_(self, data)

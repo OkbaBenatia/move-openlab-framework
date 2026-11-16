@@ -1,0 +1,17 @@
+MOVE OpenLab
+Conceived, designed, developed and implemented by Dr. Okba BEN ATIA.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The following parts of this repository are NOT licensed under the Apache License; each keeps its own licence
+(details and attributions in THIRD_PARTY_NOTICES.md):
+
+- Road networks, travel times, distances and route geometry in the demonstration, the sample experiment and the sample
+  scenario (src/move_openlab/demo/bundle/, src/move_openlab/samples/montbeliard/, src/move_openlab/samples/scenario/):
+  derived from OpenStreetMap data, (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
+- Participants of the same files: resampled from the open data of the French carpooling proof registry (Registre de
+  Preuve de Covoiturage, data.gouv.fr), Licence Ouverte / Open Licence (Etalab).
+- The sample trip dataset (examples/scenario-import/, src/move_openlab/samples/trips/): Creative Commons Zero 1.0.
+- The Inter typeface (frontend/public/fonts/inter/): SIL Open Font License 1.1, (c) 2016 The Inter Project Authors.
+- The MOVE OpenLab name, logo and banner (frontend/public/brand/, docs/assets/brand/): the project's marks; the Apache
+  License grants no right to use them (section 6).

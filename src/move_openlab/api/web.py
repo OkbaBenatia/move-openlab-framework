@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import html
+import json
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
@@ -17,11 +18,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .. import auth as A
-from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, app_version
+from ..auth import password_policy
+from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, display_version
 
-PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/auth.js"}
+PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
 PASSWORD_CHANGE_PATHS = {"/change-password", "/api/auth/change-password", "/api/auth/me", "/api/auth/logout",
-                         "/favicon.svg", "/auth.js"}
+                         "/api/auth/password-policy", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
+BRAND_PREFIX = "/brand/"                     # approved logo assets, needed by the sign-in pages
+FONT_PREFIX = "/fonts/"                      # the self-hosted Inter typeface (SIL Open Font Licence), same reason
 CSP_TEMPLATE = ("default-src 'self'; img-src 'self' data: {tiles}; style-src 'self' 'unsafe-inline'; script-src 'self'; "
                 "connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 CSP = CSP_TEMPLATE.format(tiles="").replace(" ;", ";")
@@ -76,7 +80,7 @@ async def _body(request: Request) -> dict:
 
 @router.get("/api/health")
 def health():
-    return {"status": "ok", "app": APP_NAME, "version": app_version()}
+    return {"status": "ok", "app": APP_NAME, "version": display_version()}
 
 
 @router.post("/api/auth/login")
@@ -113,8 +117,18 @@ async def logout(request: Request):
 @router.get("/api/auth/me")
 def me(request: Request):
     ses = request.state.session
-    return {"user": dict(username=ses.username, display=ses.display, role=ses.role, expires_at=int(ses.exp),
-                         must_change_password=ses.must_change_password) if ses else None}
+    return {"user": dict(username=ses.username, display=ses.display, role=ses.role, can_supervise=ses.can_supervise,
+                         expires_at=int(ses.exp), must_change_password=ses.must_change_password) if ses else None}
+
+
+@router.post("/api/auth/password-policy")
+async def check_password_policy(request: Request):
+    """Live feedback for the password form: level (weak / acceptable / strong) and what is missing. The same rule
+    is applied when the password is saved; nothing is stored or logged here."""
+    data = await _body(request)
+    ses = request.state.session
+    return JSONResponse(password_policy(str(data.get("password", "")), ses.username if ses else "", ses.display if ses else ""),
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/auth/change-password")
@@ -134,39 +148,99 @@ async def change_password(request: Request):
 
 
 # ------------------------------------------------------------------ server-rendered pages
-STYLE = """:root{--bg:#f6f7f9;--panel:#fff;--border:#dde2e8;--text:#161a20;--muted:#5b6573;--accent:#1f5fd1;--bad:#c62828;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--panel:#171c23;--border:#2b3440;--text:#e7ebf0;--muted:#a0aab6;--accent:#6ea2ff;--bad:#f0554f;color-scheme:dark}}
-*{box-sizing:border-box}html,body{height:100%;margin:0}
-body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;padding:16px}
-main{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px 24px}
-h1{font-size:21px;margin:0}.sub{margin:4px 0 20px;color:var(--muted);font-size:13px}
-label{display:block;font-size:13px;font-weight:600;margin:0 0 5px}
-input{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0 0 14px}
+STYLE = """@font-face{font-family:Inter;font-style:normal;font-weight:400 700;font-display:swap;src:url(/fonts/inter/inter-latin.woff2) format('woff2')}
+:root{--bg:#f4f6f9;--panel:#fff;--border:#e3e8ef;--strong:#cdd5df;--text:#0f1b2d;--muted:#66758a;--accent:#0a6cc2;--bad:#b42318;--warn:#9a5b00;--ok:#157a3c;color-scheme:light}
+:root[data-theme=dark]{--bg:#0c1118;--panel:#141a23;--border:#273140;--strong:#344052;--text:#e8edf3;--muted:#8e9aab;--accent:#4d9ef0;--bad:#f0625a;--warn:#e2a93b;--ok:#4cc27a;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}body{min-height:100vh}
+body{font:14.5px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:var(--text);display:flex;align-items:center;justify-content:center;padding:24px 16px;
+background:radial-gradient(1100px 600px at 18% 8%,rgba(0,136,216,.10),transparent 60%),radial-gradient(900px 600px at 88% 92%,rgba(0,136,127,.10),transparent 60%),var(--bg)}
+main{width:100%;max-width:460px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:32px 36px 26px;box-shadow:0 2px 6px rgba(15,27,45,.08),0 18px 48px rgba(15,27,45,.14)}
+h1{font-size:19px;margin:0}.sub{margin:3px 0 18px;color:var(--muted);font-size:13px}
+label{display:block;font-size:12.5px;font-weight:600;margin:0 0 5px}
+input{width:100%;font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--strong);border-radius:8px;padding:10px 12px;margin:0 0 14px}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
-button{width:100%;font:inherit;font-weight:700;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:11px;cursor:pointer;margin-top:4px}
+button{width:100%;font:inherit;font-weight:650;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:11px;cursor:pointer;margin-top:4px}
+:root[data-theme=dark] button{color:#06111d}
 .err{color:var(--bad);font-size:13px;margin:-6px 0 14px}.alt{display:block;text-align:center;margin-top:12px;font-size:13px;color:var(--accent)}
-.linkbtn{background:none;color:var(--muted);font-weight:500;padding:6px}footer{margin-top:18px;color:var(--muted);font-size:11.5px;text-align:center}"""
+.linkbtn{background:none;color:var(--muted);font-weight:500;padding:6px}footer{margin-top:18px;color:var(--muted);font-size:11.5px;text-align:center}
+.plate{display:grid;place-items:center;margin:0 0 22px;border-radius:14px}
+:root[data-theme=dark] .plate{background:#fff;padding:16px 14px 12px}
+.logo{display:block;width:100%;max-width:340px;height:auto}
+.meter{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:-8px 0 6px}
+.meter span{display:block;height:100%;width:0;background:var(--bad);transition:width .2s}.hint{font-size:12px;color:var(--muted);margin:0 0 12px}
+.hint.weak{color:var(--bad)}.hint.acceptable{color:var(--warn)}.hint.strong{color:var(--ok)}.hint.ok{color:var(--ok)}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin:10px 0 0}.legend i{display:inline-block;width:10px;height:5px;border-radius:2px;margin-right:5px;vertical-align:2px}
+main{position:relative}.lang{position:absolute;top:12px;right:14px;display:flex;gap:4px}
+.lang button{width:auto;margin:0;padding:3px 9px;font-size:12px;font-weight:600;letter-spacing:.03em;background:var(--panel);color:var(--muted);border:1px solid var(--strong)}
+:root[data-theme=dark] .lang button{color:var(--muted)}.lang button.on,:root[data-theme=dark] .lang button.on{color:var(--text);border-color:var(--accent)}"""
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>{style}</style></head>
-<body><main>{body}<footer>{app} · developed by {dev} · v{version}</footer></main><script src="/auth.js" defer></script></body></html>"""
+<title>{title} · {app}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><script src="/theme.js"></script><style>{style}</style></head>
+<body><main>{body}<footer>{app} · developed by {dev} · {version}</footer></main><script src="/auth.js" defer></script></body></html>"""
 
-LOGIN_BODY = """<h1>{app}</h1><p class="sub">{subtitle}</p>
+LOGIN_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-logo-1024w-transparent.png" alt="{app}" width="340" height="98"></div><h1>Sign in</h1><p class="sub">Use the account your administrator created for you.</p>
 <form method="post" action="/api/auth/login" autocomplete="on">{error}
 <input type="hidden" name="next" value="{next}">
 <label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
 <button type="submit">Sign in</button></form>"""
 
-CHANGE_BODY = """<h1>Change password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
+CHANGE_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-logo-1024w-transparent.png" alt="MOVE OpenLab" width="260" height="75" style="max-width:260px"></div><h1>Choose your password</h1><p class="sub">{intro} Signed in as <b>{user}</b>.</p>
 <form method="post" action="/api/auth/change-password" autocomplete="off">{error}
 <label for="c">Current password</label><input id="c" name="current_password" type="password" autocomplete="current-password" required autofocus>
-<label for="n">New password (at least 12 characters)</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required>
-<label for="r">Confirm new password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required>
-<button type="submit">Save new password</button></form>{cancel}
+<label for="n">New password</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="strength">
+<div class="meter" aria-hidden="true"><span id="bar"></span></div><p id="strength" class="hint" role="status">At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).</p>
+<label for="r">Repeat password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="match">
+<p id="match" class="hint" role="status"></p>
+<button type="submit">Save and continue</button></form>
+<p class="legend"><span><i style="background:var(--bad)"></i>Weak</span><span><i style="background:#d4a72c"></i>Acceptable</span><span><i style="background:var(--ok)"></i>Strong</span><span style="margin-left:auto">Checked again by the server</span></p>{cancel}
 <form method="post" action="/api/auth/logout"><button class="linkbtn" type="submit">Log out</button></form>"""
 
 AUTH_JS = """(function () {
+  // Interface language of these two pages: English by default, French on request. The choice is the same session
+  // value the application reads (EN | FR in its header), so it carries over after sign-in.
+  var FR = {
+    'Sign in': 'Se connecter', 'Use the account your administrator created for you.': 'Utilisez le compte que votre administrateur a créé pour vous.',
+    'Username': 'Identifiant', 'Password': 'Mot de passe', 'Choose your password': 'Choisissez votre mot de passe',
+    'Your password is temporary: choose a personal password to continue. Signed in as': 'Votre mot de passe est temporaire : choisissez un mot de passe personnel pour continuer. Connecté en tant que',
+    'Choose a new personal password. Signed in as': 'Choisissez un nouveau mot de passe personnel. Connecté en tant que',
+    'Current password': 'Mot de passe actuel', 'New password': 'Nouveau mot de passe', 'Repeat password': 'Répétez le mot de passe',
+    'At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).': 'Au moins 12 caractères avec trois types de caractères (minuscules, majuscules, chiffres, symboles).',
+    'Save and continue': 'Enregistrer et continuer', 'Weak': 'Faible', 'Acceptable': 'Acceptable', 'Strong': 'Fort',
+    'Checked again by the server': 'Vérifié à nouveau par le serveur', 'Log out': 'Se déconnecter', 'Back to MOVE OpenLab': 'Retour à MOVE OpenLab',
+    'Invalid username or password.': 'Identifiant ou mot de passe incorrect.', 'Too many attempts. Try again later.': 'Trop de tentatives. Réessayez plus tard.',
+    'Sign-in is not configured on this server.': 'La connexion n’est pas configurée sur ce serveur.',
+    'Your session has expired. Please sign in again.': 'Votre session a expiré. Veuillez vous reconnecter.',
+    'Request failed.': 'La requête a échoué.', 'Weak: needs ': 'Faible : il manque ', 'Passwords match.': 'Les mots de passe correspondent.',
+    'Passwords do not match.': 'Les mots de passe ne correspondent pas.', 'Change password': 'Changer le mot de passe', 'developed by': 'développé par'
+  };
+  var lang = 'en';
+  try { lang = sessionStorage.getItem('move-openlab-lang') === 'fr' ? 'fr' : 'en'; } catch (e) { /* storage unavailable */ }
+  function tr(s) { return lang === 'fr' && FR[s] ? FR[s] : s; }
+  (function localise() {
+    var main = document.querySelector('main');
+    if (!main) return;
+    document.documentElement.setAttribute('lang', lang);
+    if (lang === 'fr') {
+      var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT), nodes = [], x;
+      while ((x = w.nextNode())) nodes.push(x);
+      nodes.forEach(function (t) {
+        var raw = t.nodeValue, key = raw.replace(/\\s+/g, ' ').trim();
+        if (FR[key]) t.nodeValue = raw.replace(raw.trim(), FR[key]);
+        else if (key.indexOf(' · developed by ') > 0) t.nodeValue = raw.replace('developed by', FR['developed by']);
+      });
+      document.title = document.title.replace('Sign in', FR['Sign in']).replace('Change password', FR['Change password']);
+    }
+    var box = document.createElement('div'); box.className = 'lang'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'language');
+    ['en', 'fr'].forEach(function (l) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = l.toUpperCase(); b.lang = l; b.title = l === 'en' ? 'English' : 'Français';
+      if (l === lang) b.className = 'on';
+      b.setAttribute('aria-pressed', String(l === lang));
+      b.addEventListener('click', function () { if (l === lang) return; try { sessionStorage.setItem('move-openlab-lang', l); } catch (e) { /* */ } location.reload(); });
+      box.appendChild(b);
+    });
+    main.insertBefore(box, main.firstChild);
+  })();
   var params = new URLSearchParams(location.search);
   function safeNext(n) { return n && n.charAt(0) === '/' && n.charAt(1) !== '/' && n.indexOf('/login') !== 0 ? n : '/'; }
   var next = safeNext(params.get('next'));
@@ -174,7 +248,7 @@ AUTH_JS = """(function () {
   function showError(form, msg) {
     var p = form.querySelector('.err');
     if (!p) { p = document.createElement('p'); p.className = 'err'; p.setAttribute('role', 'alert'); form.insertBefore(p, form.firstChild); }
-    p.textContent = msg;
+    p.textContent = tr(msg);
   }
   function intercept(form, url, body, done) {
     form.addEventListener('submit', function (e) {
@@ -193,6 +267,30 @@ AUTH_JS = """(function () {
   if (change) intercept(change, '/api/auth/change-password', function () {
     return { current_password: change.current_password.value, new_password: change.new_password.value, confirm_password: change.confirm_password.value };
   }, function () { go('/'); });
+  if (change) {
+    var n = change.new_password, r = change.confirm_password, bar = document.getElementById('bar'),
+        st = document.getElementById('strength'), mt = document.getElementById('match'), timer = null;
+    var LEVEL = { weak: [tr('Weak: needs '), 33, 'var(--bad)'], acceptable: [tr('Acceptable'), 66, '#d4a72c'], strong: [tr('Strong'), 100, '#1a7f37'] };
+    function paint(pol) {
+      var l = LEVEL[pol.level] || LEVEL.weak;
+      bar.style.width = n.value ? l[1] + '%' : '0'; bar.style.background = l[2];
+      st.className = 'hint ' + pol.level; st.textContent = n.value ? (pol.level === 'weak' ? l[0] + pol.problems.join('; ') + '.' : l[0] + '.') : st.getAttribute('data-default');
+    }
+    function match() {
+      if (!r.value) { mt.textContent = ''; mt.className = 'hint'; return; }
+      var ok = r.value === n.value; mt.textContent = tr(ok ? 'Passwords match.' : 'Passwords do not match.'); mt.className = 'hint ' + (ok ? 'ok' : 'weak');
+    }
+    st.setAttribute('data-default', st.textContent);
+    function check() {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        fetch('/api/auth/password-policy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: n.value }) })
+          .then(function (x) { return x.json(); }).then(paint).catch(function () { /* the server decides on submit */ });
+      }, 150);
+      match();
+    }
+    n.addEventListener('input', check); r.addEventListener('input', match);
+  }
 })();
 """
 
@@ -203,7 +301,7 @@ LOGIN_ERRORS = {"invalid": "Invalid username or password.", "throttled": "Too ma
 
 def _page(title: str, body: str) -> str:
     return PAGE.format(title=html.escape(title), app=html.escape(APP_NAME), style=STYLE, body=body,
-                       dev=html.escape(DEVELOPER), version=html.escape(app_version()))
+                       dev=html.escape(DEVELOPER), version=html.escape(display_version()))
 
 
 @router.get("/auth.js", include_in_schema=False)
@@ -233,13 +331,58 @@ def change_password_page(request: Request, error: str | None = None):
     return HTMLResponse(_page("Change password", body))
 
 
+# ------------------------------------------------------------------ request size
+class BodyTooLarge(Exception):
+    pass
+
+
+class BodyLimit:
+    """Pure ASGI middleware: refuses request bodies above a per-route limit before they are read or spooled to disk.
+    The declared Content-Length is checked first, then the streamed byte count (a client can lie or omit it)."""
+
+    def __init__(self, app, limits: list[tuple[str, int]], default: int):
+        self.app, self.limits, self.default = app, limits, default
+
+    def _limit(self, path: str) -> int:
+        return next((n for prefix, n in self.limits if path.startswith(prefix)), self.default)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] in ("GET", "HEAD", "OPTIONS"):
+            return await self.app(scope, receive, send)
+        limit = self._limit(scope["path"])
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > limit):
+            return await self._refuse(send, limit)
+        seen = 0
+
+        async def counted():
+            nonlocal seen
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > limit:
+                    raise BodyTooLarge
+            return msg
+        try:
+            await self.app(scope, counted, send)
+        except BodyTooLarge:
+            await self._refuse(send, limit)
+
+    @staticmethod
+    async def _refuse(send, limit: int):
+        body = json.dumps({"detail": f"request body larger than {limit // 2**20} MB"}).encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
 # ------------------------------------------------------------------ guard + headers
 class AuthGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         auth: A.Auth = request.app.state.auth
         request.state.session = None
-        if path not in PUBLIC_PATHS:
+        if path not in PUBLIC_PATHS and not path.startswith((BRAND_PREFIX, FONT_PREFIX)):
             ses = auth.read(request.cookies.get(A.COOKIE_NAME))
             if ses is None:
                 had_cookie = A.COOKIE_NAME in request.cookies

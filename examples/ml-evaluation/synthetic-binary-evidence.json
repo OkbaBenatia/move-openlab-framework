@@ -1,0 +1,2031 @@
+{
+ "format": "move-openlab/ml-evaluation-evidence@1",
+ "method_id": "synthetic-example-classifier",
+ "model": {
+  "name": "SYNTHETIC score generator (not a model)",
+  "version": "1.0.0",
+  "training_data": "none: the scores are drawn from a seeded random generator"
+ },
+ "feature_pipeline": {
+  "name": "none (synthetic)",
+  "version": "1.0.0",
+  "description": "No features: every score is drawn at random by scripts/build_ml_evaluation_example.py."
+ },
+ "dataset": {
+  "id": "synthetic-binary-example-v1",
+  "split": "synthetic",
+  "population": "SYNTHETIC — 400 artificial records with random labels and scores; not a mobility result and not the output of any model",
+  "unit": "one artificial record"
+ },
+ "positive_label": "label 1 of the synthetic generator (it has no real-world meaning)",
+ "decision": {
+  "rule": "score>=threshold",
+  "threshold": 0.5
+ },
+ "records": [
+  {
+   "id": "rec-0001",
+   "label": 0,
+   "score": 0.132
+  },
+  {
+   "id": "rec-0002",
+   "label": 0,
+   "score": 0.056
+  },
+  {
+   "id": "rec-0003",
+   "label": 1,
+   "score": 0.797
+  },
+  {
+   "id": "rec-0004",
+   "label": 0,
+   "score": 0.064
+  },
+  {
+   "id": "rec-0005",
+   "label": 0,
+   "score": 0.084
+  },
+  {
+   "id": "rec-0006",
+   "label": 0,
+   "score": 0.275
+  },
+  {
+   "id": "rec-0007",
+   "label": 0,
+   "score": 0.083
+  },
+  {
+   "id": "rec-0008",
+   "label": 1,
+   "score": 0.487
+  },
+  {
+   "id": "rec-0009",
+   "label": 0,
+   "score": 0.323
+  },
+  {
+   "id": "rec-0010",
+   "label": 0,
+   "score": 0.111
+  },
+  {
+   "id": "rec-0011",
+   "label": 0,
+   "score": 0.088
+  },
+  {
+   "id": "rec-0012",
+   "label": 0,
+   "score": 0.112
+  },
+  {
+   "id": "rec-0013",
+   "label": 0,
+   "score": 0.033
+  },
+  {
+   "id": "rec-0014",
+   "label": 0,
+   "score": 0.04
+  },
+  {
+   "id": "rec-0015",
+   "label": 0,
+   "score": 0.91
+  },
+  {
+   "id": "rec-0016",
+   "label": 0,
+   "score": 0.109
+  },
+  {
+   "id": "rec-0017",
+   "label": 0,
+   "score": 0.002
+  },
+  {
+   "id": "rec-0018",
+   "label": 1,
+   "score": 0.861
+  },
+  {
+   "id": "rec-0019",
+   "label": 0,
+   "score": 0.732
+  },
+  {
+   "id": "rec-0020",
+   "label": 1,
+   "score": 0.979
+  },
+  {
+   "id": "rec-0021",
+   "label": 1,
+   "score": 0.81
+  },
+  {
+   "id": "rec-0022",
+   "label": 0,
+   "score": 0.514
+  },
+  {
+   "id": "rec-0023",
+   "label": 1,
+   "score": 0.752
+  },
+  {
+   "id": "rec-0024",
+   "label": 0,
+   "score": 0.185
+  },
+  {
+   "id": "rec-0025",
+   "label": 0,
+   "score": 0.034
+  },
+  {
+   "id": "rec-0026",
+   "label": 1,
+   "score": 0.759
+  },
+  {
+   "id": "rec-0027",
+   "label": 1,
+   "score": 0.779
+  },
+  {
+   "id": "rec-0028",
+   "label": 0,
+   "score": 0.09
+  },
+  {
+   "id": "rec-0029",
+   "label": 0,
+   "score": 0.128
+  },
+  {
+   "id": "rec-0030",
+   "label": 1,
+   "score": 0.577
+  },
+  {
+   "id": "rec-0031",
+   "label": 0,
+   "score": 0.312
+  },
+  {
+   "id": "rec-0032",
+   "label": 0,
+   "score": 0.158
+  },
+  {
+   "id": "rec-0033",
+   "label": 1,
+   "score": 0.96
+  },
+  {
+   "id": "rec-0034",
+   "label": 0,
+   "score": 0.204
+  },
+  {
+   "id": "rec-0035",
+   "label": 0,
+   "score": 0.227
+  },
+  {
+   "id": "rec-0036",
+   "label": 0,
+   "score": 0.002
+  },
+  {
+   "id": "rec-0037",
+   "label": 0,
+   "score": 0.019
+  },
+  {
+   "id": "rec-0038",
+   "label": 0,
+   "score": 0.547
+  },
+  {
+   "id": "rec-0039",
+   "label": 0,
+   "score": 0.113
+  },
+  {
+   "id": "rec-0040",
+   "label": 1,
+   "score": 0.459
+  },
+  {
+   "id": "rec-0041",
+   "label": 0,
+   "score": 0.251
+  },
+  {
+   "id": "rec-0042",
+   "label": 1,
+   "score": 0.76
+  },
+  {
+   "id": "rec-0043",
+   "label": 0,
+   "score": 0.207
+  },
+  {
+   "id": "rec-0044",
+   "label": 1,
+   "score": 0.762
+  },
+  {
+   "id": "rec-0045",
+   "label": 1,
+   "score": 0.702
+  },
+  {
+   "id": "rec-0046",
+   "label": 1,
+   "score": 0.268
+  },
+  {
+   "id": "rec-0047",
+   "label": 0,
+   "score": 0.053
+  },
+  {
+   "id": "rec-0048",
+   "label": 1,
+   "score": 0.696
+  },
+  {
+   "id": "rec-0049",
+   "label": 0,
+   "score": 0.261
+  },
+  {
+   "id": "rec-0050",
+   "label": 0,
+   "score": 0.137
+  },
+  {
+   "id": "rec-0051",
+   "label": 0,
+   "score": 0.072
+  },
+  {
+   "id": "rec-0052",
+   "label": 1,
+   "score": 0.997
+  },
+  {
+   "id": "rec-0053",
+   "label": 1,
+   "score": 0.952
+  },
+  {
+   "id": "rec-0054",
+   "label": 0,
+   "score": 0.066
+  },
+  {
+   "id": "rec-0055",
+   "label": 1,
+   "score": 0.956
+  },
+  {
+   "id": "rec-0056",
+   "label": 0,
+   "score": 0.338
+  },
+  {
+   "id": "rec-0057",
+   "label": 0,
+   "score": 0.323
+  },
+  {
+   "id": "rec-0058",
+   "label": 1,
+   "score": 0.273
+  },
+  {
+   "id": "rec-0059",
+   "label": 0,
+   "score": 0.008
+  },
+  {
+   "id": "rec-0060",
+   "label": 0,
+   "score": 0.593
+  },
+  {
+   "id": "rec-0061",
+   "label": 0,
+   "score": 0.202
+  },
+  {
+   "id": "rec-0062",
+   "label": 1,
+   "score": 0.93
+  },
+  {
+   "id": "rec-0063",
+   "label": 0,
+   "score": 0.528
+  },
+  {
+   "id": "rec-0064",
+   "label": 0,
+   "score": 0.404
+  },
+  {
+   "id": "rec-0065",
+   "label": 0,
+   "score": 0.043
+  },
+  {
+   "id": "rec-0066",
+   "label": 0,
+   "score": 0.301
+  },
+  {
+   "id": "rec-0067",
+   "label": 0,
+   "score": 0.143
+  },
+  {
+   "id": "rec-0068",
+   "label": 0,
+   "score": 0.054
+  },
+  {
+   "id": "rec-0069",
+   "label": 0,
+   "score": 0.213
+  },
+  {
+   "id": "rec-0070",
+   "label": 0,
+   "score": 0.114
+  },
+  {
+   "id": "rec-0071",
+   "label": 0,
+   "score": 0.179
+  },
+  {
+   "id": "rec-0072",
+   "label": 1,
+   "score": 0.812
+  },
+  {
+   "id": "rec-0073",
+   "label": 1,
+   "score": 0.957
+  },
+  {
+   "id": "rec-0074",
+   "label": 1,
+   "score": 0.874
+  },
+  {
+   "id": "rec-0075",
+   "label": 0,
+   "score": 0.019
+  },
+  {
+   "id": "rec-0076",
+   "label": 1,
+   "score": 0.844
+  },
+  {
+   "id": "rec-0077",
+   "label": 0,
+   "score": 0.096
+  },
+  {
+   "id": "rec-0078",
+   "label": 0,
+   "score": 0.009
+  },
+  {
+   "id": "rec-0079",
+   "label": 0,
+   "score": 0.518
+  },
+  {
+   "id": "rec-0080",
+   "label": 0,
+   "score": 0.173
+  },
+  {
+   "id": "rec-0081",
+   "label": 0,
+   "score": 0.148
+  },
+  {
+   "id": "rec-0082",
+   "label": 1,
+   "score": 0.733
+  },
+  {
+   "id": "rec-0083",
+   "label": 0,
+   "score": 0.145
+  },
+  {
+   "id": "rec-0084",
+   "label": 1,
+   "score": 0.742
+  },
+  {
+   "id": "rec-0085",
+   "label": 0,
+   "score": 0.176
+  },
+  {
+   "id": "rec-0086",
+   "label": 0,
+   "score": 0.227
+  },
+  {
+   "id": "rec-0087",
+   "label": 1,
+   "score": 0.862
+  },
+  {
+   "id": "rec-0088",
+   "label": 0,
+   "score": 0.191
+  },
+  {
+   "id": "rec-0089",
+   "label": 0,
+   "score": 0.185
+  },
+  {
+   "id": "rec-0090",
+   "label": 1,
+   "score": 0.9
+  },
+  {
+   "id": "rec-0091",
+   "label": 0,
+   "score": 0.242
+  },
+  {
+   "id": "rec-0092",
+   "label": 0,
+   "score": 0.035
+  },
+  {
+   "id": "rec-0093",
+   "label": 0,
+   "score": 0.039
+  },
+  {
+   "id": "rec-0094",
+   "label": 0,
+   "score": 0.515
+  },
+  {
+   "id": "rec-0095",
+   "label": 0,
+   "score": 0.071
+  },
+  {
+   "id": "rec-0096",
+   "label": 0,
+   "score": 0.001
+  },
+  {
+   "id": "rec-0097",
+   "label": 0,
+   "score": 0.066
+  },
+  {
+   "id": "rec-0098",
+   "label": 1,
+   "score": 0.766
+  },
+  {
+   "id": "rec-0099",
+   "label": 0,
+   "score": 0.018
+  },
+  {
+   "id": "rec-0100",
+   "label": 0,
+   "score": 0.109
+  },
+  {
+   "id": "rec-0101",
+   "label": 0,
+   "score": 0.016
+  },
+  {
+   "id": "rec-0102",
+   "label": 0,
+   "score": 0.097
+  },
+  {
+   "id": "rec-0103",
+   "label": 0,
+   "score": 0.345
+  },
+  {
+   "id": "rec-0104",
+   "label": 0,
+   "score": 0.018
+  },
+  {
+   "id": "rec-0105",
+   "label": 0,
+   "score": 0.3
+  },
+  {
+   "id": "rec-0106",
+   "label": 1,
+   "score": 0.859
+  },
+  {
+   "id": "rec-0107",
+   "label": 0,
+   "score": 0.327
+  },
+  {
+   "id": "rec-0108",
+   "label": 1,
+   "score": 0.469
+  },
+  {
+   "id": "rec-0109",
+   "label": 0,
+   "score": 0.057
+  },
+  {
+   "id": "rec-0110",
+   "label": 1,
+   "score": 0.984
+  },
+  {
+   "id": "rec-0111",
+   "label": 0,
+   "score": 0.263
+  },
+  {
+   "id": "rec-0112",
+   "label": 0,
+   "score": 0.075
+  },
+  {
+   "id": "rec-0113",
+   "label": 0,
+   "score": 0.318
+  },
+  {
+   "id": "rec-0114",
+   "label": 0,
+   "score": 0.047
+  },
+  {
+   "id": "rec-0115",
+   "label": 1,
+   "score": 0.649
+  },
+  {
+   "id": "rec-0116",
+   "label": 1,
+   "score": 0.931
+  },
+  {
+   "id": "rec-0117",
+   "label": 0,
+   "score": 0.338
+  },
+  {
+   "id": "rec-0118",
+   "label": 0,
+   "score": 0.161
+  },
+  {
+   "id": "rec-0119",
+   "label": 0,
+   "score": 0.025
+  },
+  {
+   "id": "rec-0120",
+   "label": 0,
+   "score": 0.103
+  },
+  {
+   "id": "rec-0121",
+   "label": 0,
+   "score": 0.124
+  },
+  {
+   "id": "rec-0122",
+   "label": 0,
+   "score": 0.143
+  },
+  {
+   "id": "rec-0123",
+   "label": 1,
+   "score": 0.185
+  },
+  {
+   "id": "rec-0124",
+   "label": 1,
+   "score": 0.645
+  },
+  {
+   "id": "rec-0125",
+   "label": 0,
+   "score": 0.129
+  },
+  {
+   "id": "rec-0126",
+   "label": 0,
+   "score": 0.201
+  },
+  {
+   "id": "rec-0127",
+   "label": 1,
+   "score": 0.666
+  },
+  {
+   "id": "rec-0128",
+   "label": 1,
+   "score": 0.753
+  },
+  {
+   "id": "rec-0129",
+   "label": 0,
+   "score": 0.293
+  },
+  {
+   "id": "rec-0130",
+   "label": 0,
+   "score": 0.271
+  },
+  {
+   "id": "rec-0131",
+   "label": 0,
+   "score": 0.006
+  },
+  {
+   "id": "rec-0132",
+   "label": 0,
+   "score": 0.079
+  },
+  {
+   "id": "rec-0133",
+   "label": 0,
+   "score": 0.15
+  },
+  {
+   "id": "rec-0134",
+   "label": 1,
+   "score": 0.072
+  },
+  {
+   "id": "rec-0135",
+   "label": 1,
+   "score": 0.866
+  },
+  {
+   "id": "rec-0136",
+   "label": 0,
+   "score": 0.005
+  },
+  {
+   "id": "rec-0137",
+   "label": 1,
+   "score": 0.848
+  },
+  {
+   "id": "rec-0138",
+   "label": 0,
+   "score": 0.226
+  },
+  {
+   "id": "rec-0139",
+   "label": 0,
+   "score": 0.083
+  },
+  {
+   "id": "rec-0140",
+   "label": 0,
+   "score": 0.23
+  },
+  {
+   "id": "rec-0141",
+   "label": 0,
+   "score": 0.168
+  },
+  {
+   "id": "rec-0142",
+   "label": 0,
+   "score": 0.285
+  },
+  {
+   "id": "rec-0143",
+   "label": 0,
+   "score": 0.018
+  },
+  {
+   "id": "rec-0144",
+   "label": 0,
+   "score": 0.065
+  },
+  {
+   "id": "rec-0145",
+   "label": 0,
+   "score": 0.033
+  },
+  {
+   "id": "rec-0146",
+   "label": 0,
+   "score": 0.041
+  },
+  {
+   "id": "rec-0147",
+   "label": 0,
+   "score": 0.073
+  },
+  {
+   "id": "rec-0148",
+   "label": 0,
+   "score": 0.008
+  },
+  {
+   "id": "rec-0149",
+   "label": 0,
+   "score": 0.216
+  },
+  {
+   "id": "rec-0150",
+   "label": 0,
+   "score": 0.211
+  },
+  {
+   "id": "rec-0151",
+   "label": 0,
+   "score": 0.152
+  },
+  {
+   "id": "rec-0152",
+   "label": 0,
+   "score": 0.137
+  },
+  {
+   "id": "rec-0153",
+   "label": 0,
+   "score": 0.586
+  },
+  {
+   "id": "rec-0154",
+   "label": 0,
+   "score": 0.406
+  },
+  {
+   "id": "rec-0155",
+   "label": 0,
+   "score": 0.081
+  },
+  {
+   "id": "rec-0156",
+   "label": 0,
+   "score": 0.702
+  },
+  {
+   "id": "rec-0157",
+   "label": 0,
+   "score": 0.062
+  },
+  {
+   "id": "rec-0158",
+   "label": 1,
+   "score": 0.335
+  },
+  {
+   "id": "rec-0159",
+   "label": 0,
+   "score": 0.229
+  },
+  {
+   "id": "rec-0160",
+   "label": 1,
+   "score": 0.708
+  },
+  {
+   "id": "rec-0161",
+   "label": 0,
+   "score": 0.116
+  },
+  {
+   "id": "rec-0162",
+   "label": 1,
+   "score": 0.674
+  },
+  {
+   "id": "rec-0163",
+   "label": 0,
+   "score": 0.368
+  },
+  {
+   "id": "rec-0164",
+   "label": 0,
+   "score": 0.069
+  },
+  {
+   "id": "rec-0165",
+   "label": 0,
+   "score": 0.39
+  },
+  {
+   "id": "rec-0166",
+   "label": 0,
+   "score": 0.248
+  },
+  {
+   "id": "rec-0167",
+   "label": 0,
+   "score": 0.228
+  },
+  {
+   "id": "rec-0168",
+   "label": 1,
+   "score": 0.984
+  },
+  {
+   "id": "rec-0169",
+   "label": 1,
+   "score": 0.614
+  },
+  {
+   "id": "rec-0170",
+   "label": 1,
+   "score": 0.583
+  },
+  {
+   "id": "rec-0171",
+   "label": 0,
+   "score": 0.136
+  },
+  {
+   "id": "rec-0172",
+   "label": 1,
+   "score": 0.954
+  },
+  {
+   "id": "rec-0173",
+   "label": 0,
+   "score": 0.26
+  },
+  {
+   "id": "rec-0174",
+   "label": 0,
+   "score": 0.138
+  },
+  {
+   "id": "rec-0175",
+   "label": 0,
+   "score": 0.157
+  },
+  {
+   "id": "rec-0176",
+   "label": 1,
+   "score": 0.244
+  },
+  {
+   "id": "rec-0177",
+   "label": 1,
+   "score": 0.731
+  },
+  {
+   "id": "rec-0178",
+   "label": 1,
+   "score": 0.847
+  },
+  {
+   "id": "rec-0179",
+   "label": 0,
+   "score": 0.193
+  },
+  {
+   "id": "rec-0180",
+   "label": 1,
+   "score": 0.594
+  },
+  {
+   "id": "rec-0181",
+   "label": 0,
+   "score": 0.027
+  },
+  {
+   "id": "rec-0182",
+   "label": 0,
+   "score": 0.246
+  },
+  {
+   "id": "rec-0183",
+   "label": 0,
+   "score": 0.395
+  },
+  {
+   "id": "rec-0184",
+   "label": 0,
+   "score": 0.376
+  },
+  {
+   "id": "rec-0185",
+   "label": 1,
+   "score": 0.369
+  },
+  {
+   "id": "rec-0186",
+   "label": 1,
+   "score": 0.728
+  },
+  {
+   "id": "rec-0187",
+   "label": 0,
+   "score": 0.224
+  },
+  {
+   "id": "rec-0188",
+   "label": 1,
+   "score": 0.86
+  },
+  {
+   "id": "rec-0189",
+   "label": 0,
+   "score": 0.148
+  },
+  {
+   "id": "rec-0190",
+   "label": 0,
+   "score": 0.275
+  },
+  {
+   "id": "rec-0191",
+   "label": 0,
+   "score": 0.158
+  },
+  {
+   "id": "rec-0192",
+   "label": 0,
+   "score": 0.52
+  },
+  {
+   "id": "rec-0193",
+   "label": 0,
+   "score": 0.118
+  },
+  {
+   "id": "rec-0194",
+   "label": 0,
+   "score": 0.08
+  },
+  {
+   "id": "rec-0195",
+   "label": 1,
+   "score": 0.766
+  },
+  {
+   "id": "rec-0196",
+   "label": 0,
+   "score": 0.285
+  },
+  {
+   "id": "rec-0197",
+   "label": 0,
+   "score": 0.816
+  },
+  {
+   "id": "rec-0198",
+   "label": 0,
+   "score": 0.285
+  },
+  {
+   "id": "rec-0199",
+   "label": 1,
+   "score": 0.535
+  },
+  {
+   "id": "rec-0200",
+   "label": 0,
+   "score": 0.19
+  },
+  {
+   "id": "rec-0201",
+   "label": 1,
+   "score": 0.676
+  },
+  {
+   "id": "rec-0202",
+   "label": 0,
+   "score": 0.835
+  },
+  {
+   "id": "rec-0203",
+   "label": 0,
+   "score": 0.14
+  },
+  {
+   "id": "rec-0204",
+   "label": 1,
+   "score": 0.964
+  },
+  {
+   "id": "rec-0205",
+   "label": 0,
+   "score": 0.678
+  },
+  {
+   "id": "rec-0206",
+   "label": 0,
+   "score": 0.017
+  },
+  {
+   "id": "rec-0207",
+   "label": 1,
+   "score": 0.89
+  },
+  {
+   "id": "rec-0208",
+   "label": 0,
+   "score": 0.577
+  },
+  {
+   "id": "rec-0209",
+   "label": 1,
+   "score": 0.698
+  },
+  {
+   "id": "rec-0210",
+   "label": 1,
+   "score": 0.921
+  },
+  {
+   "id": "rec-0211",
+   "label": 0,
+   "score": 0.181
+  },
+  {
+   "id": "rec-0212",
+   "label": 1,
+   "score": 0.85
+  },
+  {
+   "id": "rec-0213",
+   "label": 1,
+   "score": 0.824
+  },
+  {
+   "id": "rec-0214",
+   "label": 0,
+   "score": 0.209
+  },
+  {
+   "id": "rec-0215",
+   "label": 0,
+   "score": 0.745
+  },
+  {
+   "id": "rec-0216",
+   "label": 0,
+   "score": 0.002
+  },
+  {
+   "id": "rec-0217",
+   "label": 0,
+   "score": 0.533
+  },
+  {
+   "id": "rec-0218",
+   "label": 0,
+   "score": 0.247
+  },
+  {
+   "id": "rec-0219",
+   "label": 1,
+   "score": 0.828
+  },
+  {
+   "id": "rec-0220",
+   "label": 0,
+   "score": 0.231
+  },
+  {
+   "id": "rec-0221",
+   "label": 1,
+   "score": 0.721
+  },
+  {
+   "id": "rec-0222",
+   "label": 0,
+   "score": 0.3
+  },
+  {
+   "id": "rec-0223",
+   "label": 0,
+   "score": 0.108
+  },
+  {
+   "id": "rec-0224",
+   "label": 0,
+   "score": 0.794
+  },
+  {
+   "id": "rec-0225",
+   "label": 0,
+   "score": 0.143
+  },
+  {
+   "id": "rec-0226",
+   "label": 1,
+   "score": 0.948
+  },
+  {
+   "id": "rec-0227",
+   "label": 1,
+   "score": 0.134
+  },
+  {
+   "id": "rec-0228",
+   "label": 0,
+   "score": 0.391
+  },
+  {
+   "id": "rec-0229",
+   "label": 0,
+   "score": 0.057
+  },
+  {
+   "id": "rec-0230",
+   "label": 0,
+   "score": 0.101
+  },
+  {
+   "id": "rec-0231",
+   "label": 0,
+   "score": 0.232
+  },
+  {
+   "id": "rec-0232",
+   "label": 0,
+   "score": 0.729
+  },
+  {
+   "id": "rec-0233",
+   "label": 0,
+   "score": 0.1
+  },
+  {
+   "id": "rec-0234",
+   "label": 1,
+   "score": 0.908
+  },
+  {
+   "id": "rec-0235",
+   "label": 0,
+   "score": 0.035
+  },
+  {
+   "id": "rec-0236",
+   "label": 0,
+   "score": 0.151
+  },
+  {
+   "id": "rec-0237",
+   "label": 0,
+   "score": 0.379
+  },
+  {
+   "id": "rec-0238",
+   "label": 0,
+   "score": 0.149
+  },
+  {
+   "id": "rec-0239",
+   "label": 0,
+   "score": 0.326
+  },
+  {
+   "id": "rec-0240",
+   "label": 0,
+   "score": 0.238
+  },
+  {
+   "id": "rec-0241",
+   "label": 1,
+   "score": 0.921
+  },
+  {
+   "id": "rec-0242",
+   "label": 0,
+   "score": 0.065
+  },
+  {
+   "id": "rec-0243",
+   "label": 1,
+   "score": 0.346
+  },
+  {
+   "id": "rec-0244",
+   "label": 1,
+   "score": 0.956
+  },
+  {
+   "id": "rec-0245",
+   "label": 0,
+   "score": 0.0
+  },
+  {
+   "id": "rec-0246",
+   "label": 0,
+   "score": 0.022
+  },
+  {
+   "id": "rec-0247",
+   "label": 0,
+   "score": 0.067
+  },
+  {
+   "id": "rec-0248",
+   "label": 0,
+   "score": 0.245
+  },
+  {
+   "id": "rec-0249",
+   "label": 1,
+   "score": 0.959
+  },
+  {
+   "id": "rec-0250",
+   "label": 0,
+   "score": 0.247
+  },
+  {
+   "id": "rec-0251",
+   "label": 1,
+   "score": 0.094
+  },
+  {
+   "id": "rec-0252",
+   "label": 0,
+   "score": 0.098
+  },
+  {
+   "id": "rec-0253",
+   "label": 0,
+   "score": 0.209
+  },
+  {
+   "id": "rec-0254",
+   "label": 0,
+   "score": 0.122
+  },
+  {
+   "id": "rec-0255",
+   "label": 0,
+   "score": 0.559
+  },
+  {
+   "id": "rec-0256",
+   "label": 0,
+   "score": 0.183
+  },
+  {
+   "id": "rec-0257",
+   "label": 1,
+   "score": 0.945
+  },
+  {
+   "id": "rec-0258",
+   "label": 0,
+   "score": 0.011
+  },
+  {
+   "id": "rec-0259",
+   "label": 0,
+   "score": 0.206
+  },
+  {
+   "id": "rec-0260",
+   "label": 0,
+   "score": 0.299
+  },
+  {
+   "id": "rec-0261",
+   "label": 1,
+   "score": 0.985
+  },
+  {
+   "id": "rec-0262",
+   "label": 0,
+   "score": 0.543
+  },
+  {
+   "id": "rec-0263",
+   "label": 1,
+   "score": 0.486
+  },
+  {
+   "id": "rec-0264",
+   "label": 1,
+   "score": 0.92
+  },
+  {
+   "id": "rec-0265",
+   "label": 1,
+   "score": 0.453
+  },
+  {
+   "id": "rec-0266",
+   "label": 0,
+   "score": 0.266
+  },
+  {
+   "id": "rec-0267",
+   "label": 0,
+   "score": 0.241
+  },
+  {
+   "id": "rec-0268",
+   "label": 0,
+   "score": 0.028
+  },
+  {
+   "id": "rec-0269",
+   "label": 0,
+   "score": 0.258
+  },
+  {
+   "id": "rec-0270",
+   "label": 0,
+   "score": 0.139
+  },
+  {
+   "id": "rec-0271",
+   "label": 0,
+   "score": 0.029
+  },
+  {
+   "id": "rec-0272",
+   "label": 0,
+   "score": 0.067
+  },
+  {
+   "id": "rec-0273",
+   "label": 1,
+   "score": 0.989
+  },
+  {
+   "id": "rec-0274",
+   "label": 0,
+   "score": 0.099
+  },
+  {
+   "id": "rec-0275",
+   "label": 0,
+   "score": 0.046
+  },
+  {
+   "id": "rec-0276",
+   "label": 1,
+   "score": 0.867
+  },
+  {
+   "id": "rec-0277",
+   "label": 1,
+   "score": 0.985
+  },
+  {
+   "id": "rec-0278",
+   "label": 0,
+   "score": 0.043
+  },
+  {
+   "id": "rec-0279",
+   "label": 0,
+   "score": 0.087
+  },
+  {
+   "id": "rec-0280",
+   "label": 1,
+   "score": 0.347
+  },
+  {
+   "id": "rec-0281",
+   "label": 0,
+   "score": 0.114
+  },
+  {
+   "id": "rec-0282",
+   "label": 0,
+   "score": 0.014
+  },
+  {
+   "id": "rec-0283",
+   "label": 0,
+   "score": 0.043
+  },
+  {
+   "id": "rec-0284",
+   "label": 0,
+   "score": 0.417
+  },
+  {
+   "id": "rec-0285",
+   "label": 1,
+   "score": 0.836
+  },
+  {
+   "id": "rec-0286",
+   "label": 1,
+   "score": 0.683
+  },
+  {
+   "id": "rec-0287",
+   "label": 0,
+   "score": 0.234
+  },
+  {
+   "id": "rec-0288",
+   "label": 0,
+   "score": 0.028
+  },
+  {
+   "id": "rec-0289",
+   "label": 0,
+   "score": 0.356
+  },
+  {
+   "id": "rec-0290",
+   "label": 1,
+   "score": 0.879
+  },
+  {
+   "id": "rec-0291",
+   "label": 0,
+   "score": 0.106
+  },
+  {
+   "id": "rec-0292",
+   "label": 0,
+   "score": 0.069
+  },
+  {
+   "id": "rec-0293",
+   "label": 1,
+   "score": 0.871
+  },
+  {
+   "id": "rec-0294",
+   "label": 0,
+   "score": 0.022
+  },
+  {
+   "id": "rec-0295",
+   "label": 0,
+   "score": 0.049
+  },
+  {
+   "id": "rec-0296",
+   "label": 0,
+   "score": 0.308
+  },
+  {
+   "id": "rec-0297",
+   "label": 0,
+   "score": 0.255
+  },
+  {
+   "id": "rec-0298",
+   "label": 0,
+   "score": 0.06
+  },
+  {
+   "id": "rec-0299",
+   "label": 0,
+   "score": 0.606
+  },
+  {
+   "id": "rec-0300",
+   "label": 0,
+   "score": 0.019
+  },
+  {
+   "id": "rec-0301",
+   "label": 0,
+   "score": 0.377
+  },
+  {
+   "id": "rec-0302",
+   "label": 0,
+   "score": 0.12
+  },
+  {
+   "id": "rec-0303",
+   "label": 0,
+   "score": 0.008
+  },
+  {
+   "id": "rec-0304",
+   "label": 1,
+   "score": 0.995
+  },
+  {
+   "id": "rec-0305",
+   "label": 0,
+   "score": 0.241
+  },
+  {
+   "id": "rec-0306",
+   "label": 0,
+   "score": 0.207
+  },
+  {
+   "id": "rec-0307",
+   "label": 0,
+   "score": 0.115
+  },
+  {
+   "id": "rec-0308",
+   "label": 0,
+   "score": 0.354
+  },
+  {
+   "id": "rec-0309",
+   "label": 1,
+   "score": 0.833
+  },
+  {
+   "id": "rec-0310",
+   "label": 1,
+   "score": 0.405
+  },
+  {
+   "id": "rec-0311",
+   "label": 1,
+   "score": 0.243
+  },
+  {
+   "id": "rec-0312",
+   "label": 0,
+   "score": 0.085
+  },
+  {
+   "id": "rec-0313",
+   "label": 1,
+   "score": 0.705
+  },
+  {
+   "id": "rec-0314",
+   "label": 0,
+   "score": 0.043
+  },
+  {
+   "id": "rec-0315",
+   "label": 1,
+   "score": 0.977
+  },
+  {
+   "id": "rec-0316",
+   "label": 1,
+   "score": 0.686
+  },
+  {
+   "id": "rec-0317",
+   "label": 1,
+   "score": 0.811
+  },
+  {
+   "id": "rec-0318",
+   "label": 0,
+   "score": 0.298
+  },
+  {
+   "id": "rec-0319",
+   "label": 0,
+   "score": 0.032
+  },
+  {
+   "id": "rec-0320",
+   "label": 0,
+   "score": 0.294
+  },
+  {
+   "id": "rec-0321",
+   "label": 1,
+   "score": 0.849
+  },
+  {
+   "id": "rec-0322",
+   "label": 0,
+   "score": 0.18
+  },
+  {
+   "id": "rec-0323",
+   "label": 1,
+   "score": 0.491
+  },
+  {
+   "id": "rec-0324",
+   "label": 0,
+   "score": 0.241
+  },
+  {
+   "id": "rec-0325",
+   "label": 1,
+   "score": 0.853
+  },
+  {
+   "id": "rec-0326",
+   "label": 1,
+   "score": 0.915
+  },
+  {
+   "id": "rec-0327",
+   "label": 0,
+   "score": 0.163
+  },
+  {
+   "id": "rec-0328",
+   "label": 0,
+   "score": 0.329
+  },
+  {
+   "id": "rec-0329",
+   "label": 0,
+   "score": 0.049
+  },
+  {
+   "id": "rec-0330",
+   "label": 1,
+   "score": 0.852
+  },
+  {
+   "id": "rec-0331",
+   "label": 0,
+   "score": 0.355
+  },
+  {
+   "id": "rec-0332",
+   "label": 0,
+   "score": 0.683
+  },
+  {
+   "id": "rec-0333",
+   "label": 1,
+   "score": 0.576
+  },
+  {
+   "id": "rec-0334",
+   "label": 0,
+   "score": 0.363
+  },
+  {
+   "id": "rec-0335",
+   "label": 0,
+   "score": 0.001
+  },
+  {
+   "id": "rec-0336",
+   "label": 0,
+   "score": 0.052
+  },
+  {
+   "id": "rec-0337",
+   "label": 1,
+   "score": 0.374
+  },
+  {
+   "id": "rec-0338",
+   "label": 1,
+   "score": 0.78
+  },
+  {
+   "id": "rec-0339",
+   "label": 0,
+   "score": 0.194
+  },
+  {
+   "id": "rec-0340",
+   "label": 1,
+   "score": 0.792
+  },
+  {
+   "id": "rec-0341",
+   "label": 0,
+   "score": 0.019
+  },
+  {
+   "id": "rec-0342",
+   "label": 0,
+   "score": 0.335
+  },
+  {
+   "id": "rec-0343",
+   "label": 1,
+   "score": 0.695
+  },
+  {
+   "id": "rec-0344",
+   "label": 0,
+   "score": 0.523
+  },
+  {
+   "id": "rec-0345",
+   "label": 0,
+   "score": 0.03
+  },
+  {
+   "id": "rec-0346",
+   "label": 0,
+   "score": 0.077
+  },
+  {
+   "id": "rec-0347",
+   "label": 0,
+   "score": 0.194
+  },
+  {
+   "id": "rec-0348",
+   "label": 0,
+   "score": 0.084
+  },
+  {
+   "id": "rec-0349",
+   "label": 1,
+   "score": 0.722
+  },
+  {
+   "id": "rec-0350",
+   "label": 1,
+   "score": 0.748
+  },
+  {
+   "id": "rec-0351",
+   "label": 0,
+   "score": 0.124
+  },
+  {
+   "id": "rec-0352",
+   "label": 0,
+   "score": 0.114
+  },
+  {
+   "id": "rec-0353",
+   "label": 0,
+   "score": 0.192
+  },
+  {
+   "id": "rec-0354",
+   "label": 1,
+   "score": 0.607
+  },
+  {
+   "id": "rec-0355",
+   "label": 0,
+   "score": 0.122
+  },
+  {
+   "id": "rec-0356",
+   "label": 0,
+   "score": 0.122
+  },
+  {
+   "id": "rec-0357",
+   "label": 1,
+   "score": 0.199
+  },
+  {
+   "id": "rec-0358",
+   "label": 1,
+   "score": 0.373
+  },
+  {
+   "id": "rec-0359",
+   "label": 0,
+   "score": 0.078
+  },
+  {
+   "id": "rec-0360",
+   "label": 0,
+   "score": 0.297
+  },
+  {
+   "id": "rec-0361",
+   "label": 0,
+   "score": 0.739
+  },
+  {
+   "id": "rec-0362",
+   "label": 0,
+   "score": 0.152
+  },
+  {
+   "id": "rec-0363",
+   "label": 1,
+   "score": 0.872
+  },
+  {
+   "id": "rec-0364",
+   "label": 1,
+   "score": 0.789
+  },
+  {
+   "id": "rec-0365",
+   "label": 0,
+   "score": 0.077
+  },
+  {
+   "id": "rec-0366",
+   "label": 1,
+   "score": 0.869
+  },
+  {
+   "id": "rec-0367",
+   "label": 1,
+   "score": 0.243
+  },
+  {
+   "id": "rec-0368",
+   "label": 0,
+   "score": 0.025
+  },
+  {
+   "id": "rec-0369",
+   "label": 0,
+   "score": 0.33
+  },
+  {
+   "id": "rec-0370",
+   "label": 0,
+   "score": 0.343
+  },
+  {
+   "id": "rec-0371",
+   "label": 0,
+   "score": 0.037
+  },
+  {
+   "id": "rec-0372",
+   "label": 0,
+   "score": 0.105
+  },
+  {
+   "id": "rec-0373",
+   "label": 0,
+   "score": 0.308
+  },
+  {
+   "id": "rec-0374",
+   "label": 0,
+   "score": 0.767
+  },
+  {
+   "id": "rec-0375",
+   "label": 0,
+   "score": 0.356
+  },
+  {
+   "id": "rec-0376",
+   "label": 1,
+   "score": 0.833
+  },
+  {
+   "id": "rec-0377",
+   "label": 1,
+   "score": 0.988
+  },
+  {
+   "id": "rec-0378",
+   "label": 0,
+   "score": 0.084
+  },
+  {
+   "id": "rec-0379",
+   "label": 0,
+   "score": 0.146
+  },
+  {
+   "id": "rec-0380",
+   "label": 0,
+   "score": 0.271
+  },
+  {
+   "id": "rec-0381",
+   "label": 1,
+   "score": 0.751
+  },
+  {
+   "id": "rec-0382",
+   "label": 1,
+   "score": 0.917
+  },
+  {
+   "id": "rec-0383",
+   "label": 0,
+   "score": 0.207
+  },
+  {
+   "id": "rec-0384",
+   "label": 0,
+   "score": 0.136
+  },
+  {
+   "id": "rec-0385",
+   "label": 0,
+   "score": 0.217
+  },
+  {
+   "id": "rec-0386",
+   "label": 0,
+   "score": 0.116
+  },
+  {
+   "id": "rec-0387",
+   "label": 1,
+   "score": 0.434
+  },
+  {
+   "id": "rec-0388",
+   "label": 0,
+   "score": 0.26
+  },
+  {
+   "id": "rec-0389",
+   "label": 0,
+   "score": 0.525
+  },
+  {
+   "id": "rec-0390",
+   "label": 0,
+   "score": 0.363
+  },
+  {
+   "id": "rec-0391",
+   "label": 0,
+   "score": 0.022
+  },
+  {
+   "id": "rec-0392",
+   "label": 0,
+   "score": 0.056
+  },
+  {
+   "id": "rec-0393",
+   "label": 0,
+   "score": 0.473
+  },
+  {
+   "id": "rec-0394",
+   "label": 0,
+   "score": 0.383
+  },
+  {
+   "id": "rec-0395",
+   "label": 0,
+   "score": 0.113
+  },
+  {
+   "id": "rec-0396",
+   "label": 0,
+   "score": 0.048
+  },
+  {
+   "id": "rec-0397",
+   "label": 0,
+   "score": 0.073
+  },
+  {
+   "id": "rec-0398",
+   "label": 0,
+   "score": 0.005
+  },
+  {
+   "id": "rec-0399",
+   "label": 0,
+   "score": 0.462
+  },
+  {
+   "id": "rec-0400",
+   "label": 0,
+   "score": 0.812
+  }
+ ],
+ "notes": [
+  "SYNTHETIC EXAMPLE. These figures describe artificial records only; they evaluate no method.",
+  "Built by scripts/build_ml_evaluation_example.py (seed 20261116). Confusion matrix at score >= 0.5 by construction: TP 96, FN 24, FP 28, TN 252."
+ ]
+}

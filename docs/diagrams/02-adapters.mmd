@@ -1,0 +1,21 @@
+flowchart TB
+  subgraph PACKAGE["Problem package, installed"]
+    P["Problem<br/>scenarios, validator, objective, metrics"]
+    S["Solver or heuristic<br/>built-in method"]
+    L["Learned or hybrid method<br/>scorer, candidate view, ML evaluation"]
+  end
+  subgraph PLUGINS["Plug-ins, sandboxed: approved folder or the account's own uploads"]
+    M["Method plug-in<br/>plugin.py, code hash pinned"]
+    C["Custom metric<br/>metric.py"]
+  end
+  D["Dataset provider<br/>entry point move_openlab.dataset_providers"]
+  CORE["Framework core<br/>registry, store, runner, analysis"]
+  V{{"Independent validator of the problem"}}
+  S --> P
+  L --> P
+  P -->|"entry point move_openlab.problems"| CORE
+  D -->|"normalised trips"| CORE
+  M -->|"decisions"| CORE
+  C -->|"figure from validated inputs"| CORE
+  CORE -->|"every decision set"| V
+  V -->|"feasibility and metrics"| CORE

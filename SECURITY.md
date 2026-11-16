@@ -8,8 +8,8 @@ is the only supported version.
 ## Reporting a vulnerability
 
 Please report vulnerabilities privately through GitHub's private vulnerability reporting for this repository
-(*Security* tab → *Report a vulnerability*). Do not open a public issue, pull request or discussion for a suspected
-vulnerability.
+(*Security* tab → *Report a vulnerability*). If that is not available, write to the maintainer at
+okba.ben_atia@univ-fcomte.fr. Do not open a public issue, pull request or discussion for a suspected vulnerability.
 
 Include the affected component, a reproduction on a local installation and the impact. Never include real
 credentials or private data. Reports are acknowledged and handled on a best-effort basis by the maintainer; a fix is
@@ -21,9 +21,26 @@ In scope, in particular:
 - escapes from the plugin sandbox or bypasses of its fail-closed checks;
 - authentication, session or workspace-isolation flaws;
 - bundle import accepting tampered or unsafe content;
-- leaks of secrets or other researchers' data through the API or the web interface.
+- leaks of secrets or other researchers' data through the API or the web interface;
+- access to a restricted problem, its experiments, scenarios or bundles by an account that was not granted it;
+- uploads, downloads or place searches that bypass their size limits, quotas or host restrictions.
 
 Trusted-process plugin mode is documented as not being a sandbox; code execution by an administrator-approved
 trusted plugin is expected behaviour, not a vulnerability.
 
 The security design and its known limitations are described in [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
+
+## Secrets and private material
+
+- Never commit credentials, a data directory, a credential store, a `.env` file, a bundle or other archive, or
+  unpublished data. `.gitignore` covers the usual locations; `scripts/check_public_safety.py` checks the rest and runs
+  in CI.
+- The only secret the application needs is `SESSION_SECRET`, set in the environment of the server process. Passwords
+  are kept as scrypt hashes in the data directory; temporary passwords are shown once.
+- A restricted problem package, its data and the names of private studies stay outside this repository
+  ([docs/PRIVATE_EXTENSIONS.md](docs/PRIVATE_EXTENSIONS.md)).
+- If you find a secret or private material in the repository or its history, report it privately as a vulnerability:
+  do not quote it in a public issue.
+
+Where credentials live, how they are protected and the confidentiality checklist of a release:
+[docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md#secrets-and-credentials).

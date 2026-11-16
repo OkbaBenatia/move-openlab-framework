@@ -1,0 +1,34 @@
+import { useCallback, useEffect, useState } from 'react';
+
+/** Hash routes, so that the browser's Back and Forward buttons and bookmarks work:
+ *  #/workspace[/<experiment>] · #/compare/<A>|<B>[,<B2>…] · #/methods/<experiment>[|<method@version>,…] · #/data[/<view>] · #/experiments[/<view>] · #/jobs · #/students · #/admin
+ *  · #/account · #/hidden · #/benchmarks · #/research (restricted problems granted to the account) */
+export type Section = 'workspace' | 'compare' | 'methods' | 'data' | 'experiments' | 'jobs' | 'students' | 'admin' | 'account' | 'hidden' | 'benchmarks' | 'research';
+export interface Route { section: Section; arg: string }
+
+const SECTIONS: Section[] = ['workspace', 'compare', 'methods', 'data', 'experiments', 'jobs', 'students', 'admin', 'account', 'hidden', 'benchmarks', 'research'];
+
+export function parse(hash: string): Route {
+  const [s, ...rest] = hash.replace(/^#\/?/, '').split('/');
+  const section = (SECTIONS as string[]).includes(s) ? (s as Section) : 'workspace';
+  let arg = rest.join('/');
+  try { arg = decodeURIComponent(arg); } catch { arg = ''; }           // malformed escapes: ignore the argument
+  return { section, arg };
+}
+
+export const href = (section: Section, arg = '') => `#/${section}${arg ? `/${encodeURIComponent(arg)}` : ''}`;
+
+export function useRoute(): [Route, (section: Section, arg?: string, replace?: boolean) => void] {
+  const [route, setRoute] = useState<Route>(() => parse(window.location.hash));
+  useEffect(() => {
+    const on = () => setRoute(parse(window.location.hash));
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  const go = useCallback((section: Section, arg = '', replace = false) => {
+    const h = href(section, arg);
+    if (h === window.location.hash) return;
+    if (replace) { window.history.replaceState(null, '', h); setRoute(parse(h)); } else window.location.hash = h;
+  }, []);
+  return [route, go];
+}

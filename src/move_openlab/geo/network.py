@@ -98,3 +98,25 @@ class RoadNetwork:
             dist, _, _ = self._dijkstra(s)
             out.append([round(dist[t], 1) for t in targets])
         return out
+
+    def coverage(self, max_cells: int = 2500) -> dict:
+        """Light summary for maps: occupied grid cells (node counts) and network statistics."""
+        s, w, n, e = self.bounds()
+        step = max((n - s), (e - w)) / max(1, int(max_cells ** 0.5))
+        step = max(step, 1e-4)
+        cells: dict[tuple[int, int], int] = {}
+        for la, lo in zip(self.lat, self.lon):
+            k = (int((la - s) // step), int((lo - w) // step))
+            cells[k] = cells.get(k, 0) + 1
+        seen, road_m = set(), 0.0
+        for u, nbrs in enumerate(self.adj):
+            for v, _t, ln in nbrs:
+                key = (u, v) if u < v else (v, u)
+                if key not in seen:
+                    seen.add(key)
+                    road_m += ln
+        top = max(cells.values()) if cells else 1
+        return dict(bounds=[s, w, n, e], cell_deg=round(step, 6), nodes=len(self.lat),
+                    edges=sum(len(a) for a in self.adj), road_km=round(road_m / 1000, 1),
+                    cells=[[round(s + i * step, 6), round(w + j * step, 6), round(c / top, 3)]
+                           for (i, j), c in sorted(cells.items())])

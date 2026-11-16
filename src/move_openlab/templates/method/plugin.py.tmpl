@@ -1,0 +1,39 @@
+"""$name — a MOVE OpenLab method for problem `$problem_id`.
+
+Contract (docs/EXTENDING.md):
+  * METADATA is a plain literal: the platform reads it without running this file.
+  * solve(instance, config) receives a read-only instance and the merged configuration (default_config, then the
+    campaign's options) and returns a dict:
+        decisions    $decisions
+        status       OPTIMAL | FEASIBLE | HEURISTIC | TIME_LIMIT | INFEASIBLE | ERROR
+        declared     optional self-reported metrics ({metric id: value}); they are compared, never trusted
+        metadata     optional information about the run (e.g. solver version)
+        diagnostics  optional counters for the researcher
+  * The experiment owns the scenario, objective, validator and metrics: every decision list is re-validated
+    independently, and only the validator's metrics are reported.
+  * Runs happen in an isolated sandbox: no network, no files outside the instance; standard library only unless the
+    operator installed more.
+
+Instance fields of this problem (see the problem's documentation): $instance_keys.
+This starting point returns no decision: the result is valid but serves no one, so it passes the self-test without
+being a method. Replace the body of solve with your method (the platform does not write it for you).
+"""
+from __future__ import annotations
+
+METADATA = {
+    "method_id": $method_id_lit,
+    "name": $name_lit,
+    "version": "0.1.0",
+    "kind": $kind_lit,
+    "problem_id": $problem_id_lit,
+    "objective_spec_id": $objective_lit,
+    "deterministic": True,
+    "author": $author_lit,
+    "description": $description_lit,
+    "default_config": {},
+}
+
+
+def solve(instance, config) -> dict:
+    decisions: list = []
+    return dict(decisions=decisions, status="HEURISTIC", declared={}, metadata={}, diagnostics={})

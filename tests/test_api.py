@@ -10,7 +10,7 @@ from move_openlab.auth.store import UserStore
 from move_openlab.settings import Settings
 
 PID = "synthetic-capacitated-bipartite-assignment"
-PW = {"alice": "alice-password-123", "bob": "bob-password-12345"}
+PW = {"alice": "Correct-Horse-Battery-9!", "bob": "Staple-Mountain-Rain-7!"}
 
 
 def make_settings(tmp_path, name, plugin_dir=None, production=False, secret="s" * 40, plugin_mode="disabled"):
@@ -70,8 +70,8 @@ def test_forced_password_change_and_session_rotation(tmp_path):
     old = c.cookies.get("move_openlab_session")
     bad = c.post("/api/auth/change-password", json=dict(current_password=temp, new_password="short", confirm_password="short"))
     assert bad.status_code == 400
-    ok = c.post("/api/auth/change-password", json=dict(current_password=temp, new_password="a-much-better-password",
-                                                       confirm_password="a-much-better-password"))
+    ok = c.post("/api/auth/change-password", json=dict(current_password=temp, new_password="A-much-better-password-9",
+                                                       confirm_password="A-much-better-password-9"))
     assert ok.status_code == 200 and c.get("/api/campaigns").status_code == 200
     assert auth.read(old) is None                                                  # older sessions invalidated
 
@@ -136,4 +136,4 @@ def test_workflow_over_http(tmp_path, plugin_dir):
                                                                     scorer="relative-cost", thresholds=[0.5, 1.0])).json()["campaign_id"]
     wait(b, b.post(f"/api/campaigns/{tid}/execute").json())
     assert len(b.get(f"/api/campaigns/{tid}/threshold-report").json()["summary"]) == 2
-    assert b.get("/api/integrations").json() == {"sources": []}
+    assert [s["id"] for s in b.get("/api/integrations").json()["sources"]] == ["rpc", "csv", "geojson"]

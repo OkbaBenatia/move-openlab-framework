@@ -48,12 +48,16 @@ SCOPES = (SCOPE_FULL, SCOPE_REDUCED, SCOPE_TIME_LIMIT, SCOPE_FEASIBLE, SCOPE_HEU
 def optimality_scope(run: dict, instance: dict, method_kind: str | None) -> str:
     """What a run's result proves. A solver proves optimality only for the model it was given: on an instance whose
     candidates were pruned by a scorer (``derivation.scorer``), OPTIMAL means optimal for the reduced instance, never
-    for the full problem. Only an exact method's OPTIMAL status on an unpruned instance is a full-problem proof."""
+    for the full problem. Only an exact method's OPTIMAL status on an unpruned instance is a full-problem proof. A hybrid
+    method (a learned reduction of the candidates followed by an exact solver) proves at most optimality of the model it
+    reduced itself: its OPTIMAL is reduced-instance optimality, never a full-problem proof."""
     if not run.get("accepted"):
         return SCOPE_INVALID
     status = run.get("status_declared")
     if status == "OPTIMAL" and method_kind == "exact":
         return SCOPE_REDUCED if (instance.get("derivation") or {}).get("scorer") else SCOPE_FULL
+    if status == "OPTIMAL" and method_kind == "hybrid":
+        return SCOPE_REDUCED
     if status == "TIME_LIMIT":
         return SCOPE_TIME_LIMIT
     if status in ("OPTIMAL", "FEASIBLE"):

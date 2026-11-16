@@ -59,12 +59,51 @@ class Cancelled(RuntimeError):
     """The run was cancelled by the user; the worker process (group) was killed."""
 
 
-def _kill(p: subprocess.Popen) -> None:
+def _kill(p: subprocess.Popen) -> str:
+    """Kill the worker's process group; returns the tail of what it wrote to stderr."""
     try:
         os.killpg(p.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError, AttributeError):
         p.kill()
-    p.communicate()
+    try:
+        _, err = p.communicate(timeout=5)
+    except (subprocess.TimeoutExpired, ValueError):
+        err = ""
+    return (err or "")[-STDERR_TAIL:]
+
+
+STDERR_TAIL = 4000
+TICK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+
+
+def snapshot(pid: int) -> list[dict]:
+    """State of a process and its descendants (Linux ``/proc``): scheduler state, CPU time consumed, threads and
+    resident memory. Taken when a worker is about to be killed for exceeding its time limit, it tells a busy solver
+    (CPU time ≈ wall time) from a blocked or starved one (CPU time ≪ wall time)."""
+    if not Path("/proc").is_dir():
+        return []
+    try:
+        procs = {}
+        for d in Path("/proc").iterdir():
+            if d.name.isdigit():
+                try:
+                    stat = (d / "stat").read_text()
+                except OSError:
+                    continue
+                comm = stat[stat.index("(") + 1:stat.rindex(")")]
+                f = stat[stat.rindex(")") + 2:].split()
+                procs[int(d.name)] = dict(pid=int(d.name), ppid=int(f[1]), comm=comm, state=f[0],
+                                          cpu_user_s=round(int(f[11]) / TICK, 2), cpu_system_s=round(int(f[12]) / TICK, 2),
+                                          threads=int(f[17]), rss_mb=round(int(f[21]) * os.sysconf("SC_PAGE_SIZE") / 2 ** 20, 1))
+        out, todo = [], [pid]
+        while todo:
+            cur = todo.pop()
+            if cur in procs:
+                out.append(procs[cur])
+                todo += [q for q, v in procs.items() if v["ppid"] == cur]
+        return out
+    except (OSError, ValueError, IndexError):
+        return []
 
 
 def execute_isolated(request: dict, timeout_s: float, python: str | None = None,
@@ -72,12 +111,13 @@ def execute_isolated(request: dict, timeout_s: float, python: str | None = None,
     """Run the worker in a separate process; with ``sandbox``, inside the verified bubblewrap sandbox (the plugin file
     is mounted read-only at a fixed path and nothing else of the installation's data is visible). ``cancel`` is an
     optional ``threading.Event``: when it is set, the worker process group is killed and :class:`Cancelled` raised."""
+    part = "metric" if request.get("kind") == "metric" else "method"      # the entry naming the code to run
     if sandbox is not None:
-        argv = sandbox_command(sandbox, request["method"].get("plugin_file"), python)
-        if request["method"].get("plugin_file"):
-            request = dict(request, method=dict(request["method"], plugin_file=PLUGIN_MOUNT))
+        argv = sandbox_command(sandbox, request[part].get("plugin_file"), python)
+        if request[part].get("plugin_file"):
+            request = dict(request, **{part: dict(request[part], plugin_file=PLUGIN_MOUNT)})
     else:
-        argv = [python or sys.executable, "-I", "-m", "move_openlab.worker"]
+        argv = [python or sys.executable, "-I", "-B", "-m", "move_openlab.worker"]
     req = json.dumps(request)
     with tempfile.TemporaryDirectory(prefix="move-openlab-run-") as cwd:
         t0 = time.perf_counter()
@@ -91,15 +131,18 @@ def execute_isolated(request: dict, timeout_s: float, python: str | None = None,
                 raise Cancelled("run cancelled")
             remaining = deadline - time.perf_counter()
             if remaining <= 0:
-                _kill(p)
-                return dict(ok=False, error=f"timeout after {timeout_s} s"), time.perf_counter() - t0
+                procs = snapshot(p.pid)
+                tail = _kill(p)
+                return dict(ok=False, error=f"timeout after {timeout_s} s",
+                            diagnostics=dict(timeout_snapshot=procs, stderr_tail=tail)), time.perf_counter() - t0
             try:
                 out, err = p.communicate(req if first else None, timeout=min(remaining, 0.25))
             except subprocess.TimeoutExpired:
                 first = False
         total = time.perf_counter() - t0
     if not out.strip():
-        return dict(ok=False, error=f"worker exit {p.returncode}: {err[-500:]}"), total
+        return dict(ok=False, error=f"worker exit {p.returncode}: {err[-500:]}",
+                    diagnostics=dict(stderr_tail=err[-STDERR_TAIL:])), total
     try:
         reply = json.loads(out)
     except ValueError as e:
@@ -112,10 +155,12 @@ class IsolationRefused(ContractError):
 
 
 def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, timeout_s: float = 120.0,
-             python: str | None = None, sandbox: SandboxSpec | None = None, cancel=None) -> dict:
+             python: str | None = None, sandbox: SandboxSpec | None = None, cancel=None,
+             experiment_config: dict | None = None) -> dict:
     """Execute one method on one instance. Built-in methods run in an isolated process. A plugin must carry an explicit
     ``isolation``: ``"sandbox"`` (requires ``sandbox`` and a successful isolation verification, otherwise the run is
-    refused) or ``"process"`` (trusted-process mode, decided by the installation's administrator)."""
+    refused) or ``"process"`` (trusted-process mode, decided by the installation's administrator).
+    ``experiment_config`` (the campaign configuration) reaches only the problem's domain metrics, never the method."""
     trace, t_stage = [], time.perf_counter()
 
     def stage(name: str, detail: str = "") -> None:
@@ -139,7 +184,8 @@ def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, t
             spec = sandbox
         elif isolation != "process":
             raise IsolationRefused("plugin run refused: no isolation mode was decided for this plugin")
-    limits = dict(memory_mb=DEFAULT_MEMORY_MB or None, cpu_s=int(math.ceil(timeout_s)) + 5)
+    limits = dict(memory_mb=DEFAULT_MEMORY_MB or None, cpu_s=int(math.ceil(timeout_s)) + 5,
+                  dump_s=max(0.5, timeout_s - 1.0))           # Python traceback to stderr 1 s before the deadline
     worker_ref = {k: v for k, v in method_ref.items() if k != "isolation"}
     stage("prepare", "instance integrity verified" + ("; sandbox isolation verified" if spec else ""))
     reply, total = execute_isolated(dict(problem_id=problem.problem_id, method=worker_ref, instance=instance,
@@ -148,8 +194,11 @@ def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, t
     rec = dict(method_id=method_ref["method_id"], version=method_ref["version"], source=method_ref["source"],
                instance_hash=instance["instance_hash"], instance_id=instance["instance_id"], total_time_s=round(total, 6),
                isolation=isolation, trace=trace)
+    if reply.get("resources"):
+        rec["resources"] = reply["resources"]                 # worker CPU time and peak memory (operating system)
     if not reply.get("ok"):
         rec.update(accepted=False, status_declared="ERROR", error=reply.get("error"), decisions=[],
+                   diagnostics=reply.get("diagnostics") or {},
                    output_errors=["execution failed"],
                    validation=dict(feasible=False, metrics={m.id: 0 for m in problem.metrics},
                                    errors=[reply.get("error", "execution failed")]),
@@ -173,4 +222,8 @@ def run_once(problem: Problem, method_ref: dict, instance: dict, config: dict, t
                effective_config=reply.get("effective_config"), method_metadata=md,
                diagnostics=(out.get("diagnostics") if isinstance(out, dict) else None) or {})
     stage("validate", "independent validation: " + ("feasible" if val["feasible"] else f"{len(val['errors'])} error(s)"))
+    dom = problem.domain_metrics(instance, rec["decisions"], experiment_config) if rec["accepted"] else None
+    if dom is not None:                                        # domain figures from validated decisions only
+        rec["domain"] = dom
+        stage("domain", "domain metrics " + ("computed" if dom.get("complete") else "incomplete: " + ", ".join(dom.get("missing", [])[:3])))
     return rec

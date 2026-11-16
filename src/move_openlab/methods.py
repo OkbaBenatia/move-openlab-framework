@@ -34,6 +34,9 @@ OUTPUT_FIELDS = {"decisions", "status", "declared", "metadata", "diagnostics"}
 METHOD_ID = re.compile(r"^[a-z][a-z0-9-]{2,63}$")
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 MAX_OUTPUT_BYTES = 4_000_000
+#: Optional ``METADATA["catalog"]`` values: how the "+ Add method" catalogue presents a plug-in (``"example"``: a
+#: ready-made example shipped with the framework). Presentation only — not part of the method's contract or identity.
+CATALOG = ("example",)
 
 
 class ContractError(ValueError):
@@ -52,17 +55,69 @@ class MethodMetadata:
     description: str
     author: str
     default_config: dict = field(default_factory=dict)
+    #: Settings a researcher may choose per experiment: ``{key: {"type": "number" | "integer" | "boolean" | "string",
+    #: "label", "unit"?, "min"?, "max"?, "enum"?, "nullable"?}}``. ``null`` (when nullable) keeps the solver's own default.
+    #: A method without a schema has no researcher-settable configuration.
+    config_schema: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-REQUIRED = [k for k in MethodMetadata.__dataclass_fields__ if k != "default_config"]
+REQUIRED = [k for k in MethodMetadata.__dataclass_fields__ if k not in ("default_config", "config_schema")]
+SETTING_TYPES = {"number": (int, float), "integer": (int,), "boolean": (bool,), "string": (str,)}
+
+
+def _check_schema(schema: dict) -> None:
+    if not isinstance(schema, dict) or len(schema) > 32:
+        raise ContractError("config_schema must be an object of at most 32 settings")
+    for k, s in schema.items():
+        if not (isinstance(k, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,47}", k)):
+            raise ContractError(f"config_schema key {k!r} must be lowercase letters, digits and '_'")
+        if not isinstance(s, dict) or s.get("type") not in SETTING_TYPES or not isinstance(s.get("label"), str):
+            raise ContractError(f"config_schema[{k!r}] needs a type in {sorted(SETTING_TYPES)} and a label")
+        unknown = set(s) - {"type", "label", "unit", "min", "max", "enum", "nullable", "help"}
+        if unknown:
+            raise ContractError(f"config_schema[{k!r}] has unknown field(s) {sorted(unknown)}")
+
+
+def validate_config(meta: MethodMetadata, cfg: dict | None) -> dict:
+    """A researcher's settings for one method, checked against its ``config_schema`` before any execution: only declared
+    keys, the declared type, range and choices. Returns a normalised copy (integers stay integers)."""
+    cfg = dict(cfg or {})
+    if not cfg:
+        return {}
+    if not meta.config_schema:
+        raise ContractError(f"{meta.method_id}@{meta.version} declares no configurable settings")
+    out = {}
+    for k, v in cfg.items():
+        s = meta.config_schema.get(k)
+        if s is None:
+            raise ContractError(f"{meta.method_id}: unknown setting {k!r} (allowed: {sorted(meta.config_schema)})")
+        if v is None:
+            if not s.get("nullable"):
+                raise ContractError(f"{meta.method_id}: {k} cannot be empty")
+            out[k] = None
+            continue
+        types = SETTING_TYPES[s["type"]]
+        if isinstance(v, bool) and s["type"] != "boolean" or not isinstance(v, types):
+            raise ContractError(f"{meta.method_id}: {k} must be of type {s['type']}")
+        if isinstance(v, float) and v != v:
+            raise ContractError(f"{meta.method_id}: {k} must be a number")
+        if "min" in s and v < s["min"] or "max" in s and v > s["max"]:
+            raise ContractError(f"{meta.method_id}: {k} = {v} is outside [{s.get('min', '-inf')}, {s.get('max', 'inf')}]")
+        if "enum" in s and v not in s["enum"]:
+            raise ContractError(f"{meta.method_id}: {k} must be one of {s['enum']}")
+        out[k] = v
+    return out
 
 
 def check_metadata(meta: dict | MethodMetadata, problem: Problem) -> MethodMetadata:
     d = meta.to_dict() if isinstance(meta, MethodMetadata) else dict(meta)
-    missing = [k for k in REQUIRED if k not in d]
+    catalog = d.pop("catalog", None)                       # catalogue presentation only, never part of the contract
+    if catalog is not None and catalog not in CATALOG:
+        raise ContractError(f"catalog must be one of {CATALOG} (or absent)")
+    missing =[k for k in REQUIRED if k not in d]
     if missing:
         raise ContractError(f"metadata missing field(s): {missing}")
     unknown = set(d) - set(MethodMetadata.__dataclass_fields__)
@@ -88,7 +143,11 @@ def check_metadata(meta: dict | MethodMetadata, problem: Problem) -> MethodMetad
         json.dumps(cfg)
     except (TypeError, ValueError) as e:
         raise ContractError(f"default_config must be JSON-serialisable: {e}") from None
-    return MethodMetadata(**{**{k: d[k] for k in REQUIRED}, "default_config": cfg})
+    schema = d.get("config_schema") or {}
+    _check_schema(schema)
+    out = MethodMetadata(**{**{k: d[k] for k in REQUIRED}, "default_config": cfg, "config_schema": schema})
+    validate_config(out, {k: v for k, v in cfg.items() if k in schema})      # declared defaults obey their own schema
+    return out
 
 
 class MethodRegistry:

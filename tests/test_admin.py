@@ -14,8 +14,8 @@ def admin_client(tmp_path):
     s = make_settings(tmp_path, "adm")
     auth = Auth(s, UserStore(None))
     for u, role in (("alice", "researcher"), ("bob", "researcher"), ("root", "admin")):
-        auth.create_user(u, u.title(), role=role, password=PW.get(u, "root-password-123"))
-        auth.store.set_password(u, hash_password(PW.get(u, "root-password-123")), must_change=False)
+        auth.create_user(u, u.title(), role=role, password=PW.get(u, "Operator-Key-2026-xyz"))
+        auth.store.set_password(u, hash_password(PW.get(u, "Operator-Key-2026-xyz")), must_change=False)
     return TestClient(create_app(s, auth)), auth, s
 
 
@@ -28,7 +28,7 @@ def test_admin_routes_require_the_admin_role(tmp_path):
 
 def test_admin_lifecycle_and_audit(tmp_path):
     c, auth, s = admin_client(tmp_path)
-    r = c.post("/api/auth/login", json=dict(username="root", password="root-password-123")); assert r.status_code == 200
+    r = c.post("/api/auth/login", json=dict(username="root", password="Operator-Key-2026-xyz")); assert r.status_code == 200
     users = c.get("/api/admin/users").json()["users"]
     assert {u["username"] for u in users} == {"alice", "bob", "root"} and all("scrypt" not in json.dumps(u) and "password_hash" not in u for u in users)
     r = c.post("/api/admin/users", json=dict(username="carol", display_name="Carol"))
@@ -63,7 +63,7 @@ def test_administrators_do_not_see_other_workspaces(tmp_path):
     cid = alice.post("/api/campaigns", json=dict(problem_id="synthetic-capacitated-bipartite-assignment", title="private",
                                                   scenario_params=dict(sizes=["small"], seeds=[1]),
                                                   methods=[["greedy-min-cost", "1.0.0"]], repetitions=1)).json()["campaign_id"]
-    c.post("/api/auth/login", json=dict(username="root", password="root-password-123"))
+    c.post("/api/auth/login", json=dict(username="root", password="Operator-Key-2026-xyz"))
     assert c.get(f"/api/campaigns/{cid}").status_code == 404
     assert next(u for u in c.get("/api/admin/users").json()["users"] if u["username"] == "alice")["campaigns"] == 1
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OkbaBenatia/move-openlab-framework/schemas/method-result.schema.json",
+  "title": "MOVE OpenLab method result",
+  "description": "Value returned by solve(instance, config). Decisions are re-validated by the problem's validator; declared values are compared with the validator's, never trusted.",
+  "type": "object",
+  "required": ["decisions", "status"],
+  "properties": {
+    "decisions": {"type": "array", "description": "The problem's decision list (e.g. [driver_id, rider_id] pairs for ride matching)."},
+    "status": {"enum": ["OPTIMAL", "FEASIBLE", "HEURISTIC", "TIME_LIMIT", "INFEASIBLE", "ERROR"], "description": "Self-declared; OPTIMAL is a full-problem proof only for an exact method on an unpruned instance."},
+    "declared": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Self-reported metric values by metric id."},
+    "metadata": {"type": "object", "description": "Run information, e.g. solver name and version, solver_time_s."},
+    "diagnostics": {"type": "object", "description": "Free counters for the researcher."}
+  },
+  "additionalProperties": false
+}
