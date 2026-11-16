@@ -23,11 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      MOVE_OPENLAB_DATA_DIR: ${{ runner.temp }}/openlab-data   # created empty by this job, never uploaded
       MOVE_OPENLAB_PORT: "8791"
       MOVE_OPENLAB_TILE_URL: none                            # no external map tiles
       MOVE_OPENLAB_PLUGIN_MODE: sandbox
     steps:
+      - name: Data directory (created empty by this job, never uploaded)
+        # the runner context is not available in jobs.<job_id>.env, so the path is set here for the later steps
+        run: echo "MOVE_OPENLAB_DATA_DIR=$RUNNER_TEMP/openlab-data" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
