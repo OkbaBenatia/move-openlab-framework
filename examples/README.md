@@ -15,7 +15,7 @@ Two public example packages ship with MOVE OpenLab. They are different things an
 | Licence of the content | CC0 1.0 | ODbL 1.0 (OpenStreetMap) and Licence Ouverte / Open Licence (Etalab) |
 
 A trip dataset cannot be imported as an experiment, and a bundle is not a dataset: no scenario is generated from it.
-Step-by-step use of both, with what appears at each click: [docs/IMPORT_EXPORT.md](../docs/IMPORT_EXPORT.md#the-two-example-packages).
+Step-by-step use of both, with what appears at each click: [docs/IMPORT_EXPORT.md](../docs/IMPORT_EXPORT.md#the-example-packages).
 
 A third, smaller example is of another nature: [C — ML evaluation evidence](#c-ml-evaluation-evidence--synthetic-example),
 a **synthetic** file of labelled records for trying the import of evaluation evidence. It is neither a dataset nor an
