@@ -11,12 +11,11 @@ demonstration is installed by the application itself at the first sign-in, as fo
 from __future__ import annotations
 
 import json
-import secrets
 import sys
 from pathlib import Path
 
 from move_openlab import privatefiles
-from move_openlab.auth import Auth, hash_password
+from move_openlab.auth import Auth, hash_password, new_password
 from move_openlab.geo.areas import AreaStore
 from move_openlab.geo.osm import NetworkStore
 from move_openlab.settings import Settings
@@ -51,12 +50,12 @@ def main() -> int:
     creds = json.loads(f.read_text()) if f.exists() else {}
     for u in USERS:
         if not auth.store.get(u):
-            pw = secrets.token_urlsafe(18)
+            pw = new_password(18, u, u.replace("researcher", "Researcher "))
             auth.create_user(u, u.replace("researcher", "Researcher "), role="researcher", password=pw, created_by="seed_ci")
             auth.store.set_password(u, hash_password(pw), must_change=False)
             creds[u] = pw
     if not auth.store.get(ADMIN):
-        pw = secrets.token_urlsafe(18)
+        pw = new_password(18, ADMIN, "Administrator 1")
         auth.create_user(ADMIN, "Administrator 1", role="admin", password=pw, created_by="seed_ci")
         auth.store.set_password(ADMIN, hash_password(pw), must_change=False)
         creds[ADMIN] = pw

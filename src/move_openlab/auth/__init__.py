@@ -89,8 +89,17 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def new_password(nbytes: int = 12, username: str = "", display_name: str = "") -> str:
+    """A random password that always meets the server's policy: a draw that misses a character class (rare) is
+    redrawn, so a generated password is never refused by ``password_policy``."""
+    while True:
+        pw = secrets.token_urlsafe(nbytes)
+        if password_policy(pw, username, display_name)["ok"]:
+            return pw
+
+
 def new_temporary_password() -> str:
-    return secrets.token_urlsafe(12)
+    return new_password(12)
 
 
 @dataclass(frozen=True)

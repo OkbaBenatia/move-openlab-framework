@@ -5,6 +5,12 @@ interfaces.
 
 ## 0.3.0 — 2026-11-16
 
+### Fixed — release
+- **First start**: generated passwords always meet the server's password policy (`auth.new_password`), so the first
+  administrator created by `start-local.sh` and the CI test accounts are never refused (a random draw without a digit
+  or an upper-case letter, about one in fifty, made the first start fail).
+- **CI**: the browser workflow sets its data directory in a step (the `runner` context is not available in job `env`).
+
 ### Changed — public presentation
 - **README** rewritten for the public release: identity header with the official banner, navigation, *Why MOVE
   OpenLab?*, the GUI and the CLI (commands checked against `move-openlab --help`), adapters, the three ways to add a

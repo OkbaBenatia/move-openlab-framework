@@ -10,11 +10,10 @@ Usage: python scripts/dev_provision.py [--admin] [--temporary] researcher1 [...]
 from __future__ import annotations
 
 import json
-import secrets
 import sys
 
 from move_openlab import privatefiles
-from move_openlab.auth import Auth, hash_password
+from move_openlab.auth import Auth, hash_password, new_password
 from move_openlab.settings import Settings
 
 
@@ -32,8 +31,9 @@ def main(args: list[str]) -> int:
         if auth.store.get(n):
             print(f"{n}: exists")
             continue
-        pw = secrets.token_urlsafe(18)
-        auth.create_user(n, n.replace("researcher", "Researcher "), role="admin" if admin else "researcher", password=pw,
+        display = n.replace("researcher", "Researcher ")
+        pw = new_password(18, n, display)
+        auth.create_user(n, display, role="admin" if admin else "researcher", password=pw,
                          created_by="dev_provision")
         if not temporary:
             auth.store.set_password(n, hash_password(pw), must_change=False)

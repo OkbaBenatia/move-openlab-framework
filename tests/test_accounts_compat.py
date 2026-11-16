@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from move_openlab import version
-from move_openlab.auth import Auth, hash_password, password_policy
+from move_openlab.auth import Auth, hash_password, new_password, new_temporary_password, password_policy
 from move_openlab.auth.store import UserStore
 from move_openlab.api import create_app
 from move_openlab.geo.geocode import Geocoder
@@ -14,6 +14,17 @@ from test_api import PW, login, make_settings
 
 
 # ---------------------------------------------------------------- password policy
+def test_generated_passwords_always_meet_the_policy(monkeypatch):
+    # a random draw without a digit or an upper-case letter is refused by the policy: the generator redraws, so the
+    # first administrator created by start-local.sh (dev_provision.py) and the CI accounts never fail on it
+    draws = iter(["abcdefghijklmnopqrstuvwx", "ABCDEFGHIJKLMNOPQRSTUVWX", "Ab3-efgh_jkLm9pqrsTuvwX"])
+    monkeypatch.setattr("move_openlab.auth.secrets.token_urlsafe", lambda n: next(draws))
+    assert new_password(18, "admin", "Administrator") == "Ab3-efgh_jkLm9pqrsTuvwX"
+    monkeypatch.undo()
+    assert all(password_policy(new_password(18, "researcher1", "Researcher 1"))["ok"] for _ in range(300))
+    assert all(password_policy(new_temporary_password())["ok"] for _ in range(300))
+
+
 def test_password_policy_levels():
     assert password_policy("short")["level"] == "weak"
     assert password_policy("alllowercaseletters")["level"] == "weak"            # one class only
