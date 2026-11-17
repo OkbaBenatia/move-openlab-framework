@@ -175,13 +175,20 @@ def fake_browser(out: Path, base: str) -> tuple[Path, dict]:
 
 
 def server_processes(cfg: dict) -> int:
-    """How many MOVE OpenLab server processes of this installation are running."""
+    """How many MOVE OpenLab servers of this installation are running. On Windows a virtual environment's python.exe
+    is a small redirector that starts the real interpreter as its child with the same command line: such a pair is
+    one server, so only processes whose parent is not itself a server are counted; the listening sockets on the port
+    are counted too and must agree."""
     needle = "move_openlab.cli serve"
     if os.name == "nt":
         r = subprocess.run(["powershell", "-NoProfile", "-Command",
-                            "@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*move_openlab.cli serve*' -and $_.Name -like 'python*' }).Count"],
+                            "$p = @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*move_openlab.cli serve*' -and $_.Name -like 'python*' }); "
+                            "$ids = $p.ProcessId; @($p | Where-Object { $ids -notcontains $_.ParentProcessId }).Count; "
+                            f"@(Get-NetTCPConnection -State Listen -LocalPort {int(cfg['port'])} -ErrorAction SilentlyContinue).Count"],
                            capture_output=True, text=True)
-        return int((r.stdout.strip() or "0"))
+        roots, listeners = (int(x) for x in (r.stdout.split() + ["0", "0"])[:2])
+        assert roots == listeners or roots == 0, f"{roots} server processes but {listeners} listening sockets"
+        return roots
     r = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True)
     return sum(1 for line in r.stdout.splitlines() if needle in line and cfg["_path"] in line)
 
