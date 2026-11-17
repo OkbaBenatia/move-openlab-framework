@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>A Reproducible Experimentation Framework for Sustainable Mobility Optimization</b><br>
-  <b>Conceived, designed, developed and implemented by Dr. Okba BEN ATIA.</b><br>
+  <b>Conceived, designed, and developed by Dr. Okba BEN ATIA.</b><br>
   <a href="https://www.linkedin.com/in/benatiaokba/">LinkedIn</a> · <a href="https://scholar.google.com/citations?user=n5zSD7QAAAAJ&amp;hl=en">Google Scholar</a> · <a href="https://github.com/OkbaBenatia">GitHub</a>
 </p>
 
