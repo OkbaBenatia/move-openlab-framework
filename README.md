@@ -14,7 +14,7 @@
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
   <img alt="Platforms: Windows, Linux, macOS" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-555">
-  <img alt="Status: development build 0.3.1" src="https://img.shields.io/badge/status-development%20build%200.3.1-orange">
+  <img alt="Status: development build 0.3.2" src="https://img.shields.io/badge/status-development%20build%200.3.2-orange">
 </p>
 
 <p align="center">
@@ -92,7 +92,7 @@ of your user account. No administrator rights, no Node.js, nothing exposed beyon
 step is run for real on GitHub-hosted Windows, Linux and macOS machines on each change (`install` workflow).
 Options, verification of the installer, updates and uninstalling: **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-<sub>The commands install version 0.3.2 and work once its release is published. Contributors start a checkout with
+<sub>The commands install version 0.3.2. Contributors start a checkout with
 `./start-local.sh` ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).</sub>
 
 ## First launch — create your administrator
@@ -390,7 +390,7 @@ If you use MOVE OpenLab in your research, please cite the software. Citation met
 @software{benatia_move_openlab,
   author  = {BEN ATIA, Okba},
   title   = {{MOVE OpenLab: A Reproducible Experimentation Framework for Sustainable Mobility Optimization}},
-  version = {0.3.1},
+  version = {0.3.2},
   license = {Apache-2.0},
   url     = {https://github.com/OkbaBenatia/move-openlab-framework}
 }
@@ -417,7 +417,7 @@ project's marks). Details: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 | Demonstrate | [DEMO_GUIDE](docs/DEMO_GUIDE.md) · [TEAM_PRESENTATION_GUIDE](docs/TEAM_PRESENTATION_GUIDE.md) · [MANUAL_ACCEPTANCE](docs/MANUAL_ACCEPTANCE.md) |
 | Contribute | [CONTRIBUTING](CONTRIBUTING.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [GITFLOW](docs/GITFLOW.md) · [RELEASING](docs/RELEASING.md) · [CHANGELOG](CHANGELOG.md) · [Code of Conduct](CODE_OF_CONDUCT.md) |
 
-**Project status:** development build `0.3.1`. Tested in CI on every change: the Python test suite, linting, the
+**Project status:** development build `0.3.2`. Tested in CI on every change: the Python test suite, linting, the
 interface build with type check and unit tests, the confidentiality check, browser journeys on synthetic data, and the
 one-command installation on Windows, Linux and macOS.
 Interfaces may still change before 1.0.0. Contributions follow GitFlow; see [CONTRIBUTING.md](CONTRIBUTING.md).

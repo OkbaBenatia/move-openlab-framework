@@ -3,7 +3,7 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
-## Unreleased
+## 0.3.2 — 2026-11-17
 
 ### Added
 - **One-command installation on Windows, Linux and macOS** (`install.ps1`, `install.sh`, release assets): from an
