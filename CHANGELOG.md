@@ -11,7 +11,8 @@ interfaces.
   Overpass response it was built from. Installing the demonstration stores it unchanged (every digest checked against
   the bundle; nothing downloaded) and attaches it to the demonstration's area, also an area added without it by
   0.3.0. A fresh installation can therefore edit the demonstration's participants, use *Randomize* and drag points on
-  the map. The demonstration bundle, its experiments, results and checksums are unchanged.
+  the map, and an imported sample scenario is rebuilt on that network and checked identical (it was only checked
+  consistent before). The demonstration bundle, its experiments, results and checksums are unchanged.
 
 ### Fixed
 - **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
