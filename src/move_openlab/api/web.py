@@ -375,7 +375,7 @@ SETUP_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-lo
 <form method="post" action="/api/setup/admin" autocomplete="off">{error}
 <div id="keybox"><label for="k">Setup key</label><input id="k" name="setup_key" autocomplete="off" spellcheck="false" aria-describedby="keyhint">
 <p id="keyhint" class="hint">Open this page with the MOVE OpenLab launcher or the command <b>move-openlab open</b>: the key is then filled in for you.</p></div>
-<label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9._-]{{1,31}}" required autofocus>
+<label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="2" maxlength="32" required autofocus>
 <label for="d">Your name</label><input id="d" name="display_name" autocomplete="name" minlength="2" maxlength="80" required>
 <label for="n">Password</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="strength">
 <div class="meter" aria-hidden="true"><span id="bar"></span></div><p id="strength" class="hint" role="status">At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).</p>

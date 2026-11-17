@@ -39,7 +39,7 @@ def _pack(root: Path) -> bytes:
     """An unpacked package as a ZIP archive, deterministically: sorted members, fixed timestamps."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(p for p in root.rglob("*") if p.is_file()):
+        for f in sorted((p for p in root.rglob("*") if p.is_file()), key=lambda p: p.relative_to(root).as_posix()):  # same order on every OS
             z.writestr(zipfile.ZipInfo(f.relative_to(root).as_posix(), date_time=ZIP_TIME), f.read_bytes())
     return buf.getvalue()
 
