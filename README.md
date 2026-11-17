@@ -97,10 +97,15 @@ Options, verification of the installer, updates and uninstalling: **[docs/INSTAL
 
 ## First launch — create your administrator
 
+<img align="right" width="300" src="docs/assets/screenshots/gallery/17-first-run-setup.jpg" alt="Welcome to MOVE OpenLab: the first-run page where the administrator chooses a username and a password, recorded on a Windows installation">
+
 The browser opens **Welcome to MOVE OpenLab**. Choose a username, your name and a password (a meter shows its
 strength), confirm it and select *Create administrator*: the Workspace opens. There is no default account or password,
 and nothing is written to a file or a log. The page only works with a one-time **setup key** that the launcher adds to
 the link and that only your user account can read; once the administrator exists, it is gone for good.
+
+<sub>Recorded by the `install` workflow on a GitHub-hosted Windows machine, right after the one-command installation.</sub>
+<br clear="right">
 
 ## Try a real example
 

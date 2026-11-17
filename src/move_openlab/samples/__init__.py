@@ -14,7 +14,7 @@ import zipfile
 from functools import lru_cache
 from pathlib import Path
 
-from ..bundles import ZIP_TIME
+from ..bundles import zip_member
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE / "montbeliard"
@@ -40,7 +40,7 @@ def _pack(root: Path) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted((p for p in root.rglob("*") if p.is_file()), key=lambda p: p.relative_to(root).as_posix()):  # same order on every OS
-            z.writestr(zipfile.ZipInfo(f.relative_to(root).as_posix(), date_time=ZIP_TIME), f.read_bytes())
+            z.writestr(zip_member(f.relative_to(root).as_posix()), f.read_bytes())
     return buf.getvalue()
 
 

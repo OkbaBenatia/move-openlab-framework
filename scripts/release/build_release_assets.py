@@ -85,7 +85,9 @@ def write_tar_gz(path: Path, prefix: str, files: list[tuple[str, Path]]) -> None
 def write_zip(path: Path, prefix: str, files: list[tuple[str, Path]]) -> None:
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for name, src in files:
-            z.writestr(zipfile.ZipInfo(f"{prefix}/{name}", date_time=(2023, 11, 14, 22, 13, 20)), src.read_bytes())
+            zi = zipfile.ZipInfo(f"{prefix}/{name}", date_time=(2023, 11, 14, 22, 13, 20))
+            zi.create_system = 3                          # same bytes whichever system builds it
+            z.writestr(zi, src.read_bytes())
 
 
 def render(template: Path, out: Path, values: dict[str, str]) -> None:

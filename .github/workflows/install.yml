@@ -212,15 +212,14 @@ jobs:
         shell: bash
         run: |
           me="$(echo "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')"; [ "$me" = macos ] && me=darwin
-          n=0
+          set --
           for b in reports/*/smoke/exported-*.zip reports/*/exported-*.zip; do
             [ -f "$b" ] || continue
             case "$b" in *exported-$me.zip) continue ;; esac
-            n=$((n + 1))
-            "$PY" scripts/e2e/install_smoke.py --config "$T/cross/move-openlab.json" --out "$T/cross-report/$n" \
-              --import-bundle "$b" --detached-ok
+            set -- "$@" --import-bundle "$b"
           done
-          test "$n" -ge 1
+          test "$#" -ge 2
+          "$PY" scripts/e2e/install_smoke.py --config "$T/cross/move-openlab.json" --out "$T/cross-report" "$@" --detached-ok
       - uses: actions/upload-artifact@v7
         if: always()
         with:

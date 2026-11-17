@@ -105,7 +105,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--import-bundle", help="bundle exported on another operating system: import and reproduce it")
+    ap.add_argument("--import-bundle", action="append", default=[], help="bundle exported on another operating system: "
+                    "import and reproduce it (repeatable)")
     ap.add_argument("--admin-credentials", help="administrator already created in the browser (first_run.mjs): sign in")
     ap.add_argument("--detached-ok", action="store_true", help="installed with --no-autostart: no registered service expected")
     args = ap.parse_args()
@@ -241,19 +242,20 @@ def main() -> int:
         assert rr["numerically_reproduced"], rr
         return f"bundle {len(blob)} bytes; imported by researcher2 (isolated workspace) and reproduced there"
 
-    if args.import_bundle:
-        @check("X2", "cross-platform: a bundle exported on another operating system is reproduced here")
-        def _():
-            blob = Path(args.import_bundle).read_bytes()
+    for k, bundle in enumerate(args.import_bundle, 1):
+        @check(f"X2.{k}", f"cross-platform: {Path(bundle).name}, exported on another operating system, is reproduced here")
+        def _(bundle=bundle):
+            blob = Path(bundle).read_bytes()
             rep = admin.upload("/api/import", "foreign.zip", blob)
             assert rep["ok"], rep
             c = admin.post(f"/api/campaigns/{rep['root_campaign_id']}/reproduce")
             job = admin.post(f"/api/campaigns/{c['campaign_id']}/execute")
             assert admin.wait_job(job["job_id"]) == "done"
             rr = admin.get(f"/api/campaigns/{c['campaign_id']}/reproducibility")
-            state["cross"] = rr
+            state.setdefault("cross", []).append(dict(bundle=Path(bundle).name, numerically_reproduced=rr["numerically_reproduced"],
+                                                      cells=rr.get("cells"), rule=rr.get("rule")))
             assert rr["numerically_reproduced"], json.dumps(rr)[:500]
-            return f"reproduced from {Path(args.import_bundle).name}; rule: {rr.get('rule') or rr.get('tolerance') or 'every validated metric equal'}"
+            return f"reproduced from {Path(bundle).name}; rule: {rr.get('rule') or rr.get('tolerance') or 'every validated metric equal'}"
 
     @check("C1", "CLI: method new + method check (sandbox: used on Linux with bubblewrap, refused elsewhere)")
     def _():
