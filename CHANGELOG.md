@@ -5,6 +5,12 @@ interfaces.
 
 ## Unreleased
 
+### Security
+- **Return path after signing in**: the sign-in page's script followed a `next` path such as `/\host` or
+  `/<tab>/host`, which browsers read as another site (open redirect after a genuine sign-in; reported during the CodeQL
+  review, not by CodeQL itself). The script now accepts only a path that resolves to this site and refuses
+  backslashes and control characters; the server-side check refuses the same paths.
+
 ### Fixed
 - **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
   reason. When the area has no stored road network the step says so and links to *Area & Data* (where the one-time
