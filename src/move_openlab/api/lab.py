@@ -1136,7 +1136,8 @@ def ml_evaluation(cid: str, method_id: str, request: Request, threshold: float |
         try:
             evs.append(_imported(entry, store.evaluation(cid, entry["sha256"], threshold)))
         except (BenchError, ML.EvidenceError, OSError) as e:    # a stored file that no longer verifies: said, not hidden
-            errors.append(dict(evidence_sha256=entry["sha256"], reason=f"Not available: {e}"))
+            why = f"the stored file could not be read ({type(e).__name__})" if isinstance(e, OSError) else e   # no server path
+            errors.append(dict(evidence_sha256=entry["sha256"], reason=f"Not available: {why}"))
     out = dict(base, can_import=True, evidence_errors=errors, adapter_error=adapter_error,
                withdrawn=sum(1 for e in index if e["method_id"] == method_id and e.get("withdrawn")))
     if not evs:
