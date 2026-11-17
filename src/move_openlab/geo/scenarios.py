@@ -36,7 +36,7 @@ from .network import RoadNetwork
 
 MAX_AGENTS = 200
 MAX_SNAP_M = 1500.0
-ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}\Z")
 DEFAULT_PARAMS = dict(max_detour_s=900, max_detour_ratio=0.5)
 
 
