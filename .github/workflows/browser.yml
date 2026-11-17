@@ -31,7 +31,7 @@ jobs:
         # the runner context is not available in jobs.<job_id>.env, so the path is set here for the later steps
         run: echo "MOVE_OPENLAB_DATA_DIR=$RUNNER_TEMP/openlab-data" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: actions/setup-node@v4
