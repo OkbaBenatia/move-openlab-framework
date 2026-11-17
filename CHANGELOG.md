@@ -14,6 +14,8 @@ interfaces.
 - **Workflow acceptance on a fresh installation** (`scripts/e2e/workflow_acceptance.mjs`): fixtures prepare the
   demonstration area's road network and a reproduction through the interface's own endpoints (nothing changes where
   they exist); editing the demonstration on an installation without its road network is reported as that limitation.
+- **Confidentiality gate**: lockfile integrity digests (random base64) are left out of the denylist screening, where a
+  short term could occur by chance; package names, URLs and every other line stay screened.
 
 ### Changed — dependencies
 - GitHub Actions `actions/checkout`, `actions/setup-python`, `actions/setup-node` v7; `vite` 8.3.8,

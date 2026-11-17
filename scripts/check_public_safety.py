@@ -48,6 +48,16 @@ def files() -> list[Path]:
     return [ROOT / f for f in out if f and (ROOT / f).is_file()]
 
 
+# lockfile integrity values are random base64 digests (sha1/sha512), not authored text: a short screening term can occur
+# in them by chance, so they are left out of the denylist screening only (secret patterns still see the whole line)
+LOCK_DIGEST = re.compile(r'("integrity"\s*:\s*")sha(?:1|256|384|512)-[A-Za-z0-9+/]+=*(")')
+
+
+def screened(rel: str, line: str) -> str:
+    """The text of one line that the denylist screening reads."""
+    return LOCK_DIGEST.sub(r"\1\2", line) if rel.endswith("package-lock.json") else line
+
+
 def norm(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
 
@@ -72,7 +82,7 @@ def scan(denylist_terms: list[str]) -> list[str]:
             continue                                    # binary assets (images) are only size-checked
         is_self = f.resolve() == me
         for n, line in enumerate(text.splitlines(), 1):
-            low = norm(line)
+            low = norm(screened(rel, line))
             if any(term in low for term in denylist_terms):
                 findings.append(f"{rel}:{n}: denylisted term")
             if is_self:
