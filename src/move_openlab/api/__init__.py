@@ -39,6 +39,9 @@ def create_app(settings: Settings | None = None, auth: Auth | None = None) -> Fa
                   redoc_url=None, openapi_url=None if settings.production else "/api/openapi.json")
     app.state.settings = settings
     app.state.auth = auth or Auth(settings)
+    from ..auth import setup as first_run
+    if first_run.needed(app.state.auth):              # no account yet: the setup key that authorises the first-run setup
+        first_run.ensure_key(settings.data_dir)
     app.state.installation = Installation(settings.data_dir, settings.plugin_dir, settings.installation_id,
                                           plugin_mode=settings.plugin_mode, protected=(settings.auth_db,))
     app.state.jobs = Jobs(settings.data_dir / "jobs")

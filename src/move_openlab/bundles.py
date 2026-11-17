@@ -75,6 +75,14 @@ MAX_MEMBERS = 5000
 MAX_MEMBER_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_BYTES = 256 * 1024 * 1024                 # sum of uncompressed members (decompression bombs)
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)                    # fixed member timestamps: identical content -> identical bundle
+
+
+def zip_member(name: str, date_time=ZIP_TIME) -> zipfile.ZipInfo:
+    """A ZIP entry whose bytes do not depend on the operating system: fixed time, and "made by" Unix (Python records
+    the creating system — 0 on Windows, 3 elsewhere — so the same files would otherwise give different archives)."""
+    z = zipfile.ZipInfo(name, date_time=date_time)
+    z.create_system = 3
+    return z
 EVIDENCE = "evidence/report.json"
 # Imported ML evaluation evidence of the exported experiments (optional section of a format 2 bundle).
 ML_DIR = "ml_evaluations/"
@@ -403,9 +411,9 @@ def export(ws, cid: str, geometry: bool = True, evidence: dict | None = None, ml
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for k, v in sorted(files.items()):
-            z.writestr(zipfile.ZipInfo(k, date_time=ZIP_TIME), v)
-        z.writestr(zipfile.ZipInfo("manifest.json", date_time=ZIP_TIME), mbytes)
-        z.writestr(zipfile.ZipInfo("manifest.sha256", date_time=ZIP_TIME), sha256_bytes(mbytes))
+            z.writestr(zip_member(k), v)
+        z.writestr(zip_member("manifest.json"), mbytes)
+        z.writestr(zip_member("manifest.sha256"), sha256_bytes(mbytes))
     data = buf.getvalue()
     return data, dict(bundle_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes), bytes=len(data),
                       campaigns=[c["campaign_id"] for c in chain], instances=len(hashes),

@@ -1,0 +1,244 @@
+name: install
+
+# The documented one-command installation, run for real on GitHub-hosted Linux, macOS and Windows runners:
+# release assets built from this commit → installer in an empty folder (name with spaces) → background service →
+# first-run setup in a real browser → end-to-end checks over HTTP → update in place → uninstall (data kept).
+# Then every system reproduces the experiments exported on the two others, and the test suite runs on macOS and
+# Windows. Nothing of the runners' data is uploaded: only reports, screenshots and the exported public bundles.
+
+on:
+  push:
+    branches: [main, develop, "release/**", "hotfix/**"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: npm --prefix frontend ci && npm --prefix frontend run build
+      - run: python scripts/release/build_release_assets.py --out dist-release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          path: dist-release/
+          retention-days: 7
+
+  install:
+    needs: assets
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Paths (the runner context is not available in job-level env)
+        shell: bash
+        run: |
+          T="$RUNNER_TEMP"; [ "$RUNNER_OS" = Windows ] && T="$(cygpath -u "$RUNNER_TEMP")"
+          echo "T=$T" >> "$GITHUB_ENV"
+          echo "HOME_DIR=$T/MOVE OpenLab test" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets
+          path: dist-release
+      - name: Serve the release assets locally (the installer downloads and verifies them as from GitHub)
+        shell: bash
+        run: |
+          nohup python -m http.server 8099 --bind 127.0.0.1 --directory dist-release > http.log 2>&1 &
+          sleep 2
+          echo "MOVE_OPENLAB_RELEASE_URL=http://127.0.0.1:8099" >> "$GITHUB_ENV"
+      - name: User service manager (Linux runner only)
+        # a desktop session has a systemd --user manager; the CI runner user gets one through lingering
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          for i in $(seq 1 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - name: A tampered archive is refused (nothing installed)
+        shell: bash
+        run: |
+          D="$T/tampered"; mkdir -p "$D/folder"; cd "$D/folder"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.zip ../bad.zip; printf 'x' >> ../bad.zip
+            cp "$GITHUB_WORKSPACE/dist-release/install.ps1" .
+            if powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser -Archive ../bad.zip > ../out.txt 2>&1; then cat ../out.txt; exit 1; fi
+          else
+            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.tar.gz ../bad.tar.gz; printf 'x' >> ../bad.tar.gz
+            cp "$GITHUB_WORKSPACE/dist-release/install.sh" .
+            if sh install.sh --yes --no-browser --archive ../bad.tar.gz > ../out.txt 2>&1; then cat ../out.txt; exit 1; fi
+          fi
+          cat ../out.txt
+          grep -q "does not match this installer" ../out.txt
+          test ! -e app && test ! -e venv && echo "refused on its checksum, nothing installed"
+      - name: Install (the documented command, from an empty folder)
+        shell: bash
+        run: |
+          mkdir -p "$HOME_DIR"; cd "$HOME_DIR"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "$GITHUB_WORKSPACE/dist-release/install.ps1" .
+            powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser
+          else
+            cp "$GITHUB_WORKSPACE/dist-release/install.sh" .
+            sh install.sh --yes --no-browser
+          fi
+      - name: Still running after the installer's shell is gone
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then PY="$HOME_DIR/venv/Scripts/python.exe"; else PY="$HOME_DIR/venv/bin/python"; fi
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          "$PY" -m move_openlab.cli service status --config "$HOME_DIR/move-openlab.json"
+      - name: First run in a real browser (Welcome to MOVE OpenLab)
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) export CHROME="$(command -v google-chrome || command -v chromium)" ;;
+            macOS) export CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;;
+            Windows) export CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe" ;;
+          esac
+          node scripts/e2e/first_run.mjs --python "$PY" --config "$HOME_DIR/move-openlab.json" --out "$T/report/first-run"
+      - name: End-to-end checks of the installed application
+        shell: bash
+        run: |
+          "$PY" scripts/e2e/install_smoke.py --config "$HOME_DIR/move-openlab.json" --out "$T/report/smoke" \
+            --admin-credentials "$T/report/first-run/admin.json"
+      - name: "Update in place (the installer again, same folder): accounts and data kept"
+        shell: bash
+        run: |
+          cd "$HOME_DIR"
+          if [ "$RUNNER_OS" = Windows ]; then powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser
+          else sh install.sh --yes --no-browser; fi
+          "$PY" - "$HOME_DIR/move-openlab.json" "$T/report/first-run/admin.json" <<'EOF'
+          import http.cookiejar, json, sys, urllib.request
+          cfg, cred = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+          op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+          base = f"http://127.0.0.1:{cfg['port']}"
+          r = op.open(urllib.request.Request(base + "/api/auth/login", json.dumps(cred).encode(), {"Content-Type": "application/json"}))
+          exps = json.load(op.open(base + "/api/lab/experiments"))["experiments"]
+          assert r.status == 200 and len(exps) >= 4, len(exps)
+          print(f"after the update: signed in as {cred['username']}, {len(exps)} experiments kept")
+          EOF
+      - name: Uninstall (service and launcher removed, data kept)
+        shell: bash
+        run: |
+          "$PY" -m move_openlab.cli service uninstall --config "$HOME_DIR/move-openlab.json"
+          DATA="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['data_dir'])" "$HOME_DIR/move-openlab.json")"
+          test -f "$DATA/auth.sqlite3" && echo "data kept in $DATA"
+          if "$PY" -m move_openlab.cli service status --config "$HOME_DIR/move-openlab.json"; then exit 1; fi
+          cp "$T/report/smoke/"exported-*.zip "$RUNNER_TEMP/" 2>/dev/null || true
+      - name: Service diagnostics (on failure)
+        if: failure()
+        shell: bash
+        run: |
+          cat "$HOME_DIR/install.log" 2>/dev/null | tail -40 || true
+          [ -n "${PY:-}" ] && "$PY" -m move_openlab.cli service logs --config "$HOME_DIR/move-openlab.json" || true
+          [ "$RUNNER_OS" = Linux ] && { systemctl --user status move-openlab.service --no-pager || true; journalctl --user -u move-openlab.service -n 60 --no-pager || true; cat ~/.config/systemd/user/move-openlab.service || true; }
+          [ "$RUNNER_OS" = macOS ] && { launchctl print "gui/$(id -u)/io.github.okbabenatia.move-openlab" | head -40 || true; }
+          true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: install-report-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/report/**/*.json
+            ${{ runner.temp }}/report/**/*.png
+            ${{ runner.temp }}/report/**/exported-*.zip
+          retention-days: 14
+
+  cross-platform:
+    # each system reproduces the experiment exported by the other two (numerical comparison rule recorded)
+    needs: install
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets
+          path: dist-release
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: install-report-*
+          path: reports
+      - name: Install without a background service (this job only reproduces)
+        shell: bash
+        run: |
+          T="$RUNNER_TEMP"; [ "$RUNNER_OS" = Windows ] && T="$(cygpath -u "$RUNNER_TEMP")"
+          echo "T=$T" >> "$GITHUB_ENV"
+          H="$T/cross"; mkdir -p "$H"; cd "$H"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "$GITHUB_WORKSPACE/dist-release/install.ps1" .
+            powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser -NoLauncher -NoAutostart -Archive "$GITHUB_WORKSPACE/dist-release/$(cd "$GITHUB_WORKSPACE/dist-release" && ls move-openlab-*.zip)"
+            echo "PY=$H/venv/Scripts/python.exe" >> "$GITHUB_ENV"
+          else
+            cp "$GITHUB_WORKSPACE/dist-release/install.sh" .
+            sh install.sh --yes --no-browser --no-launcher --no-autostart --archive "$GITHUB_WORKSPACE/dist-release/$(cd "$GITHUB_WORKSPACE/dist-release" && ls move-openlab-*.tar.gz)"
+            echo "PY=$H/venv/bin/python" >> "$GITHUB_ENV"
+          fi
+      - name: Reproduce the experiments exported on the other systems
+        shell: bash
+        run: |
+          me="$(echo "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')"; [ "$me" = macos ] && me=darwin
+          set --
+          for b in reports/*/smoke/exported-*.zip reports/*/exported-*.zip; do
+            [ -f "$b" ] || continue
+            case "$b" in *exported-$me.zip) continue ;; esac
+            set -- "$@" --import-bundle "$b"
+          done
+          test "$#" -ge 2
+          "$PY" scripts/e2e/install_smoke.py --config "$T/cross/move-openlab.json" --out "$T/cross-report" "$@" --detached-ok
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cross-report-${{ matrix.os }}
+          path: ${{ runner.temp }}/cross-report/**/install-smoke.json
+          retention-days: 14
+
+  tests:
+    # the Python test suite on macOS and Windows (Linux runs it in ci.yml, with the plug-in sandbox required)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q -rs

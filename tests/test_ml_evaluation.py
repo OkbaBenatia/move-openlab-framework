@@ -512,8 +512,10 @@ def test_import_evidence_then_read_the_evaluation(lab):
     assert all(set(p) == {"threshold", "precision", "recall", "f1", "kept_share"} for p in ev["sweep"])
     # stored content-addressed in an owner-only file; the download is the same bytes
     f = lab.settings.data_dir / "workspaces" / "root" / "ml_evaluations" / lab.cid / f"{sha}.json"
-    assert f.read_bytes() == raw and stat.S_IMODE(f.stat().st_mode) == 0o600
-    assert stat.S_IMODE(f.parent.stat().st_mode) == 0o700 and stat.S_IMODE((f.parent / "index.json").stat().st_mode) == 0o600
+    assert f.read_bytes() == raw
+    if os.name == "posix":                                   # owner-only modes (Windows: the profile's access-control list)
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600
+        assert stat.S_IMODE(f.parent.stat().st_mode) == 0o700 and stat.S_IMODE((f.parent / "index.json").stat().st_mode) == 0o600
     dl = lab.root.get(f"{lab.url}/evidence/{sha}")
     assert dl.status_code == 200 and dl.content == raw and dl.headers["x-evidence-sha256"] == sha
     assert "attachment" in dl.headers["content-disposition"]
@@ -692,6 +694,7 @@ def test_a_modified_stored_file_is_reported_not_evaluated(lab):
     assert len(evaluations(lab.root, lab.url, sha)) == 1
 
 
+@pytest.mark.skipif(os.name != "posix", reason="chmod cannot make a file unreadable on Windows")
 def test_an_unreadable_stored_file_is_reported_without_the_server_path(lab):
     sha = upload(lab.root, lab.url, tagged("unreadable")).json()["evidence_sha256"]
     f = lab.settings.data_dir / "workspaces" / "root" / "ml_evaluations" / lab.cid / f"{sha}.json"

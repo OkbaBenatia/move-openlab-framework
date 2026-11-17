@@ -6,6 +6,8 @@ import json
 import time
 from pathlib import Path
 
+import sys
+
 import pytest
 
 import move_openlab
@@ -43,6 +45,9 @@ def test_solver_method_and_end_to_end_times_are_separate(ref):
         r = run_once(RIDE, ref, inst, dict(CFG, time_limit_s=60.0), timeout_s=60)
         assert r["accepted"]
         assert 0 <= r["solver_time_s"] <= r["method_time_s"] <= r["total_time_s"]
+        if sys.platform == "win32":                    # CPU time and peak memory come from POSIX getrusage()
+            assert "resources" not in r
+            continue
         res = r["resources"]
         assert res["cpu_user_s"] + res["cpu_system_s"] > 0 and res["max_rss_mb"] > 0
 
@@ -88,6 +93,9 @@ def solve(instance, config):
     assert not r["accepted"] and r["error"] == "timeout after 3.0 s" and r["status_declared"] == "ERROR"
     d = r["diagnostics"]
     procs = d["timeout_snapshot"]
-    assert procs and procs[0]["state"] in "SRD" and procs[0]["cpu_user_s"] < 2.5       # sleeping, not computing
+    if sys.platform.startswith("linux"):                # the process snapshot reads /proc (Linux); elsewhere it is empty
+        assert procs and procs[0]["state"] in "SRD" and procs[0]["cpu_user_s"] < 2.5   # sleeping, not computing
+    else:
+        assert procs == []
     assert "solver log line before the stall" in d["stderr_tail"]
     assert "Timeout" in d["stderr_tail"] and "in solve" in d["stderr_tail"]            # faulthandler traceback

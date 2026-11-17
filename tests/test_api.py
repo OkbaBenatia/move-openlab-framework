@@ -35,7 +35,7 @@ def login(c, user):
 
 
 def wait(c, job):
-    for _ in range(600):
+    for _ in range(3000):                       # up to 5 minutes: shared CI machines (macOS) can be several times slower
         j = c.get(f"/api/jobs/{job['job_id']}").json()
         if j["state"] != "running":
             assert j["state"] == "done", j

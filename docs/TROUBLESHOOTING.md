@@ -26,8 +26,10 @@ Installation steps are in [INSTALL.md](INSTALL.md).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| "Sign-in is not configured on this server." | no account exists yet, or production mode has no signing key | create the first administrator ([INSTALL.md](INSTALL.md#6-first-administrator)); set `SESSION_SECRET` in production |
-| I do not know the first password | `start-local.sh` never prints it | read `<data>/dev-credentials.json` (with `start-local.sh`: `.openlab-data/dev/dev-credentials.json`) |
+| Every page leads to *Welcome to MOVE OpenLab* | no account exists yet (first run) | create the administrator there; the page is opened with its setup key by the launcher, `move-openlab open` or `start-local.sh` ([INSTALL.md](INSTALL.md#first-launch-create-your-administrator)) |
+| "the setup link is missing or invalid" | the page was opened without its key, or from another computer | open MOVE OpenLab with its launcher or `move-openlab open` on the computer where it runs; on a computer without a browser: `move-openlab setup-link` |
+| "Sign-in is not configured on this server." | production mode has no signing key | set `SESSION_SECRET` (at least 32 characters) |
+| I do not know a password | no password is ever printed or stored in clear | an operator resets it on the host: `move-openlab users reset-password <username>` (temporary, changed at the next sign-in) |
 | "Invalid username or password." | — | usernames are lowercase; an operator resets a password with `move-openlab users reset-password <username>` |
 | "Too many attempts. Try again later." | failed sign-ins are throttled per username and per client | wait, then try again |
 | Every page sends me to *Change password* | the password is temporary | choose a personal one: 12 characters or more, three of the four character classes |

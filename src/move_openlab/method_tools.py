@@ -23,6 +23,7 @@ from pathlib import Path
 from string import Template
 
 from . import registry
+from .bundles import zip_member
 from .analysis.compare import compare
 from .methods import KINDS, ContractError, check_metadata
 from .plugins import PLUGIN_FILE, read_plugin_metadata
@@ -97,7 +98,7 @@ def template_zip(name: str, problem_id: str, author: str = "", display_name: str
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for fn in TEMPLATE_FILES:
-                zi = zipfile.ZipInfo(f"{name}/{fn}", date_time=(2026, 1, 1, 0, 0, 0))
+                zi = zip_member(f"{name}/{fn}", date_time=(2026, 1, 1, 0, 0, 0))
                 zi.external_attr, zi.compress_type = 0o100644 << 16, zipfile.ZIP_DEFLATED
                 z.writestr(zi, (d / fn).read_bytes())
         return buf.getvalue()

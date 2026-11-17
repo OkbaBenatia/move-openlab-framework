@@ -4,6 +4,15 @@ Screenshots of the public application, taken from a local run with synthetic acc
 demonstration. Map tiles © OpenStreetMap contributors. Details may differ from the current interface. The sources are
 in [`assets/screenshots/gallery/`](assets/screenshots/gallery/).
 
+
+## Installation and first run
+
+**Welcome to MOVE OpenLab.** The first-run page after the one-command installation: the administrator chooses a
+username and a password (strength meter, confirmation); recorded by the `install` workflow on a GitHub-hosted
+Windows machine.
+
+![The first-run page, where the administrator chooses a username and a password](assets/screenshots/gallery/17-first-run-setup.jpg)
+
 ## Workspace and scenario authoring
 
 **The Workspace.** Experiment provenance on the left, participants and validated shared rides on the road network,

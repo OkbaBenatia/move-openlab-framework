@@ -126,6 +126,11 @@ def test_sandbox_blocks_secrets_private_data_and_network(victim, fresh_sandbox_c
     assert len(d["visible_pids"]) <= 4                              # private PID namespace
 
 
+LINUX_ONLY = pytest.mark.skipif(not sys.platform.startswith("linux"),
+                                reason="Linux-only mechanism (/proc probe, prctl, bubblewrap): plug-ins are refused on other systems")
+
+
+@LINUX_ONLY
 def test_trusted_process_control_is_not_a_sandbox(victim, tmp_path):
     """Control experiment: the same probe without the sandbox reproduces the reviewed failures. This proves the probe
     is effective and documents why trusted-process mode is administrator-only and refused in production."""
@@ -136,6 +141,7 @@ def test_trusted_process_control_is_not_a_sandbox(victim, tmp_path):
     assert d["local_server"] == "connected"
 
 
+@LINUX_ONLY
 def test_server_hardening_hides_its_environment_from_trusted_plugins(victim, tmp_path):
     """`move-openlab serve` marks the server non-dumpable: even a trusted-process plugin can no longer read the
     server's environment (it can still read files: trusted-process remains not a sandbox)."""
@@ -185,6 +191,7 @@ def test_registered_plugin_is_refused_when_the_sandbox_breaks(installations, pro
     assert w.get(c["campaign_id"])["runs"] == [] and w.get(c["campaign_id"])["status"] == "draft"
 
 
+@LINUX_ONLY
 def test_protected_path_inside_a_mounted_root_is_refused(fresh_sandbox_cache):
     import move_openlab
     spec = sandbox.SandboxSpec.of(Path(move_openlab.__file__).resolve().parent / "data-placed-here")

@@ -16,9 +16,10 @@ Starts the complete application (API and built interface, one process) at http:/
 interface only. It creates `.venv` and installs the package when they are missing or `pyproject.toml` changed, runs
 `npm ci` and rebuilds the interface only when its sources are newer than `frontend/dist`, uses the data directory
 `.openlab-data/dev` as it is (override with `MOVE_OPENLAB_DATA_DIR`), enables plug-ins in the verified sandbox
-(`MOVE_OPENLAB_PLUGIN_MODE=sandbox`, the approved directory `plugins/`) and, when the account store is empty, creates
-an administrator `admin` with a temporary password stored in `<data dir>/dev-credentials.json` (mode 0600, never
-printed). It refuses to start when the port is taken by another program, reports the address when MOVE OpenLab
+(`MOVE_OPENLAB_PLUGIN_MODE=sandbox`, the approved directory `plugins/`) and, when the account store is empty, opens
+the first-run page (*Welcome to MOVE OpenLab*) where you create the administrator; its link, with the setup key, is
+shown in that terminal only. Test accounts for the browser suites: `scripts/dev_provision.py` (passwords in
+`<data dir>/dev-credentials.json`, mode 0600, never printed). It refuses to start when the port is taken by another program, reports the address when MOVE OpenLab
 already runs there, holds a lock so that two terminals cannot start two servers on one data directory, and refuses
 `MOVE_OPENLAB_ENV=production`. Ctrl+C stops the server cleanly; jobs still running are recorded as interrupted.
 `MOVE_OPENLAB_PORT` selects another port; `--check` prepares and checks without starting.

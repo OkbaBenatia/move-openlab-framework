@@ -40,7 +40,7 @@ import zipfile
 import zlib
 
 from . import __version__
-from .bundles import HEX64, MAX_MEMBER_BYTES, MAX_TOTAL_BYTES, ZIP_TIME, _network_ref
+from .bundles import HEX64, MAX_MEMBER_BYTES, MAX_TOTAL_BYTES, _network_ref, zip_member
 from .geo import geometry as G
 from .hashing import canonical, instance_hash, sha256_bytes
 from .store import MAX_BUNDLE_BYTES, BenchError, IntegrityError, NotFound, _lock, now
@@ -220,7 +220,7 @@ def export(ws, h: str, record: dict | None = None, created_at: str | None = None
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for k, v in sorted(dict(files, **{"manifest.json": mbytes, "manifest.sha256": sha256_bytes(mbytes).encode()}).items()):
-            z.writestr(zipfile.ZipInfo(k, date_time=ZIP_TIME), v)
+            z.writestr(zip_member(k), v)
     data = buf.getvalue()
     return data, dict(package_sha256=sha256_bytes(data), manifest_sha256=sha256_bytes(mbytes), bytes=len(data),
                       instance_hash=h, composition=origin, geometry=GEOMETRY in files, filename=filename(inst))
