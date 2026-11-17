@@ -113,7 +113,9 @@ def main() -> int:
     values = dict(VERSION=v, ARCHIVE_SHA256=sha256(tgz))
     render(ROOT / "scripts" / "install" / "install.sh", out / "install.sh", values)
     render(ROOT / "scripts" / "install" / "install.ps1", out / "install.ps1", dict(VERSION=v, ARCHIVE_SHA256=sha256(zp)))
-    subprocess.run([sys.executable, str(ROOT / "scripts" / "pack_examples.py")], check=True, cwd=ROOT)
+    import os
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src") + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "pack_examples.py")], check=True, cwd=ROOT, env=env)
     for f in ("sample_scenario.zip", "sample_experiment.zip"):
         shutil.copy2(ROOT / "examples" / f, out / f)
     names = [tgz.name, zp.name, "install.sh", "install.ps1", "sample_scenario.zip", "sample_experiment.zip"]
