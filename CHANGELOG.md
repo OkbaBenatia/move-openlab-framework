@@ -10,6 +10,8 @@ interfaces.
   `/<tab>/host`, which browsers read as another site (open redirect after a genuine sign-in; reported during the CodeQL
   review, not by CodeQL itself). The script now accepts only a path that resolves to this site and refuses
   backslashes and control characters; the server-side check refuses the same paths.
+- **Evaluation evidence that cannot be read** is reported by error type only: the message no longer carries the
+  server's file path.
 
 ### Fixed
 - **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
