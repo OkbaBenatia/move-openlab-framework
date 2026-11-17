@@ -4,9 +4,13 @@ from __future__ import annotations
 import os
 import stat
 
+import pytest
+
 from move_openlab import privatefiles
 from move_openlab.api import create_app
 from move_openlab.settings import Settings
+
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits; on Windows the data directory is protected by the user profile's access-control list")
 
 
 def mode(p) -> int:

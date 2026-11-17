@@ -20,7 +20,7 @@ import zipfile
 from functools import lru_cache
 from pathlib import Path
 
-from ..bundles import ZIP_TIME
+from ..bundles import zip_member
 
 ROOT = Path(__file__).resolve().parent / "bundle"
 NETWORK = Path(__file__).resolve().parent / "network"
@@ -41,8 +41,8 @@ def bundle_bytes() -> bytes:
     """The demo as a bundle archive, rebuilt deterministically from the unpacked members."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(p for p in ROOT.rglob("*") if p.is_file()):
-            z.writestr(zipfile.ZipInfo(f.relative_to(ROOT).as_posix(), date_time=ZIP_TIME), f.read_bytes())
+        for f in sorted((p for p in ROOT.rglob("*") if p.is_file()), key=lambda p: p.relative_to(ROOT).as_posix()):  # same order on every OS
+            z.writestr(zip_member(f.relative_to(ROOT).as_posix()), f.read_bytes())
     return buf.getvalue()
 
 

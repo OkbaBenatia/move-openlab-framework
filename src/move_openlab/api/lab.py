@@ -47,7 +47,7 @@ from .. import scenario_packages
 router = APIRouter(prefix="/api/lab")
 PREFS = "preferences.json"
 _prefs_lock = threading.Lock()                # preference files are read-modify-written
-CID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+CID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 CATEGORY = {"reproduction": "Reproduced", "variant": "Edited", "extended": "Edited", "threshold-study": "Edited"}
 
 

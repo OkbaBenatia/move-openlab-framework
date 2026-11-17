@@ -160,6 +160,19 @@ class UserStore:
                              created_by, _norm(supervisor) if supervisor else None))
             return cur.rowcount == 1
 
+    def create_first(self, username: str, display_name: str, password_hash: str, created_by: str) -> bool:
+        """Create the first account, an administrator, only if the store is still empty — one transaction holding the
+        write lock (``BEGIN IMMEDIATE``), so two concurrent first-run requests (threads or processes) cannot both win."""
+        now = time.time()
+        with self._lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            if int(c.execute("SELECT COUNT(*) FROM users").fetchone()[0]):
+                return False
+            c.execute("INSERT INTO users (username, display_name, password_hash, role, active, must_change_password, "
+                      "session_version, created_at, updated_at, created_by, supervisor) VALUES (?, ?, ?, 'admin', 1, 0, 1, ?, ?, ?, NULL)",
+                      (_norm(username), display_name, password_hash, now, now, created_by))
+            return True
+
     def set_supervision(self, username: str, can_supervise: bool) -> None:
         with self._lock, self._conn() as c:
             c.execute("UPDATE users SET can_supervise = ?, updated_at = ? WHERE username = ?",

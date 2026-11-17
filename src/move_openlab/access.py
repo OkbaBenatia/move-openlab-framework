@@ -21,7 +21,7 @@ from pathlib import Path
 from .problem import Problem
 
 GRANTS = "problem-grants.json"
-USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _lock = threading.Lock()
 
 
@@ -58,7 +58,7 @@ class Access:
             else:
                 cur.pop(problem_id, None)
             tmp = self.file.with_name(self.file.name + ".tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            fd = os.open(tmp, os.O_WRONLY | getattr(os, "O_BINARY", 0) | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as f:
                 json.dump(cur, f, indent=1, sort_keys=True)
             os.replace(tmp, self.file)

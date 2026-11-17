@@ -4,6 +4,10 @@ Such files are created with mode 0600 from the start — never briefly readable 
 umask — and an existing file whose mode is wider is tightened (only the group and other bits are removed; the content
 is never touched). SQLite creates its journal and WAL files with the database file's permissions, so a 0600 database
 keeps its side files private too.
+
+Windows has no POSIX permission bits: there the data directory lives in the user's own profile
+(``%LOCALAPPDATA%``), whose access-control list already limits it to that account (and administrators); the
+functions below then create and write files the same way and leave permissions to that inherited ACL.
 """
 from __future__ import annotations
 
@@ -13,10 +17,19 @@ from pathlib import Path
 
 PRIVATE = 0o600
 PRIVATE_UMASK = 0o077          # files and directories created by the server: owner only (0600 / 0700)
+POSIX = os.name == "posix"
+BINARY = getattr(os, "O_BINARY", 0)          # Windows: os.open is text mode by default and would write "\r\n" for "\n"
+
+
+def _fd_private(fd: int) -> None:
+    if POSIX:
+        os.fchmod(fd, PRIVATE)                       # exact mode, independent of the umask
 
 
 def tighten(path: str | os.PathLike) -> bool:
     """Remove group and other permissions from an existing file. True when the mode changed."""
+    if not POSIX:
+        return False
     try:
         mode = stat.S_IMODE(os.stat(path).st_mode)
     except FileNotFoundError:
@@ -32,12 +45,12 @@ def ensure(path: str | os.PathLike) -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE)
+        fd = os.open(p, os.O_WRONLY | BINARY | os.O_CREAT | os.O_EXCL, PRIVATE)
     except FileExistsError:
         tighten(p)
         return p
     try:
-        os.fchmod(fd, PRIVATE)                       # exact mode, independent of the umask
+        _fd_private(fd)
     finally:
         os.close(fd)
     return p
@@ -47,10 +60,10 @@ def append(path: str | os.PathLike, text: str) -> None:
     """Append to an owner-only file, creating it with mode 0600 (an existing wider file is tightened first)."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, PRIVATE)
+    fd = os.open(p, os.O_WRONLY | BINARY | os.O_APPEND | os.O_CREAT, PRIVATE)
     try:
-        if stat.S_IMODE(os.fstat(fd).st_mode) != PRIVATE:
-            os.fchmod(fd, PRIVATE)
+        if POSIX and stat.S_IMODE(os.fstat(fd).st_mode) != PRIVATE:
+            _fd_private(fd)
         os.write(fd, text.encode())
     finally:
         os.close(fd)
@@ -61,9 +74,9 @@ def write(path: str | os.PathLike, data: str | bytes) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f".{p.name}.tmp{os.getpid()}")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE)
+    fd = os.open(tmp, os.O_WRONLY | BINARY | os.O_CREAT | os.O_TRUNC, PRIVATE)
     try:
-        os.fchmod(fd, PRIVATE)
+        _fd_private(fd)
         os.write(fd, data.encode() if isinstance(data, str) else data)
     finally:
         os.close(fd)
@@ -76,6 +89,8 @@ def secure_tree(root: str | os.PathLike) -> int:
     Symbolic links are never followed or changed; owner bits (including executable bits) are kept as they are.
     """
     changed = 0
+    if not POSIX:
+        return 0
     root = os.fspath(root)
     if not os.path.isdir(root) or os.path.islink(root):
         return 0

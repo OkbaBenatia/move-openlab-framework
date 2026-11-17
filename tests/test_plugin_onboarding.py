@@ -232,8 +232,9 @@ def test_upload_is_owner_only_in_the_uploaders_workspace_and_idempotent(inst):
     assert sorted(os.listdir(d)) == ["README.md", "plugin.py", "test_plugin.py", "upload.json"]
     assert (d / "plugin.py").read_bytes() == meta_src().encode()
     assert rec["code_sha256"] == P.code_sha256(d / "plugin.py") and len(rec["upload_sha256"]) == 64
-    assert stat.S_IMODE(os.stat(d).st_mode) & 0o077 == 0
-    assert all(stat.S_IMODE(os.stat(d / f).st_mode) == 0o600 for f in os.listdir(d))
+    if os.name == "posix":                                   # owner-only modes (Windows: the profile's access-control list)
+        assert stat.S_IMODE(os.stat(d).st_mode) & 0o077 == 0
+        assert all(stat.S_IMODE(os.stat(d / f).st_mode) == 0o600 for f in os.listdir(d))
     assert not (inst.plugin_dir / "uploaded_greedy").exists()                  # never the approved folder
     again = w.upload_plugin(p, data)
     assert again["unchanged"] and again["code_sha256"] == rec["code_sha256"]

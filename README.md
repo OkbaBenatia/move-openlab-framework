@@ -6,42 +6,46 @@
 
 <p align="center">
   <b>A Reproducible Experimentation Framework for Sustainable Mobility Optimization</b><br>
-  Conceived, designed, developed and implemented by <b>Dr. Okba BEN ATIA</b><br>
+  <b>Conceived, designed, developed and implemented by Dr. Okba BEN ATIA.</b><br>
   <a href="https://www.linkedin.com/in/benatiaokba/">LinkedIn</a> · <a href="https://scholar.google.com/citations?user=n5zSD7QAAAAJ&amp;hl=en">Google Scholar</a> · <a href="https://github.com/OkbaBenatia">GitHub</a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue"></a>
-  <img alt="Python 3.11 | 3.12" src="https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB">
-  <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-555">
-  <img alt="Status: development build 0.3.1" src="https://img.shields.io/badge/status-development%20build%200.3.1-orange">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
+  <img alt="Platforms: Windows, Linux, macOS" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-555">
+  <img alt="Status: development build 0.3.2" src="https://img.shields.io/badge/status-development%20build%200.3.2-orange">
 </p>
 
 <p align="center">
-  <a href="#installation-and-quick-start">Quick Start</a> ·
-  <a href="#graphical-interface-gui">GUI</a> ·
-  <a href="#command-line-interface-cli">CLI</a> ·
-  <a href="#key-features">Features</a> ·
-  <a href="#public-demonstration">Public Demo</a> ·
-  <a href="#architecture-and-adapters">Adapters and Plug-ins</a> ·
-  <a href="#compare-methods-and-experiments">Scientific Comparison</a> ·
+  <a href="#install-move-openlab--windows--linux--macos">Install</a> ·
+  <a href="#first-launch--create-your-administrator">First launch</a> ·
+  <a href="#try-a-real-example">Try an example</a> ·
+  <a href="#main-scientific-features">Features</a> ·
+  <a href="#gui-and-cli">GUI and CLI</a> ·
   <a href="#import-export-and-reproducibility">Reproducibility</a> ·
-  <a href="#documentation">Documentation</a> ·
-  <a href="#citation">Citation</a>
+  <a href="#detailed-documentation">Documentation</a> ·
+  <a href="#citation-and-licence">Citation</a>
 </p>
+
+![The MOVE OpenLab Workspace with the public Montbéliard demonstration: participants, shared rides on the road network, validated results and CO₂](docs/assets/screenshots/gallery/01-workspace.jpg)
+
+<sub>The Workspace with the public Montbéliard demonstration. Map tiles © OpenStreetMap contributors. Every screenshot
+in this repository comes from a run of the public application with synthetic accounts; details may differ from the
+current interface.</sub>
+
+## Introduction video — coming soon
+
+A short introduction video will be published here.
+
+<!-- VIDEO: reserved for the introduction video of the released version, to be supplied by the maintainer. -->
+
+## What MOVE OpenLab is
 
 MOVE OpenLab turns an optimization study on mobility into a **complete, checkable and shareable experiment**. Prepare
 a scenario on a real road network, run built-in or your own methods, have **every solution re-checked by an
 independent validator**, compare methods and experiments only where the comparison is scientifically meaningful, and
 hand the whole experiment to a colleague who can **verify, reproduce and extend it** on their own installation.
-
-![The MOVE OpenLab Workspace with the public Montbéliard demonstration: participants, shared rides on the road network, validated results and CO₂](docs/assets/screenshots/gallery/01-workspace.jpg)
-
-<sub>The Workspace with the public Montbéliard demonstration. Map tiles © OpenStreetMap contributors. Every screenshot
-in this repository comes from a local run of the public application with synthetic accounts; details may differ from
-the current interface.</sub>
-
-## Why MOVE OpenLab?
 
 Optimization results in mobility research are hard to check and harder to reproduce: scenarios are rebuilt by hand,
 feasibility is taken from the method's own report, and two tables are compared although they were produced under
@@ -71,7 +75,62 @@ Data → Scenario → Method → Solver → Validation → Metrics → Visualiza
 10. **GUI and CLI on the same core** — point-and-click for studies and demonstrations, commands for method
     development and automation.
 
-## Key features
+## Install MOVE OpenLab — Windows | Linux | macOS
+
+**Create a folder → open a terminal in it → paste one command → the browser opens → create your administrator.**
+
+| System | Command (paste it in an empty folder) |
+|---|---|
+| **Windows 10 / 11** (PowerShell) | `irm https://github.com/OkbaBenatia/move-openlab-framework/releases/download/v0.3.2/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1` |
+| **Linux** (Ubuntu 22.04+) | `curl -fsSL https://github.com/OkbaBenatia/move-openlab-framework/releases/download/v0.3.2/install.sh -o install.sh && sh install.sh` |
+| **macOS 12+** (Apple silicon or Intel) | `curl -fsSL https://github.com/OkbaBenatia/move-openlab-framework/releases/download/v0.3.2/install.sh -o install.sh && sh install.sh` |
+
+The installer checks the system, finds Python 3.11+ (and asks before installing it), downloads the application
+archive of the same release and refuses it unless its SHA-256 matches the value built into the installer, installs
+hash-checked packages into its own environment in your folder, and registers MOVE OpenLab as a background application
+of your user account. No administrator rights, no Node.js, nothing exposed beyond this computer (`127.0.0.1`). Every
+step is run for real on GitHub-hosted Windows, Linux and macOS machines on each change (`install` workflow).
+Options, verification of the installer, updates and uninstalling: **[docs/INSTALL.md](docs/INSTALL.md)**.
+
+<sub>The commands install version 0.3.2. Contributors start a checkout with
+`./start-local.sh` ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).</sub>
+
+## First launch — create your administrator
+
+<img align="right" width="300" src="docs/assets/screenshots/gallery/17-first-run-setup.jpg" alt="Welcome to MOVE OpenLab: the first-run page where the administrator chooses a username and a password, recorded on a Windows installation">
+
+The browser opens **Welcome to MOVE OpenLab**. Choose a username, your name and a password (a meter shows its
+strength), confirm it and select *Create administrator*: the Workspace opens. There is no default account or password,
+and nothing is written to a file or a log. The page only works with a one-time **setup key** that the launcher adds to
+the link and that only your user account can read; once the administrator exists, it is gone for good.
+
+<sub>Recorded by the `install` workflow on a GitHub-hosted Windows machine, right after the one-command installation.</sub>
+<br clear="right">
+
+## Try a real example
+
+| | Steps | What you see |
+|---|---|---|
+| **Built-in demonstration** | Workspace → *Montbéliard Demo — Baseline* → map and participants → *Compare* (Exact MILP vs Greedy) → *Run again* | 3 scenarios, 2 methods, 18 of 18 runs validated; a re-execution here is independently validated and judged *Reproduced* |
+| **Import a scenario** | *Import ▾ → Try a sample → Sample scenario* → checks → *Import* → *Open it in a new experiment* → tick the methods → *Save & Run* → *Export* | the package verified (manifest, instance fingerprint, composition rebuilt identical on the shipped road network), then runs executed here and validated |
+| **Reproduce an experiment** | *Import ▾ → Try a sample → Sample experiment* → integrity report → *Import* → *Run again* | the imported results stay marked *Imported*; the re-execution here is *Reproduced* when every validated figure is equal (runtimes reported, not required to match) |
+
+| Try a sample | Reproduced |
+|---|---|
+| ![The two public samples offered by Import › Try a sample](docs/assets/screenshots/gallery/14-try-a-sample.jpg) | ![The imported sample experiment verified and reproduced on this installation](docs/assets/screenshots/gallery/15-reproduced.jpg) |
+
+Both samples are built into the application and attached to each release (`sample_scenario.zip`,
+`sample_experiment.zip`, `SHA256SUMS`); they run with the built-in methods only. Details: [examples/README.md](examples/README.md).
+
+## Daily use — no terminal required
+
+Open **MOVE OpenLab** from the Start menu (Windows), the Applications folder (macOS) or the applications menu (Linux),
+or go to `http://127.0.0.1:8765`. It keeps running when you close the terminal or the browser, starts again when you
+sign in, and is restarted automatically after a crash. Accounts, experiments and results live in your user's
+application-data folder and are kept by updates and by uninstalling. `move-openlab service status|stop|start|restart|logs`
+and the update, backup and uninstall steps: [docs/INSTALL.md](docs/INSTALL.md#daily-use--no-terminal-needed).
+
+## Main scientific features
 
 | Area | What you get |
 |---|---|
@@ -88,7 +147,24 @@ Data → Scenario → Method → Solver → Validation → Metrics → Visualiza
 | Accounts | Administrator, Researcher and Student roles; one isolated workspace per account; audit log |
 | Language | English and French |
 
-## Two complementary interfaces: GUI and CLI
+**Public demonstration.** *Montbéliard Demo — Baseline* and *Montbéliard Demo — Controlled Variant* open on first sign-in: three scenarios of 20
+drivers and 30 riders resampled with fixed seeds from a frozen release of open French carpooling data in the Pays de
+Montbéliard, travel times and distances on the OpenStreetMap road network, an exact MILP and a greedy heuristic. The
+variant lowers the detour limit without removing any compatible pair, so its results are directly comparable with the
+baseline. Provenance, vehicle parameters and licences: [src/move_openlab/demo/README.md](src/move_openlab/demo/README.md);
+a scripted walkthrough: [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
+
+**Scenario authoring.** Search a place, click the map or draw a box; load its road network; import open carpooling data (France), a CSV with
+explicit column mapping, GeoJSON, or seeded synthetic demand. The Generate wizard builds a scenario step by step;
+in the Workspace, *Randomize* draws drivers and riders with a seed, participants are added or moved by drag and drop,
+and each driver gets a vehicle profile. Editing a locked experiment creates a new scenario version; locked results are
+never changed. Details: [docs/DATASETS.md](docs/DATASETS.md).
+
+**Maps and replay.** Validated routes are drawn on the road network, with pick-ups, drop-offs, unmatched riders and vehicle types. *Replay
+routes* animates the solution on one clock; Compare shows two synchronised maps side by side. Details:
+[docs/MAPS.md](docs/MAPS.md).
+
+## GUI and CLI
 
 The graphical interface and the `move-openlab` command reach **the same core**, the same sandbox and the same
 independent validator. The GUI is where studies are prepared, run, compared and exchanged; the CLI is where method
@@ -125,21 +201,22 @@ More screenshots: **[docs/GALLERY.md](docs/GALLERY.md)**.
 
 ### Command-line interface (CLI)
 
-Installed in `.venv` by `./start-local.sh` (or `pip install -e .`). Every command below is part of the current
-implementation (`move-openlab --help`).
+Installed with the application (`<folder>/venv/bin/move-openlab`, on Windows `venv\Scripts\move-openlab`; in a developer
+checkout `.venv/bin/move-openlab`). Every command below is part of the current implementation (`move-openlab --help`).
 
 ```bash
-# Start the application (start-local.sh prepares the environment, then runs this)
-.venv/bin/move-openlab serve --host 127.0.0.1 --port 8765
+# Open the application (starts its background service if needed)
+move-openlab open
+move-openlab service status            # also: start, stop, restart, logs, uninstall
 
-# Accounts: temporary password printed once, forced change at first sign-in
-.venv/bin/move-openlab users add alice --display-name "Alice" --role researcher
-.venv/bin/move-openlab users reset-password alice
+# Accounts on the host: temporary password printed once, forced change at first sign-in
+move-openlab users add alice --display-name "Alice" --role researcher
+move-openlab users reset-password alice
 
-# Create a method from the template, then check it
-.venv/bin/move-openlab method new my_method --problem public-ride-matching --dir plugins
-.venv/bin/move-openlab method check plugins/my_method
-.venv/bin/move-openlab method check plugins/my_method --bundle sample_experiment.zip --json
+# Create a method from the template, then check it (the self-test runs in the Linux sandbox)
+move-openlab method new my_method --problem public-ride-matching --dir plugins
+move-openlab method check plugins/my_method
+move-openlab method check plugins/my_method --bundle sample_experiment.zip --json
 ```
 
 | Command | Use |
@@ -147,11 +224,13 @@ implementation (`move-openlab --help`).
 | `method new <name> --problem <id> [--dir] [--kind exact\|heuristic\|learned\|hybrid] [--display-name] [--author] [--description]` | Creates `plugin.py`, `test_plugin.py` and a `README.md` with the integration structure |
 | `method check <path> [--bundle file.zip] [--json]` | Reads the metadata without running it, runs the self-test in the sandbox and, with a bundle, solves its instances and has every run validated next to the experiment's own methods |
 | `users add` / `users reset-password` | Operator account management on the host |
-| `serve [--host] [--port]` | The application server (API and interface) |
+| `open` · `setup-link` | Open the application in the browser (first run: the setup page) · print the first-run link on a headless host |
+| `service install\|status\|start\|stop\|restart\|logs\|uninstall` | The background service of an installation (systemd user unit, launchd agent or Task Scheduler task) |
+| `serve [--host] [--port] [--config]` | The application server itself (API and interface), in the foreground |
 
 Scripts for scriptable workflows: `scripts/pack_examples.py` rebuilds the sample packages byte for byte;
 `scripts/benchmark_synthetic_assignment.py --out <dir>` reproduces the public synthetic benchmark through the
-platform's own pipeline. Plug-ins need Linux with bubblewrap (see [Installation](#installation-and-quick-start)).
+platform's own pipeline. Plug-ins need Linux with bubblewrap ([Security](#security-and-optional-extensions)).
 
 ## Architecture and adapters
 
@@ -169,7 +248,7 @@ is. Everything domain-specific plugs in:
 Two public problems ship with the framework: ride matching on OpenStreetMap road networks (the Montbéliard
 demonstration) and a fully synthetic capacitated assignment benchmark. All diagrams: [docs/DIAGRAMS.md](docs/DIAGRAMS.md).
 
-## Three ways to add a method
+## Three ways to add methods
 
 *+ Add method* offers three distinct routes. The GUI and the CLI use the same template, the same checks and the same
 sandbox.
@@ -196,23 +275,6 @@ model and not a finished scientific algorithm. A valid (feasible) result is not 
 
 Step by step: [docs/ADD_YOUR_METHOD.md](docs/ADD_YOUR_METHOD.md) · contracts: [docs/EXTENDING.md](docs/EXTENDING.md).
 
-## Public demonstration
-
-*Montbéliard Demo — Baseline* and *Montbéliard Demo — Controlled Variant* open on first sign-in: three scenarios of 20
-drivers and 30 riders resampled with fixed seeds from a frozen release of open French carpooling data in the Pays de
-Montbéliard, travel times and distances on the OpenStreetMap road network, an exact MILP and a greedy heuristic. The
-variant lowers the detour limit without removing any compatible pair, so its results are directly comparable with the
-baseline. Provenance, vehicle parameters and licences: [src/move_openlab/demo/README.md](src/move_openlab/demo/README.md);
-a scripted walkthrough: [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
-
-## Scenario authoring
-
-Search a place, click the map or draw a box; load its road network; import open carpooling data (France), a CSV with
-explicit column mapping, GeoJSON, or seeded synthetic demand. The Generate wizard builds a scenario step by step;
-in the Workspace, *Randomize* draws drivers and riders with a seed, participants are added or moved by drag and drop,
-and each driver gets a vehicle profile. Editing a locked experiment creates a new scenario version; locked results are
-never changed. Details: [docs/DATASETS.md](docs/DATASETS.md).
-
 ## Independent validation
 
 Every decision set returned by a method — built-in, registered or uploaded — passes the problem's independent
@@ -220,7 +282,7 @@ validator before it is stored. Feasibility, served riders, detours and every rep
 reported by the method that disagrees is flagged, never used. Imported results are validated again by the importing
 installation.
 
-## Scientific metrics and ML evaluation
+## Scientific metrics and visualizations
 
 *Choose metrics* selects what results and charts show, from the groups Optimization, ML, Performance, Mobility and
 emissions, and Custom. A metric the problem cannot provide reads *Not configured* or *Not available*, never zero. For
@@ -228,12 +290,6 @@ learned methods, the ML evaluation shows the confusion matrix, threshold curve a
 evaluation evidence can be imported (a synthetic example is in `examples/ml-evaluation/`). CO₂ is computed from the
 validated decisions under an explicit scope and baseline, with every vehicle parameter sourced and editable.
 Details: [docs/METRICS.md](docs/METRICS.md), [docs/ML_INTEGRATION.md](docs/ML_INTEGRATION.md).
-
-## Maps, routes and replay
-
-Validated routes are drawn on the road network, with pick-ups, drop-offs, unmatched riders and vehicle types. *Replay
-routes* animates the solution on one clock; Compare shows two synchronised maps side by side. Details:
-[docs/MAPS.md](docs/MAPS.md).
 
 ## Compare methods and experiments
 
@@ -243,12 +299,20 @@ validation, reproducibility and **semantic comparability per claim** (results, r
 statements, then results, charts, maps, replay and a diff. Charts export as CSV, PNG and SVG. Details:
 [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
 
-## Benchmarks
+## Standardized benchmarks
 
 *Library › Benchmarks → Run the public benchmark* runs a fixed protocol — predefined synthetic scenarios, methods,
 repetitions, validator and an independent oracle — that anyone can repeat and compare run by run. *Compare* analyses
 experiments you choose; a benchmark is the same protocol for everyone. Command-line equivalent:
 `scripts/benchmark_synthetic_assignment.py`.
+
+## Multi-user workspaces
+
+Administrator, Researcher and Student roles, enforced on the server. Every account has its own isolated workspace;
+experiments move between accounts only by explicit export and import, and the receiving account verifies, revalidates
+and can re-execute them independently. Researchers can supervise student accounts; administrators manage accounts and
+read the audit log but have no access to researchers' workspaces. The first administrator of an installation is an
+ordinary public administrator. Details: [docs/MULTI_USER.md](docs/MULTI_USER.md).
 
 ## Import, export and reproducibility
 
@@ -264,7 +328,28 @@ experiments you choose; a benchmark is the same protocol for everyone. Command-l
 Details: [docs/IMPORT_EXPORT.md](docs/IMPORT_EXPORT.md), [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md),
 [docs/MULTI_USER.md](docs/MULTI_USER.md).
 
-## MOVE OpenLab in the research software ecosystem
+Across operating systems, a reproduction compares every **validated** figure (served riders, detours, objective,
+feasibility); runtimes and environments are recorded, not required to match. The `install` workflow reproduces, on
+each of Windows, Linux and macOS, the experiments exported on the other two and records the verdicts; bit-identical
+solver internals across systems are not claimed.
+
+## Research and publications
+
+Publications describing MOVE OpenLab and studies that use it will be listed here once they are published. To cite
+the software itself, see [Citation](#citation).
+
+## Applications for researchers, laboratories and companies
+
+Possible uses include:
+
+- **Researchers** — benchmark a new matching or routing method against exact and heuristic baselines on the same
+  frozen scenarios, with validated figures ready for a paper and a bundle reviewers can reproduce.
+- **Laboratories and teaching** — shared installations with per-account workspaces, student accounts, and
+  experiments exchanged between team members.
+- **Industry and public bodies** — explore carpooling or shared-mobility scenarios on a real territory, compare
+  policies such as detour limits, and examine their CO₂ effect under documented assumptions.
+
+## Scientific positioning against related tools
 
 MOVE OpenLab is **complementary** to specialised tools. It is neither an optimization solver nor a general machine
 learning tracking platform; it is a domain-specific experimentation environment for mobility optimization in which
@@ -285,85 +370,42 @@ reusable optimization and ML adapters, independent validation, claim-specific se
 metrics, controlled benchmarks, provenance and versioning, reproducibility, GUI and CLI, and cross-account experiment
 exchange.
 
-## Installation and quick start
+## Security and optional extensions
 
-**Requirements** (tested in CI on Ubuntu): Linux; Python 3.11 or 3.12; Node.js 20.19+ or 22.12+; git and curl;
-bubblewrap for sandboxed plug-ins. On Ubuntu:
-
-```bash
-sudo apt update
-sudo apt install -y git curl python3 python3-venv bubblewrap
-node --version   # 20.19+ or 22.12+
-```
-
-**Install and start:**
-
-```bash
-git clone https://github.com/OkbaBenatia/move-openlab-framework.git
-cd move-openlab-framework
-./start-local.sh
-```
-
-The first run creates `.venv`, installs the package, builds the interface (network access needed once) and starts
-the complete application at **http://127.0.0.1:8765**, reachable from this computer only. `./start-local.sh --check`
-prepares and checks without starting; **Ctrl+C** stops it. Later runs start in seconds and keep every account,
-experiment and result of the local data directory `.openlab-data/dev`.
-
-**First sign-in.** There is no default password and no self-registration. On an empty installation a first
-administrator `admin` is created with a random temporary password, written to `.openlab-data/dev/dev-credentials.json`
-(readable by you only) and never printed. Sign in at http://127.0.0.1:8765 and choose your own password; create
-further accounts under *Administration* or with `move-openlab users add`.
-
-On recent Ubuntu releases the plug-in sandbox may need unprivileged user namespaces; without them everything except
-plug-ins works, and plug-ins are refused with the reason. Every option, manual installation and production mode:
-[docs/INSTALL.md](docs/INSTALL.md) · problems and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
-
-## Public sample downloads
-
-| | Sample scenario | Sample experiment |
-|---|---|---|
-| Content | one frozen scenario of the demonstration (20 drivers, 30 riders), no results | an exported experiment with results (3 scenarios, 2 methods, 18 validated runs) |
-| File | `sample_scenario.zip` (`move-openlab-scenario/1`) | `sample_experiment.zip` (`move-openlab-bundle/2`) |
-| Use | verify, import, choose methods, run, validate | verify, import, compare, reproduce, add your method |
-
-Both packages are built into the application (*Import ▾ → Try a sample*, no download needed). They are also rebuilt
-byte for byte from a clone, with their checksums:
-
-```bash
-.venv/bin/python scripts/pack_examples.py
-cd examples && sha256sum -c SHA256SUMS
-```
-
-The two `.zip` files and `SHA256SUMS` are intended to be attached to each GitHub release as release assets. A
-synthetic trip dataset (`examples/scenario-import/`, CC0) and a synthetic ML evaluation file
-(`examples/ml-evaluation/`) are in the repository. Details: [examples/README.md](examples/README.md).
-
-## Research and publications
-
-Publications describing MOVE OpenLab and studies that use it will be listed here once they are published. To cite
-the software itself, see [Citation](#citation).
-
-## For researchers, laboratories and industry
-
-Possible uses include:
-
-- **Researchers** — benchmark a new matching or routing method against exact and heuristic baselines on the same
-  frozen scenarios, with validated figures ready for a paper and a bundle reviewers can reproduce.
-- **Laboratories and teaching** — shared installations with per-account workspaces, student accounts, and
-  experiments exchanged between team members.
-- **Industry and public bodies** — explore carpooling or shared-mobility scenarios on a real territory, compare
-  policies such as detour limits, and examine their CO₂ effect under documented assumptions.
-
-## Security and private extensions
-
-Plug-ins run in a bubblewrap sandbox without network or access to other data, and the sandbox fails closed. Accounts
-have server-side password rules, roles and isolated workspaces; bundles never carry code and are verified before
-anything is stored. An installation can add its own problem package and declare it *restricted*: an administrator
-grants it to named accounts, and no role — including administrator — implies access. Everyone else sees nothing of
-it. See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md), [docs/PRIVATE_EXTENSIONS.md](docs/PRIVATE_EXTENSIONS.md) and
+Uploaded and registered plug-ins run in a bubblewrap sandbox on Linux, without network or access to other data, and
+the sandbox fails closed: on macOS and Windows, where no equivalent sandbox is implemented, plug-ins are refused with
+the reason (built-in methods and everything else work). Accounts have server-side password rules, roles and isolated
+workspaces; the first administrator is created only with the installation's one-time setup key; bundles never carry
+code and are verified before anything is stored. An installation can add its own problem package and declare it
+*restricted*: an administrator grants it to named accounts, and no role — including administrator — implies access.
+See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md), [docs/PRIVATE_EXTENSIONS.md](docs/PRIVATE_EXTENSIONS.md) and
 [SECURITY.md](SECURITY.md) for reporting a vulnerability.
 
-## Documentation
+## Citation and licence
+
+If you use MOVE OpenLab in your research, please cite the software. Citation metadata is in
+[CITATION.cff](CITATION.cff) (GitHub shows it under *Cite this repository*).
+
+```bibtex
+@software{benatia_move_openlab,
+  author  = {BEN ATIA, Okba},
+  title   = {{MOVE OpenLab: A Reproducible Experimentation Framework for Sustainable Mobility Optimization}},
+  version = {0.3.2},
+  license = {Apache-2.0},
+  url     = {https://github.com/OkbaBenatia/move-openlab-framework}
+}
+```
+
+The MOVE OpenLab framework — source code, documentation and example plug-ins — is licensed under the **Apache License,
+Version 2.0**: [LICENSE](LICENSE), [NOTICE](NOTICE).
+
+Data and assets shipped with it keep their own licences and are not covered by the Apache License: road networks,
+travel times and route geometry derived from OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0); demonstration
+participants resampled from the French carpooling registry open data (Licence Ouverte / Open Licence, Etalab); the
+synthetic trip dataset (CC0 1.0); the Inter typeface (SIL Open Font License 1.1); the MOVE OpenLab name and logo (the
+project's marks). Details: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Detailed documentation
 
 | Topic | Documents |
 |---|---|
@@ -375,41 +417,10 @@ it. See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md), [docs/PRIVATE_EXTENSIO
 | Demonstrate | [DEMO_GUIDE](docs/DEMO_GUIDE.md) · [TEAM_PRESENTATION_GUIDE](docs/TEAM_PRESENTATION_GUIDE.md) · [MANUAL_ACCEPTANCE](docs/MANUAL_ACCEPTANCE.md) |
 | Contribute | [CONTRIBUTING](CONTRIBUTING.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [GITFLOW](docs/GITFLOW.md) · [RELEASING](docs/RELEASING.md) · [CHANGELOG](CHANGELOG.md) · [Code of Conduct](CODE_OF_CONDUCT.md) |
 
-**Project status:** development build `0.3.1`. Tested in CI on every change: the Python test suite, linting, the
-interface build with type check and unit tests, the confidentiality check and browser journeys on synthetic data.
+**Project status:** development build `0.3.2`. Tested in CI on every change: the Python test suite, linting, the
+interface build with type check and unit tests, the confidentiality check, browser journeys on synthetic data, and the
+one-command installation on Windows, Linux and macOS.
 Interfaces may still change before 1.0.0. Contributions follow GitFlow; see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Citation
-
-If you use MOVE OpenLab in your research, please cite the software. Citation metadata is in
-[CITATION.cff](CITATION.cff) (GitHub shows it under *Cite this repository*).
-
-```bibtex
-@software{benatia_move_openlab,
-  author  = {BEN ATIA, Okba},
-  title   = {{MOVE OpenLab: A Reproducible Experimentation Framework for Sustainable Mobility Optimization}},
-  version = {0.3.1},
-  license = {Apache-2.0},
-  url     = {https://github.com/OkbaBenatia/move-openlab-framework}
-}
-```
-
-## Licence and third-party notices
-
-The MOVE OpenLab framework — source code, documentation and example plug-ins — is licensed under the **Apache License,
-Version 2.0**: [LICENSE](LICENSE), [NOTICE](NOTICE).
-
-Data and assets shipped with it keep their own licences and are not covered by the Apache License: road networks,
-travel times and route geometry derived from OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0); demonstration
-participants resampled from the French carpooling registry open data (Licence Ouverte / Open Licence, Etalab); the
-synthetic trip dataset (CC0 1.0); the Inter typeface (SIL Open Font License 1.1); the MOVE OpenLab name and logo (the
-project's marks). Details: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Introduction video — coming soon
-
-A short introduction video will be published here after the first public release.
-
-<!-- VIDEO: reserved for the introduction video of the released version, to be supplied by the maintainer. -->
 
 ---
 

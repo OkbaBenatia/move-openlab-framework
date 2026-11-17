@@ -17,6 +17,8 @@ from move_openlab.settings import Settings
 
 from test_api import make_settings
 
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits; on Windows the data directory is protected by the user profile's access-control list")
+
 ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 
 

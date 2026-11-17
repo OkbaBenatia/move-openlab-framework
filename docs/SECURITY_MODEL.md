@@ -137,7 +137,9 @@ the process umask (`move_openlab.privatefiles`):
 | `<data>/auth.sqlite3` (or `MOVE_OPENLAB_AUTH_DB`) | accounts, scrypt hashes | created empty with `0600` before SQLite opens it; SQLite gives its `-journal` / `-wal` / `-shm` files the database's mode | tightened when the store is opened (side files too) |
 | `<data>/audit.log` | who did what to which account | appended through a descriptor opened with `0600` | tightened at server start and at the next entry |
 | `<data>/problem-grants.json` | accounts granted a restricted problem | written to a `0600` temporary file, then renamed atomically | covered by the owner-only data directory (next paragraph) |
-| `<data>/dev-credentials.json` | development passwords (`scripts/dev_provision.py`, `start-local.sh`) | written to a `0600` temporary file, then renamed atomically | tightened at server start; replaced by a `0600` file when rewritten |
+| `<data>/setup-key` | the first-run setup key (only while no account exists) | written to a `0600` temporary file, then renamed atomically; deleted when the first administrator is created | tightened when read |
+| `<data>/session-secret` | the session signing key of an installed service (`move-openlab serve --config`) | written to a `0600` temporary file, then renamed atomically | — |
+| `<data>/dev-credentials.json` | test-account passwords written by `scripts/dev_provision.py` and `scripts/e2e/seed_ci.py` (development and CI only) | written to a `0600` temporary file, then renamed atomically | tightened at server start; replaced by a `0600` file when rewritten |
 
 Only the group and other permission bits are removed; contents are never touched. The rest of the data directory
 (workspaces, experiments, instances, jobs, networks, datasets, caches) is owner-only too: the server runs with umask
@@ -162,6 +164,27 @@ characters, and nothing taken from the username or the display name. *Strong* me
 four classes. Accounts start with a temporary password shown once to the creator (`Cache-Control: no-store`) and must
 change it at first sign-in: *New password* with a red / yellow / green strength indicator (`POST
 /api/auth/password-policy`, which never stores what it checks) and *Repeat password* with a match indicator.
+
+## First-run setup
+
+An installation without any account is in *setup mode*: every page leads to *Welcome to MOVE OpenLab*, where the first
+administrator is created with a username and password chosen by the person who installed it. Creating it requires
+(`src/move_openlab/auth/setup.py`):
+
+- the **setup key** — 32 random bytes the server writes to `<data>/setup-key` (owner-only) when it starts without an
+  account. Only the operating-system account that runs MOVE OpenLab can read it; the launcher, `move-openlab open`
+  and `start-local.sh` put it in the link's `#fragment`, which browsers never send to a server or a log, and the page
+  removes it from the address bar. This also defeats DNS-rebinding pages, which cannot read the file;
+- a request from this computer (loopback address);
+- the password policy below and a matching confirmation.
+
+The account is created in one SQLite transaction holding the write lock (`BEGIN IMMEDIATE`) that first checks the
+store is still empty, so concurrent requests create exactly one administrator. The key file is then deleted and the
+setup endpoints answer 404 for good. Restarting during setup keeps the key; an installation that already has
+accounts never enters setup mode. The new administrator is an ordinary public administrator: no restricted problem
+is granted. The action is recorded in the audit log (`first_run_setup`); neither the key nor the password is ever
+printed or logged. Headless installations: `move-openlab setup-link` prints the link on the host, or
+`move-openlab users add --role admin` creates an account with a temporary password.
 
 ## Administration
 
@@ -258,7 +281,8 @@ The application needs one secret of its own, and no key for any external service
 | Session signing key (`SESSION_SECRET`) | the environment of the server process, set by the operator or the service manager; random at each start in development | in the repository, in a committed `.env` file, in a bundle, in a log |
 | Passwords | only as scrypt hashes in `<data>/auth.sqlite3` (mode `0600`) | stored or logged in clear |
 | Temporary passwords | shown once to the creator in a `no-store` response, or printed once by `move-openlab users add` / `reset-password` on the host | in the audit log |
-| Development passwords | `<data>/dev-credentials.json` (mode `0600`), written by `start-local.sh` and `scripts/dev_provision.py`, which refuses production mode | printed; outside the data directory |
+| First-run setup key | `<data>/setup-key` (mode `0600`) while no account exists, then deleted; in the setup link's `#fragment` | in a log, a response, a query string |
+| Development passwords | `<data>/dev-credentials.json` (mode `0600`), written by `scripts/dev_provision.py` (refuses production mode) and the CI seed | printed; outside the data directory |
 | Restricted-problem grants | `<data>/problem-grants.json` (mode `0600`) | in code or in the repository |
 | Screening terms of the confidentiality gate | a file outside the repository, or the CI secret `PUBLIC_DENYLIST` | in the repository, even hashed |
 

@@ -137,11 +137,10 @@ fi
 # --- 4. Accounts, plug-ins -----------------------------------------------------------------------------------------
 accounts="$("$PY" -c 'from move_openlab.auth import Auth; from move_openlab.settings import Settings; print(Auth(Settings.from_env()).store.count())')" \
   || fail "the account store in $MOVE_OPENLAB_DATA_DIR could not be opened."
+FIRST_RUN=0
 if [[ "$accounts" == "0" ]]; then
-  say "No account yet: creating the first administrator 'admin' with a temporary password"
-  "$PY" scripts/dev_provision.py --admin --temporary admin >/dev/null || fail "could not create the first administrator."
-  printf '  Sign in as %sadmin%s; the temporary password is in %s (never printed). You choose your own at the first sign-in.\n' \
-    "$B" "$N" "${MOVE_OPENLAB_DATA_DIR#"$ROOT"/}/dev-credentials.json"
+  FIRST_RUN=1
+  say "No account yet: the first-run page opens, where you create the administrator (your own username and password)"
 fi
 if [[ "$MOVE_OPENLAB_PLUGIN_MODE" == "sandbox" ]] && ! command -v bwrap >/dev/null 2>&1 && [[ ! -x /usr/bin/bwrap ]]; then
   warn "bubblewrap (bwrap) is not installed: your own methods (plug-ins) stay off; everything else works. Install it with your package manager (e.g. sudo apt install bubblewrap)."
@@ -155,4 +154,19 @@ fi
 # --- 5. Start (one process; Ctrl+C stops it cleanly, running jobs are recorded as interrupted) --------------------
 printf '\n%sMOVE OpenLab%s · Development build\n  %s%s%s   (local only)\n  data: %s\n  Stop with Ctrl+C.\n\n' \
   "$B" "$N" "$G" "$URL" "$N" "${MOVE_OPENLAB_DATA_DIR#"$ROOT"/}"
+if (( FIRST_RUN )); then
+  # once the server has written its setup key (owner-only, in the data directory): open the first-run page, whose link
+  # carries the key in its #fragment; the link is shown in this terminal only, never logged
+  (
+    KEY_FILE="$MOVE_OPENLAB_DATA_DIR/setup-key"
+    for _ in $(seq 1 90); do
+      sleep 1
+      [[ -s "$KEY_FILE" ]] && curl -fs --max-time 2 "$URL/api/health" >/dev/null 2>&1 && break
+    done
+    [[ -s "$KEY_FILE" ]] || exit 0
+    LINK="$URL/setup#$(cat "$KEY_FILE")"
+    if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$LINK" >/dev/null 2>&1 || true; fi
+    printf '\n  %sFirst run:%s create the administrator at\n  %s\n\n' "$B" "$N" "$LINK"
+  ) &
+fi
 exec "$VENV/bin/move-openlab" serve --host "$HOST" --port "$PORT"

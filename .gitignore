@@ -24,3 +24,4 @@ frontend/node_modules/.tmp/
 *.tar.gz
 *.tgz
 *.7z
+dist-release/

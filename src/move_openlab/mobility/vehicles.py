@@ -34,7 +34,7 @@ ELECTRICITY = ("electricity_consumption_kwh_100km", "electricity_emission_factor
 DIRECT = "direct_co2_g_per_km"
 RECORD_KEYS = ("value", "unit", "basis", "source", "source_version", "applicability", "notes", "recorded_at")
 PROVENANCE_KINDS = ("preset", "researcher", "imported", "demo")
-ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}\Z")
 MAX_PROFILES = 200
 PRESETS = Path(__file__).resolve().parent / "presets"
 

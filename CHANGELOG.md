@@ -3,6 +3,45 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
+## 0.3.2 — 2026-11-17
+
+### Added
+- **One-command installation on Windows, Linux and macOS** (`install.ps1`, `install.sh`, release assets): from an
+  empty folder, checks the system, finds Python 3.11+ (asks before installing it: winget per user, apt, Homebrew),
+  downloads the application archive of the same release and refuses it unless its SHA-256 matches the value built
+  into the installer, installs hash-pinned packages (`requirements/install.lock`, `--require-hashes`) into its own
+  environment; no Node.js needed (the interface is prebuilt). Update in place by running it again; uninstall keeps
+  the data. `scripts/release/build_release_assets.py` builds the archives, installers and `SHA256SUMS`.
+- **Background service of the user account** (`move-openlab service install|status|start|stop|restart|logs|uninstall`,
+  `move-openlab open`): a `systemd --user` unit (Linux), a `launchd` agent (macOS) or a Task Scheduler task
+  (Windows); starts at sign-in, restarted after a crash, 127.0.0.1 only, persistent session key, server log in the
+  data folder; an "Open MOVE OpenLab" launcher (Start menu, Applications, applications menu).
+- **Graphical first-run setup**: with no account, *Welcome to MOVE OpenLab* creates the first administrator with a
+  username and password of the user's choice, authorised by a one-time setup key that only the installing account
+  can read (owner-only file, carried in the link's `#fragment`) and from this computer only; atomic, then closed for
+  good. `start-local.sh` opens this page instead of creating `admin` with a temporary password;
+  `move-openlab setup-link` serves headless hosts.
+- **CI on Windows, Linux and macOS** (`install` workflow): the documented installation on GitHub-hosted runners, a
+  tampered archive refused, first run in Chrome, end-to-end checks (demonstration, samples, reproduction, export,
+  second account, CLI, stop/start), update in place, uninstall with data kept, cross-system reproduction of exported
+  experiments, and the test suite on macOS and Windows.
+
+### Security
+- **Return path after signing in (bypass of the 0.3.1 fix)**: the sign-in page followed `next=/.//host` (and
+  `/x/..//host`, `/%2E//host`), because the browser resolves the dot segments to `//host`, a protocol-relative
+  address. The page now checks the resolved and decoded path (no `//`, no backslash, no control character, same
+  origin); the server refuses dot segments and double slashes after decoding, also double-encoded ones.
+- **Server paths in messages**: error texts that reach users, run records and exported bundles no longer contain
+  absolute paths of the installation — worker stderr (timeout dumps, crashes), sandbox refusals, job errors and
+  plug-in metadata errors are reduced to file names and placeholders (`move_openlab.redact`); the full text is
+  written to the server log.
+- Identifier validators no longer accept a trailing newline (`\Z` instead of `$`).
+
+### Fixed
+- **Windows**: owner-only file helpers without POSIX permission calls (the data folder is protected by the profile's
+  access-control list); byte-exact checkouts (`.gitattributes`); the demonstration and sample packages have the same
+  bytes (and checksums) on every system (member order by POSIX name); `method check --json` prints JSON only.
+
 ## 0.3.1 — 2026-11-17
 
 ### Added

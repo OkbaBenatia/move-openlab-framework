@@ -25,6 +25,7 @@ from pathlib import Path
 from . import __version__
 from .methods import ContractError, check_output
 from .problem import Problem
+from .redact import paths as redact_paths
 from .sandbox import PLUGIN_MOUNT, SandboxSpec, SandboxUnavailable, command as sandbox_command, verify as sandbox_verify
 
 DEFAULT_MEMORY_MB = int(os.environ.get("MOVE_OPENLAB_WORKER_MEMORY_MB", "4096") or 0)
@@ -132,7 +133,7 @@ def execute_isolated(request: dict, timeout_s: float, python: str | None = None,
             remaining = deadline - time.perf_counter()
             if remaining <= 0:
                 procs = snapshot(p.pid)
-                tail = _kill(p)
+                tail = redact_paths(_kill(p))
                 return dict(ok=False, error=f"timeout after {timeout_s} s",
                             diagnostics=dict(timeout_snapshot=procs, stderr_tail=tail)), time.perf_counter() - t0
             try:
@@ -141,6 +142,7 @@ def execute_isolated(request: dict, timeout_s: float, python: str | None = None,
                 first = False
         total = time.perf_counter() - t0
     if not out.strip():
+        err = redact_paths(err or "")                    # stored in run records and bundles: no server paths
         return dict(ok=False, error=f"worker exit {p.returncode}: {err[-500:]}",
                     diagnostics=dict(stderr_tail=err[-STDERR_TAIL:])), total
     try:

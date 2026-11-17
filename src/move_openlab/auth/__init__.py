@@ -31,7 +31,7 @@ MAX_FAILURES, FAILURE_WINDOW_S = 10, 15 * 60
 MIN_SECRET_LEN = 32
 MIN_PASSWORD_LEN = 12
 STRONG_PASSWORD_LEN = 16
-USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}\Z")
 _CLASSES = (re.compile(r"[a-z]"), re.compile(r"[A-Z]"), re.compile(r"[0-9]"), re.compile(r"[^A-Za-z0-9]"))
 
 

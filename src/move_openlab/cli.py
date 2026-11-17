@@ -1,4 +1,5 @@
-"""Command line: ``move-openlab serve``, ``users add``, ``users reset-password``, ``method new`` and ``method check``."""
+"""Command line: ``move-openlab serve``, ``open``, ``service …``, ``setup-link``, ``users add``, ``users reset-password``,
+``method new`` and ``method check``."""
 from __future__ import annotations
 
 import argparse
@@ -66,6 +67,19 @@ def _method_check(args) -> int:
     except OSError as e:
         print(f"error: cannot read the bundle: {e}", file=sys.stderr)
         return 2
+    if args.json:                       # solvers print banners on the C-level stdout: keep it for the JSON report only
+        import os
+        sys.stdout.flush()
+        saved = os.dup(1)
+        os.dup2(2, 1)
+        try:
+            rep = check_method(Path(args.path), bundle)
+        finally:
+            sys.stdout.flush()
+            os.dup2(saved, 1)
+            os.close(saved)
+        print(json.dumps(rep, indent=1))
+        return 0 if rep["ok"] else 1
     rep = check_method(Path(args.path), bundle)
     if args.json:
         print(json.dumps(rep, indent=1))
@@ -80,6 +94,21 @@ def _method_check(args) -> int:
 
 
 def _serve(args) -> int:
+    from pathlib import Path
+    from . import service as SV
+    cfg = None
+    if args.config:
+        cfg = SV.load_config(args.config)
+        SV.prepare_environment(cfg)
+        args.host, args.port = cfg.get("host", "127.0.0.1"), int(cfg["port"])
+        args.log_file = args.log_file or str(SV.log_dir(cfg) / "server.log")      # a background service has no console
+    if args.log_file:
+        SV.log_to_file(Path(args.log_file))
+    if not SV.port_free(args.port, args.host):
+        print(f"error: port {args.port} on {args.host} is already in use"
+              + (" by MOVE OpenLab (it is already running)" if SV.health(args.port) else " by another application")
+              + "; stop it or use --port", file=sys.stderr)
+        return SV.EXIT_PORT_IN_USE
     import uvicorn
     from .api import create_app
     from .sandbox import harden_current_process
@@ -89,7 +118,88 @@ def _serve(args) -> int:
     st = app.state.installation.plugin_status()
     print(f"process hardening: {'on' if hardened else 'unavailable'} · plugins: "
           f"{'enabled (' + st['isolation'] + ')' if st['enabled'] else 'off — ' + str(st['reason'])}")
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    from .auth import setup as first_run
+    if first_run.needed(app.state.auth):
+        print("no account yet: open MOVE OpenLab with its launcher or 'move-openlab open' to create the administrator")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", log_config=None if args.log_file else uvicorn.config.LOGGING_CONFIG)
+    return 0
+
+
+def _service(args) -> int:
+    import json
+    from pathlib import Path
+    from . import service as SV
+    if args.scmd == "install":
+        rep = SV.install(Path(args.home), args.port, Path(args.data_dir) if args.data_dir else None,
+                         launcher=not args.no_launcher, autostart=not args.no_autostart, browser=not args.no_browser)
+        print(json.dumps(rep, indent=1) if args.json else
+              f"MOVE OpenLab {rep['version']} is {'running' if rep['running'] else 'installed (not running yet)'} at {rep['url']}\n"
+              f"  background: {rep['mechanism']} · starts at sign-in: {'yes' if rep['starts_at_sign_in'] else 'no'} · "
+              f"restarts after a crash: {'yes' if rep['restarts_after_crash'] else 'no'}\n"
+              f"  data: {rep['data_dir']}\n  open it any time: {', '.join(rep['launcher']) or 'move-openlab open'}")
+        return 0 if rep["running"] else 1
+    cfg = SV.load_config(args.config)
+    if args.scmd == "status":
+        st = SV.status(cfg)
+        print(json.dumps(st, indent=1) if args.json else "\n".join(f"{k}: {v}" for k, v in st.items()))
+        return 0 if st["running"] else 3
+    if args.scmd == "start":
+        SV.start(cfg)
+        ok = SV.wait_until_up(int(cfg["port"]))
+        print(f"MOVE OpenLab {'is running at ' + SV.base_url(cfg) if ok else 'did not start: see ' + str(SV.log_dir(cfg))}")
+        return 0 if ok else 1
+    if args.scmd == "stop":
+        SV.stop(cfg)
+        print("MOVE OpenLab stopped" + (" (it starts again at your next sign-in)" if SV.status(cfg)["registered"] else ""))
+        return 0
+    if args.scmd == "restart":
+        SV.restart(cfg)
+        ok = SV.wait_until_up(int(cfg["port"]))
+        print("MOVE OpenLab restarted" if ok else "MOVE OpenLab did not start again: see " + str(SV.log_dir(cfg)))
+        return 0 if ok else 1
+    if args.scmd == "logs":
+        f = SV.log_dir(cfg) / "server.log"
+        lines = f.read_text(errors="replace").splitlines()[-args.lines:] if f.is_file() else []
+        print("\n".join(lines) or f"no log yet ({f})")
+        return 0
+    if args.scmd == "uninstall":
+        if args.remove_data and not args.yes:
+            print("error: --remove-data deletes every account, experiment and result of this installation; "
+                  "add --yes to confirm", file=sys.stderr)
+            return 2
+        rep = SV.uninstall(cfg, remove_data=args.remove_data)
+        print(json.dumps(rep, indent=1) if args.json else
+              f"background service and launcher removed; data {'deleted' if rep['data_removed'] else 'kept in ' + rep['data_dir']}; "
+              f"you can now delete the folder {rep['folder']}")
+        return 0
+    return 2
+
+
+def _open(args) -> int:
+    import webbrowser
+    from . import service as SV
+    cfg = SV.load_config(args.config)
+    if not SV.health(int(cfg["port"])):
+        SV.start(cfg)
+        if not SV.wait_until_up(int(cfg["port"])):
+            print(f"MOVE OpenLab did not start: see {SV.log_dir(cfg)}", file=sys.stderr)
+            return 1
+    url = SV.open_url(cfg)
+    if not args.no_browser:
+        webbrowser.open(url)
+    print(f"MOVE OpenLab: {SV.base_url(cfg)}/")
+    return 0
+
+
+def _setup_link(args) -> int:
+    """For a computer without a browser on the same desktop (headless): print the one-time setup link."""
+    from . import service as SV
+    cfg = SV.load_config(args.config)
+    url = SV.open_url(cfg)
+    if "/setup#" not in url:
+        print("setup is complete: sign in at " + SV.base_url(cfg) + "/", file=sys.stderr)
+        return 1
+    print(url)
     return 0
 
 
@@ -99,7 +209,38 @@ def main(argv: list[str] | None = None) -> int:
     sv = sub.add_parser("serve", help="run the web application")
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8765)
+    sv.add_argument("--config", help="installation configuration (move-openlab.json): port, data directory, frontend")
+    sv.add_argument("--log-file", help="write the server log to this file (default with --config: <data>/logs/server.log)")
     sv.set_defaults(fn=_serve)
+    op = sub.add_parser("open", help="open MOVE OpenLab in the browser (starts its background service if needed)")
+    op.add_argument("--config")
+    op.add_argument("--no-browser", action="store_true", help="only start it and print the address")
+    op.set_defaults(fn=_open)
+    sl = sub.add_parser("setup-link", help="print the one-time first-run setup link (computers without a local browser)")
+    sl.add_argument("--config")
+    sl.set_defaults(fn=_setup_link)
+    se = sub.add_parser("service", help="background service of this installation: install, status, start, stop, restart, logs, uninstall")
+    se_sub = se.add_subparsers(dest="scmd", required=True)
+    si = se_sub.add_parser("install", help="register the background service, create the launcher, start and open (used by the installer)")
+    si.add_argument("--home", required=True, help="installation folder (contains app/ and venv/)")
+    si.add_argument("--port", type=int, help="port on 127.0.0.1 (default: 8765, or the next free one)")
+    si.add_argument("--data-dir", help="data directory (default: the operating system's application-data folder)")
+    si.add_argument("--no-launcher", action="store_true")
+    si.add_argument("--no-autostart", action="store_true", help="do not register a background service (start by hand)")
+    si.add_argument("--no-browser", action="store_true")
+    si.add_argument("--json", action="store_true")
+    for name, hlp in (("status", "is it registered and running"), ("start", "start it"), ("stop", "stop it"),
+                      ("restart", "stop and start it"), ("logs", "last lines of the server log"),
+                      ("uninstall", "remove the service and the launcher (the data is kept unless --remove-data --yes)")):
+        x = se_sub.add_parser(name, help=hlp)
+        x.add_argument("--config")
+        x.add_argument("--json", action="store_true")
+        if name == "logs":
+            x.add_argument("--lines", type=int, default=60)
+        if name == "uninstall":
+            x.add_argument("--remove-data", action="store_true")
+            x.add_argument("--yes", action="store_true")
+    se.set_defaults(fn=_service)
     us = sub.add_parser("users", help="manage local accounts")
     us_sub = us.add_subparsers(dest="ucmd", required=True)
     add = us_sub.add_parser("add", help="create an account (temporary password, forced change at first sign-in)")

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 import json
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -18,10 +18,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .. import auth as A
+from ..auth import setup as SETUP
 from ..auth import password_policy
 from ..version import APP_NAME, APP_SUBTITLE, DEVELOPER, display_version
 
-PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
+PUBLIC_PATHS = {"/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js",
+                "/setup", "/api/setup/status", "/api/setup/admin", "/api/setup/password-policy"}   # setup: key-protected, see auth/setup.py
 PASSWORD_CHANGE_PATHS = {"/change-password", "/api/auth/change-password", "/api/auth/me", "/api/auth/logout",
                          "/api/auth/password-policy", "/favicon.svg", "/favicon.ico", "/auth.js", "/theme.js"}
 BRAND_PREFIX = "/brand/"                     # approved logo assets, needed by the sign-in pages
@@ -49,7 +51,17 @@ def _safe_next(nxt: str | None) -> str:
     newlines, so ``/\\host`` or ``/<tab>/host`` would leave the site: such paths are refused, like ``//host``."""
     if not nxt or not nxt.startswith("/") or nxt.startswith(("//", "/login")):
         return "/"
-    return "/" if any(c == "\\" or ord(c) < 32 or ord(c) == 127 for c in nxt) else nxt
+    if any(c == "\\" or ord(c) < 32 or ord(c) == 127 for c in nxt):
+        return "/"
+    path = nxt.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(4):                                   # decoded until stable (double encoding)
+        dec = unquote(path)
+        if dec == path:
+            break
+        path = dec
+    if "//" in path or "\\" in path or any(seg in (".", "..") for seg in path.split("/")):   # dot segments resolve elsewhere
+        return "/"
+    return nxt
 
 
 def _client(request: Request) -> str:
@@ -151,6 +163,47 @@ async def change_password(request: Request):
     return resp
 
 
+# ------------------------------------------------------------------ first-run setup (no account yet)
+def _setup_needed(request: Request) -> bool:
+    return SETUP.needed(_auth(request))
+
+
+@router.get("/api/setup/status")
+def setup_status(request: Request):
+    return JSONResponse({"setup_required": _setup_needed(request)}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/setup/password-policy")
+async def setup_password_policy(request: Request):
+    if not _setup_needed(request):
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    data = await _body(request)
+    return JSONResponse(password_policy(str(data.get("password", "")), str(data.get("username", "")), str(data.get("display_name", ""))),
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/setup/admin")
+async def setup_admin(request: Request):
+    """Create the first administrator (setup key + this computer only); signs the new administrator in."""
+    form, data = _is_form(request), await _body(request)
+    auth = _auth(request)
+    user, msg, code = SETUP.create_admin(auth, auth.settings.data_dir, key=str(data.get("setup_key", "")),
+                                         username=str(data.get("username", "")), display_name=str(data.get("display_name", "")),
+                                         password=str(data.get("new_password", "")), confirm=str(data.get("confirm_password", "")),
+                                         client=_client(request))
+    if user is None:
+        if form:
+            return RedirectResponse("/login" if code == 404 else f"/setup?error={quote(msg)}", status_code=303)
+        return JSONResponse({"detail": msg}, status_code=code)
+    from .admin import audit
+    audit(request, user.username, "first_run_setup", user.username)
+    token, ses = auth.issue(user)
+    resp = RedirectResponse("/", status_code=303) if form else JSONResponse(
+        {"ok": True, "user": dict(username=ses.username, display=ses.display, role=ses.role)})
+    _set_cookie(request, resp, token)
+    return resp
+
+
 # ------------------------------------------------------------------ server-rendered pages
 STYLE = """@font-face{font-family:Inter;font-style:normal;font-weight:400 700;font-display:swap;src:url(/fonts/inter/inter-latin.woff2) format('woff2')}
 :root{--bg:#f4f6f9;--panel:#fff;--border:#e3e8ef;--strong:#cdd5df;--text:#0f1b2d;--muted:#66758a;--accent:#0a6cc2;--bad:#b42318;--warn:#9a5b00;--ok:#157a3c;color-scheme:light}
@@ -216,7 +269,12 @@ AUTH_JS = """(function () {
     'Sign-in is not configured on this server.': 'La connexion n’est pas configurée sur ce serveur.',
     'Your session has expired. Please sign in again.': 'Votre session a expiré. Veuillez vous reconnecter.',
     'Request failed.': 'La requête a échoué.', 'Weak: needs ': 'Faible : il manque ', 'Passwords match.': 'Les mots de passe correspondent.',
-    'Passwords do not match.': 'Les mots de passe ne correspondent pas.', 'Change password': 'Changer le mot de passe', 'developed by': 'développé par'
+    'Passwords do not match.': 'Les mots de passe ne correspondent pas.', 'Change password': 'Changer le mot de passe', 'developed by': 'développé par',
+    'Welcome to MOVE OpenLab': 'Bienvenue dans MOVE OpenLab', 'Welcome': 'Bienvenue',
+    'Create the administrator account of this installation. You choose the username and the password; nothing is shown in any log or file.': 'Créez le compte administrateur de cette installation. Vous choisissez l’identifiant et le mot de passe ; rien n’apparaît dans un journal ou un fichier.',
+    'Setup key': 'Clé d’installation', 'Your name': 'Votre nom', 'Confirm password': 'Confirmez le mot de passe', 'Create administrator': 'Créer l’administrateur',
+    'Open this page with the MOVE OpenLab launcher or the command': 'Ouvrez cette page avec le lanceur MOVE OpenLab ou la commande',
+    ': the key is then filled in for you.': ' : la clé est alors remplie pour vous.'
   };
   var lang = 'en';
   try { lang = sessionStorage.getItem('move-openlab-lang') === 'fr' ? 'fr' : 'en'; } catch (e) { /* storage unavailable */ }
@@ -233,7 +291,7 @@ AUTH_JS = """(function () {
         if (FR[key]) t.nodeValue = raw.replace(raw.trim(), FR[key]);
         else if (key.indexOf(' · developed by ') > 0) t.nodeValue = raw.replace('developed by', FR['developed by']);
       });
-      document.title = document.title.replace('Sign in', FR['Sign in']).replace('Change password', FR['Change password']);
+      document.title = document.title.replace('Sign in', FR['Sign in']).replace('Change password', FR['Change password']).replace('Welcome', FR['Welcome']);
     }
     var box = document.createElement('div'); box.className = 'lang'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'language');
     ['en', 'fr'].forEach(function (l) {
@@ -248,12 +306,14 @@ AUTH_JS = """(function () {
   var params = new URLSearchParams(location.search);
   // a local path only: browsers read a backslash as a slash and drop tabs and newlines ('/<backslash>host' would leave
   // the site), so those are refused and the path must resolve to this origin
+  function unsafe(s) { for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c < 32 || c === 92 || c === 127) return true; } return s.indexOf('//') !== -1; }
   function safeNext(n) {
-    if (!n || n.charAt(0) !== '/') return '/';
-    for (var i = 0; i < n.length; i++) { var c = n.charCodeAt(i); if (c < 32 || c === 92 || c === 127) return '/'; }
-    var u;
-    try { u = new URL(n, location.origin); } catch (e) { return '/'; }
-    return u.origin === location.origin && u.pathname.indexOf('/login') !== 0 ? u.pathname + u.search + u.hash : '/';
+    if (!n || n.charAt(0) !== '/' || n.charAt(1) === '/' || unsafe(n)) return '/';
+    var u, dec;
+    try { u = new URL(n, location.origin); dec = decodeURIComponent(u.pathname); } catch (e) { return '/'; }
+    // the browser resolves dot segments ("/.//host" -> "//host"): the RESOLVED path, decoded too, must stay a plain local path
+    if (u.origin !== location.origin || unsafe(u.pathname) || unsafe(dec) || u.pathname.indexOf('/login') === 0) return '/';
+    return u.pathname + u.search + u.hash;
   }
   var next = safeNext(params.get('next'));
   function go(url) { location.replace(url); }
@@ -275,12 +335,27 @@ AUTH_JS = """(function () {
   var login = document.querySelector('form[action="/api/auth/login"]');
   if (login) intercept(login, '/api/auth/login', function () { return { username: login.username.value, password: login.password.value, next: next }; },
     function (d) { go(d.must_change_password ? '/change-password' : next); });
+  var setup = document.querySelector('form[action="/api/setup/admin"]');
+  if (setup) {
+    // the setup key travels in the link's #fragment (never sent to the server or written to its log): copied into the form
+    function takeKey() {
+      var key = (location.hash || '').slice(1);
+      if (key) { setup.setup_key.value = decodeURIComponent(key); document.getElementById('keybox').hidden = true; history.replaceState(null, '', '/setup'); }
+    }
+    takeKey();
+    window.addEventListener('hashchange', takeKey);        // the link opened in a tab already showing this page
+    intercept(setup, '/api/setup/admin', function () {
+      return { setup_key: setup.setup_key.value, username: setup.username.value, display_name: setup.display_name.value,
+               new_password: setup.new_password.value, confirm_password: setup.confirm_password.value };
+    }, function () { go('/'); });
+  }
   var change = document.querySelector('form[action="/api/auth/change-password"]');
   if (change) intercept(change, '/api/auth/change-password', function () {
     return { current_password: change.current_password.value, new_password: change.new_password.value, confirm_password: change.confirm_password.value };
   }, function () { go('/'); });
-  if (change) {
-    var n = change.new_password, r = change.confirm_password, bar = document.getElementById('bar'),
+  var pwform = change || setup;
+  if (pwform) {
+    var n = pwform.new_password, r = pwform.confirm_password, bar = document.getElementById('bar'),
         st = document.getElementById('strength'), mt = document.getElementById('match'), timer = null;
     var LEVEL = { weak: [tr('Weak: needs '), 33, 'var(--bad)'], acceptable: [tr('Acceptable'), 66, '#d4a72c'], strong: [tr('Strong'), 100, '#1a7f37'] };
     function paint(pol) {
@@ -296,7 +371,9 @@ AUTH_JS = """(function () {
     function check() {
       clearTimeout(timer);
       timer = setTimeout(function () {
-        fetch('/api/auth/password-policy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: n.value }) })
+        var url = setup ? '/api/setup/password-policy' : '/api/auth/password-policy';
+        var payload = setup ? { password: n.value, username: setup.username.value, display_name: setup.display_name.value } : { password: n.value };
+        fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
           .then(function (x) { return x.json(); }).then(paint).catch(function () { /* the server decides on submit */ });
       }, 150);
       match();
@@ -305,6 +382,19 @@ AUTH_JS = """(function () {
   }
 })();
 """
+
+SETUP_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-logo-1024w-transparent.png" alt="{app}" width="340" height="98"></div><h1>Welcome to MOVE OpenLab</h1><p class="sub">Create the administrator account of this installation. You choose the username and the password; nothing is shown in any log or file.</p>
+<form method="post" action="/api/setup/admin" autocomplete="off">{error}
+<div id="keybox"><label for="k">Setup key</label><input id="k" name="setup_key" autocomplete="off" spellcheck="false" aria-describedby="keyhint">
+<p id="keyhint" class="hint">Open this page with the MOVE OpenLab launcher or the command <b>move-openlab open</b>: the key is then filled in for you.</p></div>
+<label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="2" maxlength="32" required autofocus>
+<label for="d">Your name</label><input id="d" name="display_name" autocomplete="name" minlength="2" maxlength="80" required>
+<label for="n">Password</label><input id="n" name="new_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="strength">
+<div class="meter" aria-hidden="true"><span id="bar"></span></div><p id="strength" class="hint" role="status">At least 12 characters with three kinds of characters (lower case, upper case, digits, symbols).</p>
+<label for="r">Confirm password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="match">
+<p id="match" class="hint" role="status"></p>
+<button type="submit">Create administrator</button></form>
+<p class="legend"><span><i style="background:var(--bad)"></i>Weak</span><span><i style="background:#d4a72c"></i>Acceptable</span><span><i style="background:var(--ok)"></i>Strong</span><span style="margin-left:auto">Checked again by the server</span></p>"""
 
 LOGIN_ERRORS = {"invalid": "Invalid username or password.", "throttled": "Too many attempts. Try again later.",
                 "unconfigured": "Sign-in is not configured on this server.",
@@ -325,6 +415,8 @@ def auth_js():
 def login_page(request: Request, error: str | None = None, next: str | None = None, expired: str | None = None):
     if _auth(request).read(request.cookies.get(A.COOKIE_NAME)):
         return RedirectResponse(_safe_next(next), status_code=303)
+    if _setup_needed(request):
+        return RedirectResponse("/setup", status_code=303)
     msg = LOGIN_ERRORS.get(error or ("expired" if expired else ""), "")
     body = LOGIN_BODY.format(app=html.escape(APP_NAME), subtitle=html.escape(APP_SUBTITLE),
                              error=f'<p class="err" role="alert">{html.escape(msg)}</p>' if msg else "",
@@ -341,6 +433,15 @@ def change_password_page(request: Request, error: str | None = None):
                               error=f'<p class="err" role="alert">{html.escape(error)}</p>' if error else "",
                               cancel="" if forced else f'<a class="alt" href="/">Back to {html.escape(APP_NAME)}</a>')
     return HTMLResponse(_page("Change password", body))
+
+
+@router.get("/setup", response_class=HTMLResponse)
+def setup_page(request: Request, error: str | None = None):
+    if not _setup_needed(request):
+        return RedirectResponse("/login", status_code=303)
+    body = SETUP_BODY.format(app=html.escape(APP_NAME),
+                             error=f'<p class="err" role="alert">{html.escape(error[:300])}</p>' if error else "")
+    return HTMLResponse(_page("Welcome", body))
 
 
 # ------------------------------------------------------------------ request size
@@ -398,6 +499,10 @@ class AuthGuard(BaseHTTPMiddleware):
             ses = auth.read(request.cookies.get(A.COOKIE_NAME))
             if ses is None:
                 had_cookie = A.COOKIE_NAME in request.cookies
+                if SETUP.needed(auth):                     # no account yet: the first-run setup page
+                    resp = (JSONResponse({"detail": "setup required", "code": "setup_required"}, status_code=401)
+                            if path.startswith("/api/") else RedirectResponse("/setup", status_code=303))
+                    return _secure(resp, path, auth)
                 if path.startswith("/api/"):
                     resp = JSONResponse({"detail": "authentication required"}, status_code=401)
                 else:
@@ -437,7 +542,7 @@ def _secure(resp: Response, path: str, auth: A.Auth) -> Response:
     h.setdefault("Content-Security-Policy", csp_for(auth.settings.tile_url) if hasattr(auth.settings, "tile_url") else CSP)
     if auth.settings.production:
         h.setdefault("Strict-Transport-Security", "max-age=31536000")
-    if path.startswith("/api/") or path in ("/login", "/change-password"):
+    if path.startswith("/api/") or path in ("/login", "/change-password", "/setup"):
         h.setdefault("Cache-Control", "no-store")
     return resp
 
