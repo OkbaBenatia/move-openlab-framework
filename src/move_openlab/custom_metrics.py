@@ -62,9 +62,9 @@ METRIC_FILE = "metric.py"
 MAX_METRIC_BYTES = 200_000
 AGGREGATES = ("sum", "mean", "median", "ratio-of-sums")
 DIRECTIONS = ("higher", "lower")
-ID = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
-SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
-INPUT = re.compile(r"^(?:(?:domain|instance)\.)?[a-z][a-z0-9_]{0,63}$")
+ID = re.compile(r"^[a-z][a-z0-9-]{1,63}\Z")
+SEMVER = re.compile(r"^\d+\.\d+\.\d+\Z")
+INPUT = re.compile(r"^(?:(?:domain|instance)\.)?[a-z][a-z0-9_]{0,63}\Z")
 INSTANCE_KEYS = ("drivers", "riders", "pairs")
 METADATA_KEYS = ("id", "version", "name", "unit", "direction", "problems", "requires", "aggregate", "description",
                  "provenance")

@@ -26,6 +26,17 @@ interfaces.
   second account, CLI, stop/start), update in place, uninstall with data kept, cross-system reproduction of exported
   experiments, and the test suite on macOS and Windows.
 
+### Security
+- **Return path after signing in (bypass of the 0.3.1 fix)**: the sign-in page followed `next=/.//host` (and
+  `/x/..//host`, `/%2E//host`), because the browser resolves the dot segments to `//host`, a protocol-relative
+  address. The page now checks the resolved and decoded path (no `//`, no backslash, no control character, same
+  origin); the server refuses dot segments and double slashes after decoding, also double-encoded ones.
+- **Server paths in messages**: error texts that reach users, run records and exported bundles no longer contain
+  absolute paths of the installation — worker stderr (timeout dumps, crashes), sandbox refusals, job errors and
+  plug-in metadata errors are reduced to file names and placeholders (`move_openlab.redact`); the full text is
+  written to the server log.
+- Identifier validators no longer accept a trailing newline (`\Z` instead of `$`).
+
 ### Fixed
 - **Windows**: owner-only file helpers without POSIX permission calls (the data folder is protected by the profile's
   access-control list); byte-exact checkouts (`.gitattributes`); the demonstration and sample packages have the same

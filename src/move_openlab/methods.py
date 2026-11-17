@@ -31,8 +31,8 @@ from .problem import Problem
 STATUSES = ("OPTIMAL", "FEASIBLE", "HEURISTIC", "TIME_LIMIT", "INFEASIBLE", "ERROR")
 KINDS = ("exact", "heuristic", "learned", "hybrid")
 OUTPUT_FIELDS = {"decisions", "status", "declared", "metadata", "diagnostics"}
-METHOD_ID = re.compile(r"^[a-z][a-z0-9-]{2,63}$")
-SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+METHOD_ID = re.compile(r"^[a-z][a-z0-9-]{2,63}\Z")
+SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\Z")
 MAX_OUTPUT_BYTES = 4_000_000
 #: Optional ``METADATA["catalog"]`` values: how the "+ Add method" catalogue presents a plug-in (``"example"``: a
 #: ready-made example shipped with the framework). Presentation only — not part of the method's contract or identity.

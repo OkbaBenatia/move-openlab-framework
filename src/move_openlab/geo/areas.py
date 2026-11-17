@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .osm import DEFAULT_PROFILE, bbox_km2, validate_bbox
 
-AREA_ID = re.compile(r"^a-[0-9]{8}T[0-9]{6}-[0-9a-f]{6}$")
+AREA_ID = re.compile(r"^a-[0-9]{8}T[0-9]{6}-[0-9a-f]{6}\Z")
 MAX_AREAS = 100
 _lock = threading.RLock()                     # request threads and download jobs may update the same area
 

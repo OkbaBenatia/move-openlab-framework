@@ -21,7 +21,7 @@ from typing import Callable
 MAX_EVENTS = 2000
 MAX_KEPT_IN_MEMORY = 500
 FINAL = ("done", "error", "cancelled", "interrupted")
-SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 class Monitor:
@@ -116,8 +116,9 @@ class Jobs:
                 job["state"] = "cancelled" if mon.cancel.is_set() else "done"
             except Cancelled:
                 job["state"] = "cancelled"
-            except Exception as e:                             # reported, never hidden
-                job.update(state="cancelled" if mon.cancel.is_set() else "error", error=str(e))
+            except Exception as e:                             # reported, never hidden (server paths left out)
+                from .redact import exception as safe_message
+                job.update(state="cancelled" if mon.cancel.is_set() else "error", error=safe_message(e, f"job {jid}"))
             finally:
                 job["finished_at"] = time.time()
                 mon.event(job["state"], job["error"] or job["state"])

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 import json
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -51,7 +51,17 @@ def _safe_next(nxt: str | None) -> str:
     newlines, so ``/\\host`` or ``/<tab>/host`` would leave the site: such paths are refused, like ``//host``."""
     if not nxt or not nxt.startswith("/") or nxt.startswith(("//", "/login")):
         return "/"
-    return "/" if any(c == "\\" or ord(c) < 32 or ord(c) == 127 for c in nxt) else nxt
+    if any(c == "\\" or ord(c) < 32 or ord(c) == 127 for c in nxt):
+        return "/"
+    path = nxt.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(4):                                   # decoded until stable (double encoding)
+        dec = unquote(path)
+        if dec == path:
+            break
+        path = dec
+    if "//" in path or "\\" in path or any(seg in (".", "..") for seg in path.split("/")):   # dot segments resolve elsewhere
+        return "/"
+    return nxt
 
 
 def _client(request: Request) -> str:
@@ -296,12 +306,14 @@ AUTH_JS = """(function () {
   var params = new URLSearchParams(location.search);
   // a local path only: browsers read a backslash as a slash and drop tabs and newlines ('/<backslash>host' would leave
   // the site), so those are refused and the path must resolve to this origin
+  function unsafe(s) { for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c < 32 || c === 92 || c === 127) return true; } return s.indexOf('//') !== -1; }
   function safeNext(n) {
-    if (!n || n.charAt(0) !== '/') return '/';
-    for (var i = 0; i < n.length; i++) { var c = n.charCodeAt(i); if (c < 32 || c === 92 || c === 127) return '/'; }
-    var u;
-    try { u = new URL(n, location.origin); } catch (e) { return '/'; }
-    return u.origin === location.origin && u.pathname.indexOf('/login') !== 0 ? u.pathname + u.search + u.hash : '/';
+    if (!n || n.charAt(0) !== '/' || n.charAt(1) === '/' || unsafe(n)) return '/';
+    var u, dec;
+    try { u = new URL(n, location.origin); dec = decodeURIComponent(u.pathname); } catch (e) { return '/'; }
+    // the browser resolves dot segments ("/.//host" -> "//host"): the RESOLVED path, decoded too, must stay a plain local path
+    if (u.origin !== location.origin || unsafe(u.pathname) || unsafe(dec) || u.pathname.indexOf('/login') === 0) return '/';
+    return u.pathname + u.search + u.hash;
   }
   var next = safeNext(params.get('next'));
   function go(url) { location.replace(url); }

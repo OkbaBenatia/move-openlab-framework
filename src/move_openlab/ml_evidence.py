@@ -24,7 +24,7 @@ from .analysis import ml_evaluation as ML
 from .hashing import canonical, sha256_bytes
 from .store import SAFE_ID, IntegrityError, NotFound, now
 
-SHA = re.compile(r"^[0-9a-f]{64}$")
+SHA = re.compile(r"^[0-9a-f]{64}\Z")
 _lock = threading.RLock()
 _cache: OrderedDict = OrderedDict()            # (sha256, threshold, metric ids) -> evaluation; content-addressed
 CACHE_SIZE = 64

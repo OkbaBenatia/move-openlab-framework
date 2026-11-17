@@ -30,7 +30,7 @@ from .plugins import PLUGIN_FILE, read_plugin_metadata
 from .store import BenchError, Installation
 
 TEMPLATES = Path(__file__).resolve().parent / "templates" / "method"
-NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
+NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}\Z")
 
 
 def _doc(value) -> str:

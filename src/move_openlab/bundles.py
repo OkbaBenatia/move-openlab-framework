@@ -93,7 +93,7 @@ ML_NOT_RECOMPUTABLE = ("exported as a reference: the predictions and labels were
                        "recompute these figures; they are shown as the exporter recorded them")
 EVIDENCE_FORMAT = "move-openlab-evidence/1"
 DATASET_KEYS = ("source", "provider", "dataset_key", "release", "licence", "attribution", "source_sha256")
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}\Z")
 # required manifest fields and their types (format 1 and 2); optional fields are type-checked when present
 MANIFEST_SCHEMA = dict(
     required=dict(format=str, exported_by=str, exporter_installation=str, root_campaign_id=str, spec=dict,

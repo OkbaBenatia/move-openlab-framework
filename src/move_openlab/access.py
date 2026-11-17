@@ -21,7 +21,7 @@ from pathlib import Path
 from .problem import Problem
 
 GRANTS = "problem-grants.json"
-USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _lock = threading.Lock()
 
 
