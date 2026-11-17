@@ -33,6 +33,7 @@ from .plugins import code_sha256, discover, plugin_path, read_plugin_metadata
 from . import plugins as plugin_files, privatefiles
 from .access import Access
 from .problem import Problem
+from .redact import paths as redact_paths
 from .runner import environment, run_once
 from .sandbox import MODES, SandboxSpec, SandboxUnavailable, verify as sandbox_verify
 from .scoring import MODES as SELECTION_MODES, normalise_thresholds, select, select_share, validate_selection
@@ -40,7 +41,7 @@ from .scoring import MODES as SELECTION_MODES, normalise_thresholds, select, sel
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 LOCK_EXCLUDED = ("checksum", "locked_at", "status")
 KINDS = ("baseline", "reproduction", "extended", "variant", "threshold-study")
-SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _lock = threading.RLock()
 
 
@@ -570,7 +571,9 @@ class Workspace:
         try:
             meta = self._contract(problem, f)
         except (ContractError, OSError) as e:
-            steps.append(dict(step="metadata", ok=False, detail=str(e)))
+            from .redact import exception as safe_message
+            steps.append(dict(step="metadata", ok=False, detail=safe_message(e, "plug-in metadata") if isinstance(e, OSError)
+                              else redact_paths(str(e))))
             return out
         code = code_sha256(f)
         out.update(method_id=meta.method_id, version=meta.version, code_sha256=code)

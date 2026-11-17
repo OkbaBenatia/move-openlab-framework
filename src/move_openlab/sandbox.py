@@ -83,11 +83,11 @@ def _readonly_roots(spec: SandboxSpec) -> list[str]:
     minimal = [r for r in roots if not any(r != o and r.startswith(o.rstrip("/") + "/") for o in roots)]
     for r in minimal:
         if r in ("/", str(Path.home().resolve())):
-            raise SandboxUnavailable(f"refusing to expose {r} to plugins")
+            raise SandboxUnavailable("refusing to expose the file system root or the home directory to plugins")
         for p in spec.protected:
             if p == r or p.startswith(r.rstrip("/") + "/"):
-                raise SandboxUnavailable(f"a read-only root of the Python installation ({r}) contains a protected path; "
-                                         "move the data/plugin directory or the virtual environment")
+                raise SandboxUnavailable("a read-only directory of the Python installation contains a protected path (the data "
+                                         "or plug-in directory); move the data/plugin directory or the virtual environment")
     return minimal
 
 
@@ -197,7 +197,9 @@ def verify(spec: SandboxSpec, refresh: bool = False) -> dict:
         except (OSError, subprocess.TimeoutExpired) as e:
             raise SandboxUnavailable(f"sandbox could not start: {type(e).__name__}") from None
         if p.returncode != 0:
-            raise SandboxUnavailable(f"sandbox could not start: {p.stderr.strip()[-300:]}")
+            from .redact import log, paths
+            log.warning("sandbox could not start: %s", p.stderr.strip()[-2000:])
+            raise SandboxUnavailable(f"sandbox could not start: {paths(p.stderr.strip()[-300:])}")
         try:
             checks = json.loads(p.stdout)
         except ValueError:

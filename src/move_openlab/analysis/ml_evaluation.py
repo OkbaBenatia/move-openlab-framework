@@ -64,8 +64,8 @@ MAX_NOTES = 20
 MAX_SWEEP_POINTS = 101                     # thresholds of a sweep (all distinct scores when there are fewer)
 
 CORE = ("accuracy", "balanced_accuracy", "precision", "recall", "specificity", "f1", "pr_auc", "roc_auc")
-_HEX64 = re.compile(r"^[0-9a-f]{64}$")
-_METRIC_ID = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
+_HEX64 = re.compile(r"^[0-9a-f]{64}\Z")
+_METRIC_ID = re.compile(r"^[a-z][a-z0-9_]{1,47}\Z")
 CSV_COLUMNS = ("id", "label", "score", "prediction")
 
 

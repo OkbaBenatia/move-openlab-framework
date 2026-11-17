@@ -60,7 +60,7 @@ TEXT_FILES = ("test_plugin.py", "README.md", "README.txt", "README", "LICENSE", 
               "NOTICE", "AUTHORS", "CHANGELOG.md")
 ARCHIVE_SUFFIXES = (".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".whl", ".egg", ".jar")
 ARCHIVE_MAGIC = (b"PK\x03\x04", b"PK\x05\x06", b"\x1f\x8b", b"BZh", b"\xfd7zXZ", b"7z\xbc\xaf", b"Rar!", b"(\xb5/\xfd")
-NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}$")  # the plug-in directory (same rule as ``move-openlab method new``)
+NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}\Z")  # the plug-in directory (same rule as ``move-openlab method new``)
 
 
 class UploadRefused(ContractError):

@@ -32,7 +32,7 @@ from .tabular import Collector, DatasetError, summary
 
 GROUP = "move_openlab.dataset_providers"
 TRIP_FIELDS = ("date", "start_s", "start_lat", "start_lon", "end_lat", "end_lon", "role")
-USER_KEY = re.compile(r"^u-[0-9]{8}T[0-9]{6}-[0-9a-f]{6}$")
+USER_KEY = re.compile(r"^u-[0-9]{8}T[0-9]{6}-[0-9a-f]{6}\Z")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_DATASETS = 50
 __all__ = ["DatasetError", "DatasetProvider", "DatasetStore", "catalogue", "MAX_UPLOAD_BYTES"]
