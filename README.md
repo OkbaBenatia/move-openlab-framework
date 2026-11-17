@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="#watch-move-openlab-in-action">Demo video</a> ·
   <a href="#install-move-openlab--windows--linux--macos">Install</a> ·
   <a href="#first-launch--create-your-administrator">First launch</a> ·
   <a href="#try-a-real-example">Try an example</a> ·
@@ -34,11 +35,24 @@
 in this repository comes from a run of the public application with synthetic accounts; details may differ from the
 current interface.</sub>
 
-## Introduction video — coming soon
+## Watch MOVE OpenLab in Action
 
-A short introduction video will be published here.
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=OgUojQE46J4"><img src="docs/assets/video/move-openlab-interactive-demo-thumbnail.jpg" alt="Watch the MOVE OpenLab interactive demonstration on YouTube (1 min 33 s)" width="820"></a>
+</p>
 
-<!-- VIDEO: reserved for the introduction video of the released version, to be supplied by the maintainer. -->
+Explore real mobility scenarios, optimization workflows, independent validation, experiment comparison,
+import/export and scientific reproducibility — demonstrated through the actual MOVE OpenLab interface.
+
+▶ **[Watch the interactive demonstration on YouTube](https://www.youtube.com/watch?v=OgUojQE46J4)** (1 min 33 s) ·
+[MOVE OpenLab on YouTube](https://www.youtube.com/@MOVEOpenLab) ·
+[Full-quality MP4](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-1080p.mp4) (1080p, 33 MB) ·
+[French subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.fr.srt) ·
+[English subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.en.srt)
+
+<sub>One continuous session of the public application driven with real mouse and keyboard input; waiting times are
+shortened, nothing is staged. Synthetic accounts and the public Montbéliard demonstration data. Transcript, credits
+and checksums: <a href="https://github.com/OkbaBenatia/move-openlab-framework/releases/tag/demo-video-2026-11">demo-video-2026-11</a>.</sub>
 
 ## What MOVE OpenLab is
 
@@ -363,7 +377,7 @@ solver internals across systems are not claimed.
 ## Research and publications
 
 Publications describing MOVE OpenLab and studies that use it will be listed here once they are published. To cite
-the software itself, see [Citation](#citation).
+the software itself, see [Citation](#citation-and-licence).
 
 ## Applications for researchers, laboratories and companies
 
