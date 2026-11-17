@@ -27,6 +27,7 @@ try {
   await p.waitFor('location.pathname === "/setup"', 15000, 'redirect to /setup');
   const keyField = await p.eval('!document.getElementById("keybox").hidden');
   ok('F1', 'without the link, the page asks for the setup key', keyField);
+  await p.goto('about:blank');                                   // as the launcher does: a new page on the link
   await p.goto(link);
   await p.waitFor('document.getElementById("keybox").hidden === true', 10000, 'key filled from the link');
   const page = await p.eval('({ h: document.querySelector("h1").innerText, url: location.href, key: document.querySelector("input[name=setup_key]").value.length })');

@@ -84,17 +84,19 @@ jobs:
       - name: A tampered archive is refused (nothing installed)
         shell: bash
         run: |
-          T="$T/tampered"; mkdir -p "$T"; cd "$T"
+          D="$T/tampered"; mkdir -p "$D/folder"; cd "$D/folder"
           if [ "$RUNNER_OS" = Windows ]; then
-            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.zip bad.zip; printf 'x' >> bad.zip
+            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.zip ../bad.zip; printf 'x' >> ../bad.zip
             cp "$GITHUB_WORKSPACE/dist-release/install.ps1" .
-            if powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser -Archive bad.zip; then exit 1; fi
+            if powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Yes -NoBrowser -Archive ../bad.zip > ../out.txt 2>&1; then cat ../out.txt; exit 1; fi
           else
-            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.tar.gz bad.tar.gz; printf 'x' >> bad.tar.gz
+            cp "$GITHUB_WORKSPACE/dist-release/move-openlab-"*.tar.gz ../bad.tar.gz; printf 'x' >> ../bad.tar.gz
             cp "$GITHUB_WORKSPACE/dist-release/install.sh" .
-            if sh install.sh --yes --no-browser --archive bad.tar.gz; then exit 1; fi
+            if sh install.sh --yes --no-browser --archive ../bad.tar.gz > ../out.txt 2>&1; then cat ../out.txt; exit 1; fi
           fi
-          test ! -e app && test ! -e venv && echo "refused, nothing installed"
+          cat ../out.txt
+          grep -q "does not match this installer" ../out.txt
+          test ! -e app && test ! -e venv && echo "refused on its checksum, nothing installed"
       - name: Install (the documented command, from an empty folder)
         shell: bash
         run: |
@@ -150,6 +152,15 @@ jobs:
           test -f "$DATA/auth.sqlite3" && echo "data kept in $DATA"
           if "$PY" -m move_openlab.cli service status --config "$HOME_DIR/move-openlab.json"; then exit 1; fi
           cp "$T/report/smoke/"exported-*.zip "$RUNNER_TEMP/" 2>/dev/null || true
+      - name: Service diagnostics (on failure)
+        if: failure()
+        shell: bash
+        run: |
+          cat "$HOME_DIR/install.log" 2>/dev/null | tail -40 || true
+          [ -n "${PY:-}" ] && "$PY" -m move_openlab.cli service logs --config "$HOME_DIR/move-openlab.json" || true
+          [ "$RUNNER_OS" = Linux ] && { systemctl --user status move-openlab.service --no-pager || true; journalctl --user -u move-openlab.service -n 60 --no-pager || true; cat ~/.config/systemd/user/move-openlab.service || true; }
+          [ "$RUNNER_OS" = macOS ] && { launchctl print "gui/$(id -u)/io.github.okbabenatia.move-openlab" | head -40 || true; }
+          true
       - uses: actions/upload-artifact@v7
         if: always()
         with:

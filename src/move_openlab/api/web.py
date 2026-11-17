@@ -326,8 +326,12 @@ AUTH_JS = """(function () {
   var setup = document.querySelector('form[action="/api/setup/admin"]');
   if (setup) {
     // the setup key travels in the link's #fragment (never sent to the server or written to its log): copied into the form
-    var key = (location.hash || '').slice(1);
-    if (key) { setup.setup_key.value = decodeURIComponent(key); document.getElementById('keybox').hidden = true; history.replaceState(null, '', '/setup'); }
+    function takeKey() {
+      var key = (location.hash || '').slice(1);
+      if (key) { setup.setup_key.value = decodeURIComponent(key); document.getElementById('keybox').hidden = true; history.replaceState(null, '', '/setup'); }
+    }
+    takeKey();
+    window.addEventListener('hashchange', takeKey);        // the link opened in a tab already showing this page
     intercept(setup, '/api/setup/admin', function () {
       return { setup_key: setup.setup_key.value, username: setup.username.value, display_name: setup.display_name.value,
                new_password: setup.new_password.value, confirm_password: setup.confirm_password.value };

@@ -6,6 +6,8 @@ import json
 import time
 from pathlib import Path
 
+import sys
+
 import pytest
 
 import move_openlab
@@ -88,6 +90,9 @@ def solve(instance, config):
     assert not r["accepted"] and r["error"] == "timeout after 3.0 s" and r["status_declared"] == "ERROR"
     d = r["diagnostics"]
     procs = d["timeout_snapshot"]
-    assert procs and procs[0]["state"] in "SRD" and procs[0]["cpu_user_s"] < 2.5       # sleeping, not computing
+    if sys.platform.startswith("linux"):                # the process snapshot reads /proc (Linux); elsewhere it is empty
+        assert procs and procs[0]["state"] in "SRD" and procs[0]["cpu_user_s"] < 2.5   # sleeping, not computing
+    else:
+        assert procs == []
     assert "solver log line before the stall" in d["stderr_tail"]
     assert "Timeout" in d["stderr_tail"] and "in solve" in d["stderr_tail"]            # faulthandler traceback

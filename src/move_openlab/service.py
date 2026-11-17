@@ -208,7 +208,6 @@ Documentation=https://github.com/OkbaBenatia/move-openlab-framework
 [Service]
 Type=simple
 ExecStart={exe}
-WorkingDirectory="{cfg['home']}"
 Environment=PYTHONDONTWRITEBYTECODE=1
 Restart=on-failure
 RestartSec=5
