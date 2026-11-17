@@ -34,6 +34,30 @@ def test_lockfile_digests_are_not_screened_but_everything_else_is():
     assert "zzq" in gate.norm(gate.screened("frontend/package-lock.json", resolved))
 
 
+def test_only_the_demonstration_network_may_be_compressed_and_it_is_screened_decompressed(tmp_path, monkeypatch):
+    """The shipped road network is gzip JSON: screened decompressed like text; any other archive is still refused."""
+    import gzip
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gate", ROOT / "scripts" / "check_public_safety.py")
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    net = tmp_path / "src/move_openlab/demo/network"
+    net.mkdir(parents=True)
+    (net / "clean.json.gz").write_bytes(gzip.compress(b'{"name": "rue du Parc"}'))
+    (net / "leak.json.gz").write_bytes(gzip.compress(b'{"name": "rue zzq"}'))
+    (net / "broken.json.gz").write_bytes(b"not gzip")
+    (net / "other.zip").write_bytes(b"PK")
+    (tmp_path / "data.json.gz").write_bytes(gzip.compress(b"{}"))                         # outside the folder
+    monkeypatch.setattr(gate, "ROOT", tmp_path)
+    monkeypatch.setattr(gate, "files", lambda: sorted(p for p in tmp_path.rglob("*") if p.is_file()))
+    found = gate.scan(["zzq"])
+    assert not any("clean.json.gz" in x for x in found)
+    assert any(x.startswith("src/move_openlab/demo/network/leak.json.gz:1: denylisted term") for x in found)
+    assert any("broken.json.gz: compressed data that cannot be screened" in x for x in found)
+    assert any("other.zip: archive" in x for x in found) and any(x.startswith("data.json.gz: archive") for x in found)
+    monkeypatch.setattr(gate, "MAX_GZ_TEXT", 10)
+    assert any("clean.json.gz: compressed data that cannot be screened" in x for x in gate.scan([]))   # bomb guard
+
+
 def test_comparability_transform_rules(problem):
     """Positive scaling of one metric is a verified normalisation; a different aggregation is not."""
     from move_openlab.benchmarks.synthetic_assignment import generator

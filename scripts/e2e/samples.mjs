@@ -112,14 +112,14 @@ await check('downloads', 'Both files download; their SHA-256 equal examples/SHA2
   return { actual: `${sc0.filename} ${a.slice(0, 16)}… = published; ${ex0.filename} ${b.slice(0, 16)}… = published (sample_experiment.zip)` };
 });
 
-await check('scenario-import', 'The sample scenario is verified (checksums, instance hash, licences; road network not installed → not rebuilt, stated plainly) and imported into the scenario library.', async () => {
+await check('scenario-import', 'The sample scenario is verified (checksums, instance hash, licences; its composition rebuilt on the demonstration road network shipped with the installation and identical) and imported into the scenario library.', async () => {
   await openSamples();
   const checks = await text('.samples-guide [data-sample=scenario] .pkg-checks');
-  for (const k of ['Archive and manifest', 'Frozen instance', 'Replay geometry', 'Editable composition', 'not rebuilt', 'No executable code']) expect(checks.includes(k), `checks lack ${k}: ${checks}`);
+  for (const k of ['Archive and manifest', 'Frozen instance', 'Replay geometry', 'Editable composition', 'rebuilt here on the installed road network and identical', 'No executable code']) expect(checks.includes(k), `checks lack ${k}: ${checks}`);
   await p.click('Import the sample scenario', '.samples-guide button');
   await p.waitFor('/scenario library/.test(document.querySelector(".samples-guide [data-sample=scenario]")?.innerText ?? "")', 30000, 'imported');
   const card = await text('.samples-guide [data-sample=scenario]');
-  expect(/Editing the participants needs the area's road network/.test(card), 'no statement about editing without the network');
+  expect(!/Editing the participants needs the area's road network/.test(card), 'the card says the road network is missing, but it ships with the installation');
   await p.eval(`document.querySelector('.samples-guide .pkg-more')?.setAttribute('open', '')`);
   const facts = await text('.samples-guide .pkg-more');
   expect(/Licence Ouverte/.test(facts) && /OpenStreetMap contributors/.test(facts), `licences: ${facts.slice(0, 300)}`);

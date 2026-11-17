@@ -18,6 +18,7 @@ Exit code 0 = clean, 1 = findings (printed as ``path:line: reason`` without echo
 from __future__ import annotations
 
 import argparse
+import gzip
 import os
 import re
 import subprocess
@@ -28,6 +29,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = re.compile(r"\.(zip|tar|tgz|gz|bz2|xz|7z|rar|whl|jar|joblib|pkl|pickle|npz|parquet|onnx)$", re.I)
 MAX_BYTES = 1_000_000
+# Compressed data shipped on purpose (the demonstration's OpenStreetMap road network): only gzip JSON in this folder,
+# bounded in size, and screened decompressed exactly like a text file. Every other archive is still refused.
+SCREENED_GZ = ("src/move_openlab/demo/network/",)
+MAX_GZ_BYTES, MAX_GZ_TEXT = 2_000_000, 32_000_000
 SECRET_PATTERNS = [
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "private key"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "cloud access key id"),
@@ -62,24 +67,39 @@ def norm(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
 
 
+def unpacked(f: Path) -> str:
+    """The decompressed text of a shipped gzip JSON file, refused (ValueError) above MAX_GZ_TEXT bytes."""
+    with gzip.open(f, "rb") as fh:
+        data = fh.read(MAX_GZ_TEXT + 1)
+    if len(data) > MAX_GZ_TEXT:
+        raise ValueError("too large once decompressed")
+    return data.decode("utf-8")
+
+
 def scan(denylist_terms: list[str]) -> list[str]:
     findings = []
     me = Path(__file__).resolve()
     for f in files():
         rel = f.relative_to(ROOT).as_posix()
-        if ARCHIVE.search(rel):
+        gz = rel.startswith(SCREENED_GZ) and rel.endswith(".json.gz")
+        if ARCHIVE.search(rel) and not gz:
             findings.append(f"{rel}: archive or serialized model file")
             continue
-        if f.stat().st_size > MAX_BYTES and not rel.endswith("package-lock.json"):
-            findings.append(f"{rel}: file larger than {MAX_BYTES} bytes")
+        if f.stat().st_size > (MAX_GZ_BYTES if gz else MAX_BYTES) and not rel.endswith("package-lock.json"):
+            findings.append(f"{rel}: file larger than {MAX_GZ_BYTES if gz else MAX_BYTES} bytes")
             continue
         name = f.name
         if (name == ".env" or name.startswith(".env.")) and name != ".env.example":
             findings.append(f"{rel}: environment file")
         try:
-            text = f.read_text(encoding="utf-8")
+            text = unpacked(f) if gz else f.read_text(encoding="utf-8")
         except UnicodeDecodeError:
+            if gz:
+                findings.append(f"{rel}: compressed data that is not UTF-8 text")
             continue                                    # binary assets (images) are only size-checked
+        except (OSError, EOFError, ValueError) as e:     # a shipped compressed file that cannot be screened is refused
+            findings.append(f"{rel}: compressed data that cannot be screened ({type(e).__name__})")
+            continue
         is_self = f.resolve() == me
         for n, line in enumerate(text.splitlines(), 1):
             low = norm(screened(rel, line))
