@@ -106,6 +106,7 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--import-bundle", help="bundle exported on another operating system: import and reproduce it")
+    ap.add_argument("--detached-ok", action="store_true", help="installed with --no-autostart: no registered service expected")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -118,7 +119,7 @@ def main() -> int:
     @check("S1", "running in the background after the installer exited")
     def _():
         st = json.loads(cli(cfg, "service", "status", "--json").stdout)
-        assert st["running"] and st["registered"], st
+        assert st["running"] and (st["registered"] or args.detached_ok), st
         h = json.loads(urllib.request.urlopen(base + "/api/health", timeout=5).read())   # noqa: S310
         return f"mechanism {st['mechanism']}, starts at sign-in {st['starts_at_sign_in']}, restarts after a crash {st['restarts_after_crash']}; {h}"
 

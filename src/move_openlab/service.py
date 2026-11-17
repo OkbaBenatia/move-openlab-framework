@@ -91,7 +91,11 @@ def base_url(cfg: dict) -> str:
 
 # ----------------------------------------------------------------------------------------------------------- probes
 def port_free(port: int, host: str = "127.0.0.1") -> bool:
+    """Can a server listen on this port now? Probed as the server binds (SO_REUSEADDR on POSIX, so connections of a
+    just-stopped server still in TIME_WAIT do not count as "in use"; Windows has no such state for a listener)."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if os.name == "posix":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
         except OSError:
@@ -349,8 +353,8 @@ def stop(cfg: dict) -> None:
             except OSError:
                 pass
             _pid_file(cfg).unlink(missing_ok=True)
-    end = time.time() + 20
-    while time.time() < end and health(int(cfg["port"]), timeout=0.5):
+    end = time.time() + 30                                     # stopped = no longer answering AND the port released
+    while time.time() < end and (health(int(cfg["port"]), timeout=0.5) or not port_free(int(cfg["port"]))):
         time.sleep(0.3)
 
 

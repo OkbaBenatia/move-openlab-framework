@@ -139,4 +139,4 @@ $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 $code = $LASTEXITCODE; $ErrorActionPreference = $old
 if ($code -ne 0) { Fail "MOVE OpenLab was installed but did not start (see: $VPy -m move_openlab.cli service logs)" }
 Say 'Done. Open MOVE OpenLab any time from the Start menu ("MOVE OpenLab"), or run: venv\Scripts\move-openlab open'
-Say 'You can close this window: MOVE OpenLab keeps running in the background and starts again when you sign in.'
+if (-not $NoAutostart) { Say 'You can close this window: MOVE OpenLab keeps running in the background and starts again when you sign in.' }
