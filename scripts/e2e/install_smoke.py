@@ -395,6 +395,8 @@ def main() -> int:
         def _():
             cli(cfg, "service", "stop")
             blocker = socket.socket()
+            if os.name == "posix":                      # the stopped server's connections may still be in TIME_WAIT
+                blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             blocker.bind(("127.0.0.1", int(cfg["port"])))
             blocker.listen(1)
             try:
