@@ -38,22 +38,21 @@ current interface.</sub>
 ## Watch MOVE OpenLab in Action
 
 <p align="center">
-  <a href="https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-web.mp4"><img src="docs/assets/video/move-openlab-interactive-demo-thumbnail.jpg" alt="Play the MOVE OpenLab interactive demonstration video (1 min 33 s)" width="820"></a>
+  <a href="https://www.youtube.com/watch?v=OgUojQE46J4"><img src="docs/assets/video/move-openlab-interactive-demo-thumbnail.jpg" alt="Watch the MOVE OpenLab interactive demonstration on YouTube (1 min 33 s)" width="820"></a>
 </p>
 
 Explore real mobility scenarios, optimization workflows, independent validation, experiment comparison,
 import/export and scientific reproducibility — demonstrated through the actual MOVE OpenLab interface.
 
-▶ **[Watch the interactive demonstration](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-web.mp4)** (1 min 33 s, MP4, 14 MB) ·
-[Full-quality video](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-1080p.mp4) (1080p, 33 MB) ·
+▶ **[Watch the interactive demonstration on YouTube](https://www.youtube.com/watch?v=OgUojQE46J4)** (1 min 33 s) ·
+[MOVE OpenLab on YouTube](https://www.youtube.com/@MOVEOpenLab) ·
+[Full-quality MP4](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-1080p.mp4) (1080p, 33 MB) ·
 [French subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.fr.srt) ·
-[English subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.en.srt) ·
-[Transcript, credits and checksums](https://github.com/OkbaBenatia/move-openlab-framework/releases/tag/demo-video-2026-11)
+[English subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.en.srt)
 
 <sub>One continuous session of the public application driven with real mouse and keyboard input; waiting times are
-shortened, nothing is staged. Synthetic accounts and the public Montbéliard demonstration data. The files are hosted
-on the project's GitHub release page: the video downloads and plays in any video player, and the subtitles load in
-players such as VLC.</sub>
+shortened, nothing is staged. Synthetic accounts and the public Montbéliard demonstration data. Transcript, credits
+and checksums: <a href="https://github.com/OkbaBenatia/move-openlab-framework/releases/tag/demo-video-2026-11">demo-video-2026-11</a>.</sub>
 
 ## What MOVE OpenLab is
 

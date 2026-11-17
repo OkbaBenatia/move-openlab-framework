@@ -8,7 +8,8 @@ interfaces.
 ### Documentation
 - README: *Watch MOVE OpenLab in Action* replaces the video placeholder: a 1 min 33 s demonstration recorded in the
   public application (Montbéliard demonstration, validation, comparison, export/import, reproduction by a second
-  researcher), hosted as assets of the media-only release `demo-video-2026-11` with French and English subtitles.
+  researcher), on YouTube (channel @MOVEOpenLab); full-quality MP4 and French and English subtitles on the media-only
+  release `demo-video-2026-11`.
 
 ### Changed
 - **Launcher icon**: the "MOVE OpenLab" launcher shows the official MOVE OpenLab symbol (the infinity-shaped road with
