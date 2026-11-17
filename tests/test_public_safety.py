@@ -20,6 +20,20 @@ def test_no_denylist_material_is_stored_in_the_repository():
     assert "hashlib" not in gate and "MOVE_OPENLAB_DENYLIST" in gate
 
 
+def test_lockfile_digests_are_not_screened_but_everything_else_is():
+    """A short screening term can occur by chance in a lockfile's base64 integrity digest: only that value is skipped."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gate", ROOT / "scripts" / "check_public_safety.py")
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    digest = '      "integrity": "sha512-AbQzzqXyZ09+/zzq0w==",'
+    assert "zzq" not in gate.norm(gate.screened("frontend/package-lock.json", digest))
+    assert "zzq" in gate.norm(gate.screened("docs/notes.md", digest))                      # other files: unchanged
+    named = '    "node_modules/zzq-package": {'
+    assert "zzq" in gate.norm(gate.screened("frontend/package-lock.json", named))         # names stay screened
+    resolved = '      "resolved": "https://registry.npmjs.org/zzq/-/zzq-1.0.0.tgz",'
+    assert "zzq" in gate.norm(gate.screened("frontend/package-lock.json", resolved))
+
+
 def test_comparability_transform_rules(problem):
     """Positive scaling of one metric is a verified normalisation; a different aggregation is not."""
     from move_openlab.benchmarks.synthetic_assignment import generator
