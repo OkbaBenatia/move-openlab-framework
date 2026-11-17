@@ -194,6 +194,9 @@ def server_processes(cfg: dict) -> int:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):              # Windows consoles default to a legacy code page
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
