@@ -1,0 +1,34 @@
+{
+ "network_id": "2858421165cd47486a509d26",
+ "area": {
+  "name": null,
+  "bbox": [
+   47.42,
+   6.66,
+   47.6,
+   6.96
+  ]
+ },
+ "profile": "car",
+ "profile_label": "Car, all public roads",
+ "source": {
+  "service": "Overpass API",
+  "url": "https://overpass-api.de/api/interpreter",
+  "query": "[out:json][timeout:180];way[\"highway\"~\"^(living_street|motorway|motorway_link|primary|primary_link|residential|secondary|secondary_link|tertiary|tertiary_link|trunk|trunk_link|unclassified)$\"][\"access\"!~\"^(no|private)$\"][\"motor_vehicle\"!~\"^(no|private)$\"](47.42,6.66,47.6,6.96);(._;>;);out body;",
+  "retrieved_at": "2026-11-09T14:30:01Z",
+  "osm_timestamp": "2026-11-09T14:28:31Z",
+  "raw_sha256": "88bc1bb5c7ed214f6dd1e16532451f15239edb2f7ebb107a7ad102fd9fede722",
+  "raw_bytes": 9316462
+ },
+ "licence": {
+  "id": "ODbL-1.0",
+  "name": "Open Database License 1.0",
+  "url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution": "\u00a9 OpenStreetMap contributors",
+  "copyright_url": "https://www.openstreetmap.org/copyright"
+ },
+ "builder": "move_openlab.geo.osm/1.1.0",
+ "nodes": 58710,
+ "edges": 108664,
+ "network_sha256": "99fe4d80a6c36f926df040f0a7b1eb65c4b976f4b2a31c122ff1b53a301f96b7"
+}

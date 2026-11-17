@@ -7,8 +7,9 @@ The following parts of this repository are NOT licensed under the Apache License
 (details and attributions in THIRD_PARTY_NOTICES.md):
 
 - Road networks, travel times, distances and route geometry in the demonstration, the sample experiment and the sample
-  scenario (src/move_openlab/demo/bundle/, src/move_openlab/samples/montbeliard/, src/move_openlab/samples/scenario/):
-  derived from OpenStreetMap data, (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
+  scenario (src/move_openlab/demo/bundle/, src/move_openlab/samples/montbeliard/, src/move_openlab/samples/scenario/),
+  and the demonstration's road network with its raw Overpass response (src/move_openlab/demo/network/): OpenStreetMap
+  data and data derived from it, (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
 - Participants of the same files: resampled from the open data of the French carpooling proof registry (Registre de
   Preuve de Covoiturage, data.gouv.fr), Licence Ouverte / Open Licence (Etalab).
 - The sample trip dataset (examples/scenario-import/, src/move_openlab/samples/trips/): Creative Commons Zero 1.0.

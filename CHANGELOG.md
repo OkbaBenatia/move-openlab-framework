@@ -5,15 +5,23 @@ interfaces.
 
 ## Unreleased
 
+### Added
+- **The demonstration's road network ships with it** (`src/move_openlab/demo/network/`, ODbL 1.0, © OpenStreetMap
+  contributors): the original network its frozen scenarios were built on (`2858421165cd47486a509d26`) and the raw
+  Overpass response it was built from. Installing the demonstration stores it unchanged (every digest checked against
+  the bundle; nothing downloaded) and attaches it to the demonstration's area, also an area added without it by
+  0.3.0. A fresh installation can therefore edit the demonstration's participants, use *Randomize* and drag points on
+  the map. The demonstration bundle, its experiments, results and checksums are unchanged.
+
 ### Fixed
 - **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
   reason. When the area has no stored road network the step says so and links to *Area & Data* (where the one-time
   download is offered); when a scenario was built on a road network this installation does not store (for example the
   shipped demonstration on a fresh installation: a new OpenStreetMap download gives a different network), the editor
   says that its participants cannot be edited here.
-- **Workflow acceptance on a fresh installation** (`scripts/e2e/workflow_acceptance.mjs`): fixtures prepare the
-  demonstration area's road network and a reproduction through the interface's own endpoints (nothing changes where
-  they exist); editing the demonstration on an installation without its road network is reported as that limitation.
+- **Workflow acceptance on a fresh installation** (`scripts/e2e/workflow_acceptance.mjs`): deterministic — the
+  demonstration area must carry the shipped original road network (no OpenStreetMap download), and a reproduction is
+  prepared through the interface's own endpoint where none exists yet.
 - **Confidentiality gate**: lockfile integrity digests (random base64) are left out of the denylist screening, where a
   short term could occur by chance; package names, URLs and every other line stay screened.
 

@@ -132,6 +132,8 @@ def state(request: Request):
     # "installed" means *this* demonstration (by bundle digest): a newer shipped demonstration is imported next to the
     # previous one, which stays in the workspace (nothing is ever deleted)
     installed = demo.available() and p.get("demo_installed") == sha256_bytes(demo.bundle_bytes())
+    if installed and p.get("demo_area"):
+        _attach_demo_network(request, w, p["demo_area"])
     return dict(preferences={k: p.get(k) for k in ("tour_dismissed", "start_dismissed", "details_open", "theme", "language", "metrics", "last_experiment", "area_id", "workspace")}
                 | dict(hidden_ids=p.get("hidden_ids") or []),
                 demo=dict(available=demo.available(), installed=installed, campaigns=p.get("demo_campaigns") or [],
@@ -287,23 +289,53 @@ def install_demo(request: Request):
 
 
 def _demo_area(request: Request, w) -> str | None:
-    """The demonstration's area in this workspace, so that Generate starts there: an existing area on the same box and
-    profile is reused, otherwise one is added once with the shipped box (its road network is attached when this
-    installation already stores it; otherwise the wizard offers to prepare it). Never recreated after the user removes it."""
-    net = next(iter(demo.manifest().get("networks") or []), None)
+    """The demonstration's area in this workspace, so that Generate starts there and its participants can be edited: an
+    existing area on the same box and profile is reused, otherwise one is added once with the shipped box. Its road
+    network is the original one the scenarios were built on, stored from the copy shipped with the installation. Never
+    recreated after the user removes it."""
+    net = demo.network_ref()
     if not net or not net.get("bbox"):
         return None
     areas, prof = AreaStore(w.root), net.get("profile") or "car"
     box = [round(x, 5) for x in net["bbox"]]
-    for a in areas.list():
-        if a.get("network_id") == net["network_id"] or (a["bbox"] == box and a["profile"] == prof):
+    nid = _demo_network(request)
+    listed = areas.list()
+    for a in listed:
+        if a.get("network_id") == net["network_id"]:
+            return a["area_id"]
+    for a in listed:
+        if a["bbox"] == box and a["profile"] == prof:
+            if not a.get("network_id") and nid:
+                areas.attach(a["area_id"], nid)
             return a["area_id"]
     try:
-        hit = network_store(request).find(box, prof)
+        hit = None if nid else network_store(request).find(box, prof)
         return areas.create(demo.AREA_LABEL, box, prof, dict(name=demo.AREA_LABEL, kind="demonstration"),
-                            hit["network_id"] if hit else None)["area_id"]
+                            nid or (hit["network_id"] if hit else None))["area_id"]
     except ValueError:                                 # area limit reached: the demonstration still works without it
         return None
+
+
+def _demo_network(request: Request) -> str | None:
+    """The demonstration's original road network, stored in this installation (from the shipped copy) if needed."""
+    try:
+        return demo.install_network(network_store(request))
+    except (OSError, ValueError, KeyError):            # never blocks the demonstration; the wizard explains a missing network
+        return None
+
+
+def _attach_demo_network(request: Request, w, area_id: str) -> None:
+    """A demonstration area added without a road network (by an earlier version) gets the original one."""
+    net = demo.network_ref()
+    try:
+        a = AreaStore(w.root).get(area_id)
+    except (KeyError, ValueError, OSError):
+        return
+    if net and not a.get("network_id") and a["bbox"] == [round(x, 5) for x in net.get("bbox") or []] \
+            and a["profile"] == (net.get("profile") or "car"):
+        nid = _demo_network(request)
+        if nid:
+            AreaStore(w.root).attach(area_id, nid)
 
 
 def _refs(w, c: dict) -> tuple[list[str], list[str]]:
