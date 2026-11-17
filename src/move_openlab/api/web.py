@@ -274,7 +274,8 @@ AUTH_JS = """(function () {
     'Create the administrator account of this installation. You choose the username and the password; nothing is shown in any log or file.': 'Créez le compte administrateur de cette installation. Vous choisissez l’identifiant et le mot de passe ; rien n’apparaît dans un journal ou un fichier.',
     'Setup key': 'Clé d’installation', 'Your name': 'Votre nom', 'Confirm password': 'Confirmez le mot de passe', 'Create administrator': 'Créer l’administrateur',
     'Open this page with the MOVE OpenLab launcher or the command': 'Ouvrez cette page avec le lanceur MOVE OpenLab ou la commande',
-    ': the key is then filled in for you.': ' : la clé est alors remplie pour vous.'
+    ': the key is then filled in for you.': ' : la clé est alors remplie pour vous.',
+    'MOVE OpenLab runs in the background on this computer: closing the browser does not stop it. To come back later, open MOVE OpenLab from your applications menu (Start menu on Windows); if the server has stopped, the launcher starts it again.': 'MOVE OpenLab fonctionne en arrière-plan sur cet ordinateur : fermer le navigateur ne l’arrête pas. Pour y revenir plus tard, ouvrez MOVE OpenLab depuis le menu des applications (menu Démarrer sous Windows) ; si le serveur s’est arrêté, le lanceur le redémarre.'
   };
   var lang = 'en';
   try { lang = sessionStorage.getItem('move-openlab-lang') === 'fr' ? 'fr' : 'en'; } catch (e) { /* storage unavailable */ }
@@ -394,6 +395,7 @@ SETUP_BODY = """<div class="plate"><img class="logo" src="/brand/move-openlab-lo
 <label for="r">Confirm password</label><input id="r" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="match">
 <p id="match" class="hint" role="status"></p>
 <button type="submit">Create administrator</button></form>
+<p class="hint" style="margin-top:14px">MOVE OpenLab runs in the background on this computer: closing the browser does not stop it. To come back later, open MOVE OpenLab from your applications menu (Start menu on Windows); if the server has stopped, the launcher starts it again.</p>
 <p class="legend"><span><i style="background:var(--bad)"></i>Weak</span><span><i style="background:#d4a72c"></i>Acceptable</span><span><i style="background:var(--ok)"></i>Strong</span><span style="margin-left:auto">Checked again by the server</span></p>"""
 
 LOGIN_ERRORS = {"invalid": "Invalid username or password.", "throttled": "Too many attempts. Try again later.",

@@ -130,6 +130,33 @@ sign in, and is restarted automatically after a crash. Accounts, experiments and
 application-data folder and are kept by updates and by uninstalling. `move-openlab service status|stop|start|restart|logs`
 and the update, backup and uninstall steps: [docs/INSTALL.md](docs/INSTALL.md#daily-use--no-terminal-needed).
 
+### How to open MOVE OpenLab again
+
+<img align="right" width="96" src="src/move_openlab/assets/icons/move-openlab-256.png" alt="The MOVE OpenLab launcher icon: the official infinity-road symbol">
+
+1. Find **MOVE OpenLab** in your system's applications menu (Linux), the Start menu (Windows), or the Applications
+   folder, Launchpad or Spotlight (macOS).
+2. Click the official infinity-road icon.
+3. MOVE OpenLab opens in your default browser.
+4. If its background service has stopped, the launcher starts it automatically and opens the browser once it is ready.
+5. The default local address is **http://127.0.0.1:8765**.
+
+<br clear="right">
+
+### What if the server stops?
+
+- First, click the **MOVE OpenLab** launcher: it starts the stopped service and opens the browser (if it cannot, it
+  says why in a dialog, and in `<data>/logs/launcher.log`).
+- If necessary, check it: `move-openlab service status`.
+- Start or restart it: `move-openlab service start` · `move-openlab service restart`.
+- If it fails to start, read the log: `move-openlab service logs`.
+- Accounts, experiments and results are kept: stopping, restarting or updating never touches them.
+- Closing the browser does **not** stop the server.
+- The service normally starts again at your next sign-in.
+
+The `move-openlab` program is in the installation folder: `venv/bin/move-openlab` on Linux and macOS,
+`venv\Scripts\move-openlab.exe` on Windows ([docs/INSTALL.md](docs/INSTALL.md#daily-use--no-terminal-needed)).
+
 ## Main scientific features
 
 | Area | What you get |

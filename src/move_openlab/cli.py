@@ -132,11 +132,9 @@ def _service(args) -> int:
     if args.scmd == "install":
         rep = SV.install(Path(args.home), args.port, Path(args.data_dir) if args.data_dir else None,
                          launcher=not args.no_launcher, autostart=not args.no_autostart, browser=not args.no_browser)
-        print(json.dumps(rep, indent=1) if args.json else
-              f"MOVE OpenLab {rep['version']} is {'running' if rep['running'] else 'installed (not running yet)'} at {rep['url']}\n"
-              f"  background: {rep['mechanism']} · starts at sign-in: {'yes' if rep['starts_at_sign_in'] else 'no'} · "
-              f"restarts after a crash: {'yes' if rep['restarts_after_crash'] else 'no'}\n"
-              f"  data: {rep['data_dir']}\n  open it any time: {', '.join(rep['launcher']) or 'move-openlab open'}")
+        rep["cli"] = SV.cli_path(dict(home=rep["installation"]))
+        print(json.dumps(rep, indent=1) if args.json else ("\n" + SV.completion_message(rep) + "\n" if rep["running"] else
+              f"MOVE OpenLab {rep['version']} was installed but did not start: see {rep['cli']} service logs"))
         return 0 if rep["running"] else 1
     cfg = SV.load_config(args.config)
     if args.scmd == "status":
@@ -176,13 +174,22 @@ def _service(args) -> int:
 
 
 def _open(args) -> int:
+    """What the "MOVE OpenLab" launcher runs: start the background service if the server is not answering (never a
+    second server), wait until it is ready, then open the browser. A failure is explained to the person who clicked."""
     import webbrowser
     from . import service as SV
     cfg = SV.load_config(args.config)
-    if not SV.health(int(cfg["port"])):
-        SV.start(cfg)
-        if not SV.wait_until_up(int(cfg["port"])):
-            print(f"MOVE OpenLab did not start: see {SV.log_dir(cfg)}", file=sys.stderr)
+    port = int(cfg["port"])
+    if not SV.health(port):
+        try:
+            SV.start(cfg)                    # refuses when another application holds the port; no-op if already starting
+        except SystemExit as e:
+            SV.alert("MOVE OpenLab could not start", f"{str(e).removeprefix('error: ')}\n\nDetails: {SV.cli_path(cfg)} service logs",
+                     SV.log_dir(cfg))
+            return 1
+        if not SV.wait_until_up(port, 60):
+            SV.alert("MOVE OpenLab could not start", f"The server did not answer within a minute.\n\nDetails: "
+                     f"{SV.cli_path(cfg)} service logs (log folder: {SV.log_dir(cfg)})", SV.log_dir(cfg))
             return 1
     url = SV.open_url(cfg)
     if not args.no_browser:
