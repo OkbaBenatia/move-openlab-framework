@@ -314,8 +314,12 @@ def start(cfg: dict) -> None:
     elif mech == "launchd":
         dom = _mac_domain()
         if _run(["launchctl", "print", f"{dom}/{MAC_LABEL}"]).returncode != 0:
-            r = _run(["launchctl", "bootstrap", dom, str(_plist_path())])
-            if r.returncode != 0:
+            for _ in range(20):                        # an agent still being unloaded refuses a new bootstrap for a moment
+                r = _run(["launchctl", "bootstrap", dom, str(_plist_path())])
+                if r.returncode == 0:
+                    break
+                time.sleep(1)
+            else:
                 raise SystemExit(f"error: launchctl bootstrap failed: {r.stderr.strip()[-300:]}")
         else:
             _run(["launchctl", "kickstart", f"{dom}/{MAC_LABEL}"])
@@ -330,6 +334,16 @@ def start(cfg: dict) -> None:
         with open(logs / "detached.log", "ab") as out:
             p = subprocess.Popen(serve_argv(cfg), stdin=subprocess.DEVNULL, stdout=out, stderr=out, cwd=cfg["home"], **kw)
         privatefiles.write(_pid_file(cfg), str(p.pid))
+
+
+def restart(cfg: dict) -> None:
+    """Stop and start again. launchd restarts a loaded agent in place (``kickstart -k``): unloading and loading it
+    again can take launchd tens of seconds."""
+    if mechanism(cfg) == "launchd" and _run(["launchctl", "print", f"{_mac_domain()}/{MAC_LABEL}"]).returncode == 0:
+        _run(["launchctl", "kickstart", "-k", f"{_mac_domain()}/{MAC_LABEL}"])
+        return
+    stop(cfg)
+    start(cfg)
 
 
 def stop(cfg: dict) -> None:

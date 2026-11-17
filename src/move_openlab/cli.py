@@ -153,8 +153,7 @@ def _service(args) -> int:
         print("MOVE OpenLab stopped" + (" (it starts again at your next sign-in)" if SV.status(cfg)["registered"] else ""))
         return 0
     if args.scmd == "restart":
-        SV.stop(cfg)
-        SV.start(cfg)
+        SV.restart(cfg)
         ok = SV.wait_until_up(int(cfg["port"]))
         print("MOVE OpenLab restarted" if ok else "MOVE OpenLab did not start again: see " + str(SV.log_dir(cfg)))
         return 0 if ok else 1
