@@ -3,6 +3,22 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
+## Unreleased
+
+### Fixed
+- **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
+  reason. When the area has no stored road network the step says so and links to *Area & Data* (where the one-time
+  download is offered); when a scenario was built on a road network this installation does not store (for example the
+  shipped demonstration on a fresh installation: a new OpenStreetMap download gives a different network), the editor
+  says that its participants cannot be edited here.
+- **Workflow acceptance on a fresh installation** (`scripts/e2e/workflow_acceptance.mjs`): fixtures prepare the
+  demonstration area's road network and a reproduction through the interface's own endpoints (nothing changes where
+  they exist); editing the demonstration on an installation without its road network is reported as that limitation.
+
+### Changed — dependencies
+- GitHub Actions `actions/checkout`, `actions/setup-python`, `actions/setup-node` v7; `vite` 8.3.8,
+  `@vitejs/plugin-react` 6.3.0, `lucide-react` 1.72.0. TypeScript 7 is held: `typescript-eslint` does not support it yet.
+
 ## 0.3.0 — 2026-11-16
 
 ### Fixed — release

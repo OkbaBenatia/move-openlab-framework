@@ -86,6 +86,8 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
   const mapApi = useRef<MapApi | null>(null);
   const area = areas.find((a) => a.area_id === areaId) ?? null;
   const netReady = !!area?.network_id;
+  // editing a scenario whose road network is not stored here (for example the shipped demonstration on a fresh installation)
+  const netGone = !!initial && !areas.some((a) => a.network_id === initial.scenario.network_id);
   const shownDatasets = useMemo(() => datasets.filter((d) => overlaps(d.bbox, area?.bbox)), [datasets, area]);
   // the profiles frozen in an edited scenario stay available (e.g. a demonstration vehicle that is not a preset)
   const frozen: VehicleProfile[] = useMemo(() => ((initial?.scenario.vehicles?.profiles ?? []) as VehicleProfile[]), [initial]);
@@ -444,9 +446,12 @@ export function Wizard({ cfg, areas, datasets, methods, areaId: areaId0, dataset
           <div className="row gap authoring-bar" role="group" aria-label={tr('add participants')}>
             <Palette items={paletteItems} armed={pick?.fresh ? pick.item ?? null : null} disabled={!netReady || (source !== 'manual' && !preview)} onArm={(id) => paletteAdd(id)} onDrop={paletteDrop} />
             <span className="grow" />
-            <button type="button" className="btn sm" disabled={!netReady} onClick={() => { setPick(null); setRandomOpen(true); }} title={tr('Generate drivers, riders and vehicles with a seed: numbers, vehicle types, area, times')}><Shuffle size={12} /> {tr('Randomize…')}</button>
+            <button type="button" className="btn sm" disabled={!netReady} onClick={() => { setPick(null); setRandomOpen(true); }} title={netReady ? tr('Generate drivers, riders and vehicles with a seed: numbers, vehicle types, area, times') : netGone ? tr('This scenario was built on a road network that this installation does not store (OpenStreetMap data change, so a new download gives a different network): its participants cannot be edited here. Generate a new scenario on this area instead.') : tr('The road network of this area is not stored yet: download it in Area & Data to add, place or randomize participants.')}><Shuffle size={12} /> {tr('Randomize…')}</button>
             <button type="button" className="btn sm" disabled={!past.length} onClick={undo} aria-label={tr('undo')} title={tr('Undo the last change (Ctrl+Z)')}><Undo2 size={12} /> {tr('Undo')}</button>
           </div>
+          {!netReady && (netGone ? <p className="small authoring-hint" role="status">{tr('This scenario was built on a road network that this installation does not store (OpenStreetMap data change, so a new download gives a different network): its participants cannot be edited here. Generate a new scenario on this area instead.')}</p>
+            : <p className="small authoring-hint" role="status">{tr('The road network of this area is not stored yet: download it in Area & Data to add, place or randomize participants.')}{' '}
+              <button type="button" className="btn link" onClick={() => setStep(1)}>{tr('Go to Area & Data')}</button></p>)}
           <p className="small muted authoring-hint">{pick ? <>{pick.field === 'origin' ? tr('Click the map to place the start point of {id}.', { id: pick.id }) : tr('Click the map to place the end point of {id}.', { id: pick.id })}{' '}
             <button type="button" className="btn link" onClick={cancelPick}>{tr('Cancel placement')}</button></>
             : tr('Drag an item onto the map, or select it and click the map. Click a marker to edit it; drag a marker to move it.')}</p>

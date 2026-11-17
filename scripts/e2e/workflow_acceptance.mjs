@@ -79,6 +79,64 @@ const overflow = () => p.eval('document.documentElement.scrollWidth - innerWidth
 const scrollToCss = (css) => p.eval(`document.querySelector(${JSON.stringify(css)})?.scrollIntoView({ block: 'start' })`);
 let base = '', variant = '', mine = '', ext = '', exported = '', repro = '';
 
+// ---------------------------------------------------------------- fixtures for a fresh installation
+// A fresh installation has the demonstration but neither the road network of its area (the bundle ships no road graph;
+// the wizard offers the one-time download in Area & Data) nor a reproduction of it. These fixtures prepare both through
+// the same endpoints the interface uses, and do nothing where they already exist (for example a developer data copy).
+F.fixtures = [];
+async function waitApiJob(jid, timeout = 600000) {
+  const t0 = Date.now();
+  for (;;) {
+    const j = (await api(`/api/jobs/${jid}?events=false`)).body;
+    if (!['queued', 'running'].includes(j?.state)) return j?.state;
+    if (Date.now() - t0 > timeout) throw new Error(`job ${jid} still ${j?.state} after ${timeout} ms`);
+    await sleep(2000);
+  }
+}
+const post = (path) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+async function ensureDemoNetwork() {
+  const demoArea = (await api('/api/lab/state')).body.demo?.area;
+  const all = (await api('/api/geo/areas')).body.areas;
+  const area = all.find((a) => a.area_id === demoArea) ?? all.find((a) => a.name === 'Montbéliard');
+  if (!area) throw new Error('precondition: no Montbéliard area in this account (the demonstration is not installed)');
+  if (area.network_id) return;
+  // the public Overpass service is sometimes overloaded (HTTP 502/504): retried after a pause, as a user would
+  const t0 = Date.now(); let r, state, why = '';
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    r = await post(`/api/geo/areas/${area.area_id}/network`);
+    if (r.status !== 200) throw new Error(`precondition: the Montbéliard road network could not be prepared (HTTP ${r.status}: ${JSON.stringify(r.body).slice(0, 200)})`);
+    state = r.body.job ? await waitApiJob(r.body.job.job_id) : 'stored';
+    if (['done', 'stored'].includes(state)) break;
+    why = r.body.job ? String((await api(`/api/jobs/${r.body.job.job_id}?events=false`)).body?.error ?? '') : '';
+    if (attempt < 4) await sleep(60000);
+  }
+  if (!['done', 'stored'].includes(state)) throw new Error(`precondition: road-network download ended ${state} after 4 attempts (${why.slice(0, 160)})`);
+  const net = (await api(`/api/geo/areas/${area.area_id}`)).body.network_id;
+  F.fixtures.push({ fixture: 'road network of the demonstration area', how: r.body.cached ? 'stored network attached' : 'downloaded (Area & Data endpoint)', network_id: net, ms: Date.now() - t0 });
+  await p.eval('location.reload()'); await sleep(1500); await waitWorkspace(); await sleep(1500);
+}
+/** Editing the demonstration needs the road network it was built on. A fresh installation cannot download that exact
+ *  network again (OpenStreetMap data change), so the editor must say why its participants cannot be edited. */
+async function demoNotEditable(button) {
+  const net = (await experiment(base)).context?.area?.network_id;
+  if (!net || (await api('/api/geo/areas')).body.areas.some((a) => a.network_id === net)) return;
+  await p.click(button, '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard")', 15000, 'wizard'); await sleep(1500);
+  const why = await text('.wizard .authoring-hint');
+  expect(/does not store/.test(why), `the editor does not explain why the demonstration cannot be edited: ${why.slice(0, 160)}`);
+  throw new Error(`limitation of this installation: the demonstration was built on road network ${net}, which is not stored here (a new OpenStreetMap download gives a different network); the editor explains it`);
+}
+async function ensureReproduction(root) {
+  const have = (await api('/api/lab/experiments')).body.experiments.find((x) => x.kind === 'reproduction' && x.parent === root)?.campaign_id;
+  if (have) return have;
+  const t0 = Date.now(), r = await post(`/api/campaigns/${root}/reproduce`);
+  if (r.status !== 200) throw new Error(`precondition: reproduction of ${root} refused (HTTP ${r.status})`);
+  const j = await post(`/api/campaigns/${r.body.campaign_id}/execute`);
+  const state = await waitApiJob(j.body.job_id);
+  if (state !== 'done') throw new Error(`precondition: reproduction job ended ${state}`);
+  F.fixtures.push({ fixture: 'reproduction of the demonstration in this account', campaign_id: r.body.campaign_id, ms: Date.now() - t0 });
+  return r.body.campaign_id;
+}
+
 // ===================================================================================================== Scenario A
 await check('A1', 'Open Montbéliard Demo — Baseline: map, participants, compact metadata',
   'The Workspace opens the demonstration; metadata is compact (title, status, area, data, scenario, one-line summary) with Experiment details collapsed; participants are visible without scrolling far.',
@@ -195,9 +253,7 @@ await check('A4b', 'Exactly two experiments; charts at 160 % zoom and on a phone
 
 await check('A4c', 'Charts with three compared experiments', 'With A, B and C the grid keeps equal compact cards (3 per row) and every value is matched by scenario.',
   async () => {
-    const list = (await api('/api/lab/experiments')).body.experiments;
-    const r = list.find((x) => x.kind === 'reproduction' && x.parent === base)?.campaign_id;
-    expect(r, 'no reproduction of the demonstration in this account');
+    const r = await ensureReproduction(base);                  // fixture: created once on a fresh installation
     await goHash(`#/compare/${base}|${variant},${r}`, 3500); await p.click('Charts', '.tabs button'); await sleep(2500);
     const cs = await cards(); const s = await shot('14c-compact-charts-three-experiments', 300);
     const lg = await p.eval(`document.querySelector('.charts-grid .chart-card .lgd')?.innerText`);
@@ -249,6 +305,7 @@ await check('A7', 'Import into researcher2: integrity verified; reproduce; compa
 await check('B1', 'Generate 20 drivers and 30 riders, seed 21, Exact and Greedy; Save & Run', 'Preview 20 drivers · 30 riders; Review; Save & Run returns to the Workspace at once with the job stages; results validated; Compare methods.',
   async () => {
     await signOut(); await signIn(ADMIN); await waitWorkspace(); await goHash(`#/workspace/${base}`, 3000);
+    await ensureDemoNetwork();                                 // fixture: the area's road network (fresh installation)
     // the Montbéliard area may be hidden in this account: listed again for the wizard without changing anything else
     const prefs = (await api('/api/lab/state')).body.preferences;
     const mont = (await api('/api/geo/areas')).body.areas.find((a) => a.name === 'Montbéliard' && a.network_id);
@@ -265,7 +322,14 @@ await check('B1', 'Generate 20 drivers and 30 riders, seed 21, Exact and Greedy;
     await next();
     await p.fill('.wizard input[aria-label=from]', '07:30'); await p.fill('.wizard input[aria-label=to]', '08:00');
     await p.fill('.wizard input[aria-label="max detour minutes"]', '20'); await p.fill('.wizard input[aria-label="max detour ratio"]', '1');
-    await p.waitFor('/63 compatible pairs/.test(document.querySelector("[aria-label=\\"preview summary\\"]")?.innerText ?? "")', 90000, 'preview with the constraints');
+    // seeded synthetic trips are drawn on the road network: 63 pairs is the figure on the demonstration's network
+    // (2858421165cd47486a509d26); on another download of the area the count differs and is recorded
+    const pairs = mont.network_id === '2858421165cd47486a509d26' ? '63' : '[0-9]+';
+    await p.waitFor(`new RegExp('${pairs} compatible pairs').test(document.querySelector('[aria-label="preview summary"]')?.innerText ?? '')`, 90000, 'preview with the constraints');
+    if (pairs !== '63') {                                     // any count: wait until the preview of the final constraints is stable
+      let last = '', same = 0;
+      for (let i = 0; i < 40 && same < 2; i++) { await sleep(1500); const cur = await text('[aria-label="preview summary"]'); same = cur === last ? same + 1 : 0; last = cur; }
+    }
     const preview = await text('[aria-label="preview summary"]');
     await next(); await p.fill('.wizard input[aria-label="experiment name"]', 'Workflow · Montbéliard seed 21'); await p.fill('.wizard input[aria-label=repetitions]', '3'); await sleep(300);
     await next(); const s1 = await shot('09-wizard-review', 300);
@@ -322,6 +386,8 @@ await check('C1', 'Add My Greedy Matching: register if needed, Run with this met
 await check('E1', '+ Driver and + Rider from the Participants panel', 'The wizard opens at the participants step with the current participants and a new driver (then a new rider) waiting for its start point on the map; clicks place start and end; a route is previewed; nothing is saved until Save.',
   async () => {
     await goHash(`#/workspace/${base}`, 3000);
+    await ensureDemoNetwork();                                 // fixture: editing participants needs the area's road network
+    await demoNotEditable('Driver');
     const before = (await api('/api/geo/scenarios')).body;
     await p.click('Driver', '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard .wizard-map .leaflet-container")', 15000, 'wizard');
     await sleep(1500);
@@ -353,6 +419,8 @@ await check('E1', '+ Driver and + Rider from the Participants panel', 'The wizar
 await check('E2', 'Randomize with a typed seed (deterministic)', 'Randomize opens the participants step (with the Randomize dialog, closed here); seed 4242 and 4243 give different places, 4242 again the same places as before; ids and time windows stay.',
   async () => {
     await goHash(`#/workspace/${base}`, 3000);
+    await ensureDemoNetwork();                                 // fixture: Randomize needs the area's road network
+    await demoNotEditable('Randomize');
     await p.click('Randomize', '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard table[aria-label=drivers]")', 30000, 'wizard'); await sleep(2500);
     // the Workspace button opens the editor with the Randomize dialog on top; this check uses the seed-only control under it
     await p.waitFor('!!document.querySelector(".rz-modal")', 15000, 'Randomize dialog'); await p.click('Cancel', '.rz-modal button', true); await p.waitFor('!document.querySelector(".rz-modal")', 8000, 'dialog closed'); await sleep(500);
