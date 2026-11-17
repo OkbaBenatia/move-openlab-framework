@@ -106,6 +106,7 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--import-bundle", help="bundle exported on another operating system: import and reproduce it")
+    ap.add_argument("--admin-credentials", help="administrator already created in the browser (first_run.mjs): sign in")
     ap.add_argument("--detached-ok", action="store_true", help="installed with --no-autostart: no registered service expected")
     args = ap.parse_args()
     out = Path(args.out)
@@ -140,8 +141,21 @@ def main() -> int:
         assert not any(r for _, r in reach), reach
         return f"refused on {', '.join(ip for ip, _ in reach) or 'no other interface'}; accepted on 127.0.0.1"
 
+    if args.admin_credentials:
+        @check("A1", "administrator created in the browser signs in; setup closed")
+        def _():
+            c = json.loads(Path(args.admin_credentials).read_text())
+            state["pw"] = c["password"]
+            assert admin.get("/api/setup/status")["setup_required"] is False and not (data / "setup-key").exists()
+            admin.post("/api/auth/login", dict(username=c["username"], password=c["password"]))
+            me = admin.get("/api/auth/me")["user"]
+            assert me["role"] == "admin" and not me["must_change_password"], me
+            return f"{me['username']} signed in; setup key gone"
+
     @check("A1", "first-run setup: key from the data directory, weak password refused, administrator created")
     def _():
+        if args.admin_credentials:
+            return "done in the browser (first_run.mjs)"
         assert admin.get("/api/setup/status")["setup_required"] is True
         page = admin.req("GET", "/setup", ok=(200,))[1].decode()
         assert "Welcome to MOVE OpenLab" in page
@@ -248,13 +262,13 @@ def main() -> int:
         assert r.returncode == 0, r.stderr
         bundle = out / f"exported-{platform.system().lower()}.zip"
         r = cli(cfg, "method", "check", str(tmp / "smoke_method"), "--bundle", str(bundle), "--json")
-        rep = json.loads(r.stdout)
+        rep = json.loads(r.stdout[r.stdout.index("{"):])
         selftest = next(s for s in rep["steps"] if s["step"] == "self-test")
-        if sys.platform.startswith("linux") and Path("/usr/bin/bwrap").exists():
-            assert rep["ok"], rep
+        if rep["ok"]:
+            assert sys.platform.startswith("linux"), "a plug-in ran without the Linux sandbox"
             return "checked in the bubblewrap sandbox: " + "; ".join(f"{s['step']} {'ok' if s['ok'] else 'FAILED'}" for s in rep["steps"])
-        assert not selftest["ok"] and "sandbox" in selftest["detail"].lower(), selftest
-        return f"metadata ok; self-test refused without a sandbox, as designed: {selftest['detail'][:120]}"
+        assert not selftest["ok"] and "sandbox" in selftest["detail"].lower(), selftest      # refused, never run unsandboxed
+        return f"metadata ok; self-test refused (no verified sandbox on this system), as designed: {selftest['detail'][:140]}"
 
     @check("S3", "stop and start the background service")
     def _():

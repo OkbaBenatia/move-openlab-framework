@@ -100,7 +100,7 @@ say "Python: $("$PY" -c 'import platform; print(platform.python_version())') ($P
 # bubblewrap: the sandbox for uploaded method plug-ins (Linux only; built-in methods do not need it)
 if [ "$PLATFORM" = linux ] && ! command -v bwrap >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1 && ask "Optional: install bubblewrap (sudo apt-get install bubblewrap) so that uploaded method plug-ins can run in their sandbox?"; then
-    sudo apt-get install -y -q bubblewrap || say "bubblewrap could not be installed: uploaded plug-ins stay disabled (built-in methods work)"
+    { sudo apt-get update -q && sudo apt-get install -y -q bubblewrap; } || say "bubblewrap could not be installed: uploaded plug-ins stay disabled (built-in methods work)"
   else
     say "bubblewrap is not installed: uploaded method plug-ins stay disabled until it is (built-in methods work)"
   fi
@@ -114,7 +114,8 @@ if [ -n "$LOCAL_ARCHIVE" ]; then
   cp "$LOCAL_ARCHIVE" "$DL/$ARCHIVE"
 else
   say "Downloading $ARCHIVE"
-  if command -v curl >/dev/null 2>&1; then curl -fSL --retry 3 --proto '=https' -o "$DL/$ARCHIVE" "$RELEASE_URL/$ARCHIVE" || fail "download failed: $RELEASE_URL/$ARCHIVE"
+  PROTO='=https'; case "$RELEASE_URL" in http://127.0.0.1:*) PROTO='=http' ;; esac      # plain http: a local test server only
+  if command -v curl >/dev/null 2>&1; then curl -fSL --retry 3 --proto "$PROTO" -o "$DL/$ARCHIVE" "$RELEASE_URL/$ARCHIVE" || fail "download failed: $RELEASE_URL/$ARCHIVE"
   elif command -v wget >/dev/null 2>&1; then wget -q -O "$DL/$ARCHIVE" "$RELEASE_URL/$ARCHIVE" || fail "download failed: $RELEASE_URL/$ARCHIVE"
   else fail "curl or wget is required to download MOVE OpenLab"; fi
 fi

@@ -67,6 +67,19 @@ def _method_check(args) -> int:
     except OSError as e:
         print(f"error: cannot read the bundle: {e}", file=sys.stderr)
         return 2
+    if args.json:                       # solvers print banners on the C-level stdout: keep it for the JSON report only
+        import os
+        sys.stdout.flush()
+        saved = os.dup(1)
+        os.dup2(2, 1)
+        try:
+            rep = check_method(Path(args.path), bundle)
+        finally:
+            sys.stdout.flush()
+            os.dup2(saved, 1)
+            os.close(saved)
+        print(json.dumps(rep, indent=1))
+        return 0 if rep["ok"] else 1
     rep = check_method(Path(args.path), bundle)
     if args.json:
         print(json.dumps(rep, indent=1))
