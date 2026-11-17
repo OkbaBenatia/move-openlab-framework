@@ -31,7 +31,7 @@ def test_a_failed_job_keeps_no_server_path(tmp_path):
 
     def work(mon):
         raise FileNotFoundError(2, "No such file or directory", str(tmp_path / "deep" / "missing.json"))
-    j = jobs.start("alice", "execute", "alice/c-1", work, title="t")
+    jobs.start("alice", "execute", "alice/c-1", work, title="t")
     import time
     for _ in range(200):                                   # the record on disk is written last
         saved = "".join(p.read_text() for p in (tmp_path / "jobs").rglob("*.json"))
