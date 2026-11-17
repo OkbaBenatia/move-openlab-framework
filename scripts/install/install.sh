@@ -155,5 +155,4 @@ set -- service install --home "$HERE"
 [ -n "$DATA" ] && set -- "$@" --data-dir "$DATA"
 for o in $NOBROWSER $NOLAUNCHER $NOAUTO; do set -- "$@" "$o"; done
 "$VPY" -m move_openlab.cli "$@" || fail "MOVE OpenLab was installed but did not start (see: $VPY -m move_openlab.cli service logs)"
-say "Done. Open MOVE OpenLab any time from your applications menu (\"MOVE OpenLab\"), or run: $HERE/venv/bin/move-openlab open"
-[ -n "$NOAUTO" ] || say "You can close this terminal: MOVE OpenLab keeps running in the background and starts again when you sign in."
+# the guidance (how to reopen it, background behaviour, address) was printed by "service install" above

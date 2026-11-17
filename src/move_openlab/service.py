@@ -40,6 +40,8 @@ MAC_LABEL = "io.github.okbabenatia.move-openlab"
 WIN_TASK_PATH, WIN_TASK = "\\MOVE OpenLab\\", "Server"
 DEFAULT_PORT, PORT_RANGE = 8765, range(8765, 8800)
 EXIT_PORT_IN_USE = 3
+ICONS = Path(__file__).resolve().parent / "assets" / "icons"     # the official MOVE OpenLab symbol (assets/icons/README.md)
+ICON_NAME = "move-openlab"                                        # Linux icon-theme name (hicolor, per user)
 
 
 # ----------------------------------------------------------------------------------------------------------- places
@@ -284,6 +286,7 @@ Register-ScheduledTask -TaskPath {_q(WIN_TASK_PATH)} -TaskName {_q(WIN_TASK)} -A
         d = _autostart_desktop()
         d.parent.mkdir(parents=True, exist_ok=True)
         d.write_text(_desktop_entry(cfg, "start", "Start MOVE OpenLab in the background", autostart=True))
+        install_linux_icons()
     return mech
 
 
@@ -385,15 +388,37 @@ def status(cfg: dict) -> dict:
 # ----------------------------------------------------------------------------------------------------------- launcher
 def _desktop_entry(cfg: dict, action: str, comment: str, autostart: bool = False) -> str:
     exe = str(venv_python(Path(cfg["home"])))
-    icon = Path(cfg["home"]) / "app" / "frontend" / "public" / "favicon.svg"
     lines = ["[Desktop Entry]", "Type=Application", "Name=MOVE OpenLab" if not autostart else "MOVE OpenLab (background)",
              f"Comment={comment}", f'Exec="{exe}" -m move_openlab.cli {"service start" if action == "start" else "open"}',
-             "Terminal=false", "Categories=Science;Education;"]
-    if icon.is_file():
-        lines.append(f"Icon={icon}")
+             f"Icon={ICON_NAME}", "Terminal=false", "Categories=Science;Education;", "StartupNotify=false"]
     if autostart:
         lines.append("X-GNOME-Autostart-enabled=true")
     return "\n".join(lines) + "\n"
+
+
+def _hicolor() -> Path:
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "icons" / "hicolor"
+
+
+def install_linux_icons() -> list[Path]:
+    """The official symbol in the user's icon theme (every size the theme uses), then the desktop's caches refreshed
+    so menus show it at once — also when an older version had installed a different icon."""
+    made = []
+    for size in (16, 24, 32, 48, 64, 128, 256, 512):
+        src = ICONS / f"move-openlab-{size}.png"
+        if src.is_file():
+            dst = _hicolor() / f"{size}x{size}" / "apps" / f"{ICON_NAME}.png"
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+            made.append(dst)
+    idx = _hicolor() / "index.theme"
+    if made and not idx.exists() and Path("/usr/share/icons/hicolor/index.theme").is_file():
+        shutil.copyfile("/usr/share/icons/hicolor/index.theme", idx)        # lets gtk-update-icon-cache index the folder
+    if shutil.which("gtk-update-icon-cache"):
+        _run(["gtk-update-icon-cache", "-f", "-q", "-t", str(_hicolor())])
+    if shutil.which("update-desktop-database"):
+        _run(["update-desktop-database", "-q", str(launcher_paths()[0].parent)])
+    return made
 
 
 def launcher_paths() -> list[Path]:
@@ -417,25 +442,33 @@ $s.TargetPath = {_q(venv_python(home, windowed=True))}
 $s.Arguments = '-m move_openlab.cli open'
 $s.WorkingDirectory = {_q(home)}
 $s.Description = 'Open MOVE OpenLab'
+$s.IconLocation = {_q(str(ICONS / "move-openlab.ico") + ",0")}
 $s.Save()""")
         if r.returncode == 0:
             made.append(str(lnk))
     elif platform_name() == "macos":
         app = launcher_paths()[0]
         (app / "Contents" / "MacOS").mkdir(parents=True, exist_ok=True)
+        (app / "Contents" / "Resources").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ICONS / "move-openlab.icns", app / "Contents" / "Resources" / "move-openlab.icns")
         import plistlib
         (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps(dict(
             CFBundleName="MOVE OpenLab", CFBundleDisplayName="MOVE OpenLab", CFBundleIdentifier=MAC_LABEL + ".launcher",
             CFBundleExecutable="move-openlab", CFBundlePackageType="APPL", CFBundleShortVersionString=__version__,
-            LSUIElement=True)))
+            CFBundleIconFile="move-openlab", LSUIElement=True)))
         exe = app / "Contents" / "MacOS" / "move-openlab"
         exe.write_text(f'#!/bin/sh\nexec "{venv_python(home)}" -m move_openlab.cli open\n')
         exe.chmod(0o755)
+        os.utime(app)                                   # Finder and the Dock re-read the icon of a changed bundle
+        lsreg = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
+        if Path(lsreg).is_file():
+            _run([lsreg, "-f", str(app)])
         made.append(str(app))
     else:
         d = launcher_paths()[0]
         d.parent.mkdir(parents=True, exist_ok=True)
         d.write_text(_desktop_entry(cfg, "open", "Open the local MOVE OpenLab application in the browser"))
+        install_linux_icons()
         made.append(str(d))
     return made
 
@@ -446,6 +479,9 @@ def remove_launcher() -> None:
             shutil.rmtree(p, ignore_errors=True)
         else:
             p.unlink(missing_ok=True)
+    if platform_name() == "linux":
+        for f in _hicolor().glob(f"*/apps/{ICON_NAME}.png"):
+            f.unlink(missing_ok=True)
 
 
 def open_url(cfg: dict) -> str:
@@ -514,3 +550,65 @@ def uninstall(cfg: dict, remove_data: bool = False) -> dict:
         (Path(cfg["data_dir"]) / "installation-home.txt").unlink(missing_ok=True)
     return dict(service_removed=True, launcher_removed=True, data_dir=cfg["data_dir"], data_removed=removed,
                 folder=cfg["home"])
+
+
+# ----------------------------------------------------------------------------------------------------------- guidance
+WHERE = {"linux": "by searching for MOVE OpenLab in your Applications menu",
+         "macos": "from your Applications folder, Launchpad or Spotlight (MOVE OpenLab)",
+         "windows": "from the Start menu (search for MOVE OpenLab)"}
+
+
+def cli_path(cfg: dict) -> str:
+    home = Path(cfg["home"])
+    return str(home / "venv" / "Scripts" / "move-openlab.exe") if platform_name() == "windows" else str(home / "venv" / "bin" / "move-openlab")
+
+
+def completion_message(rep: dict) -> str:
+    """What the person who just installed MOVE OpenLab needs to know, once, at the end of the installation."""
+    launcher, background = bool(rep.get("launcher")), bool(rep.get("starts_at_sign_in"))
+    lines = ["MOVE OpenLab has been installed successfully.", ""]
+    if launcher:
+        lines.append(f"You can reopen it anytime {WHERE[platform_name()]}.")
+    else:
+        lines.append(f"You can reopen it anytime with:  {rep['cli']} open")
+    if background:
+        lines += ["The platform runs in the background. Closing the browser or terminal does not stop the server;",
+                  "it starts again when you sign in."]
+    else:
+        lines += ["The platform runs in the background until you stop it or sign out. Closing the browser or terminal does",
+                  "not stop the server."]
+    lines.append("If the server stops, opening MOVE OpenLab from the application launcher will start it again."
+                 if launcher else f"If the server stops, '{rep['cli']} open' starts it again.")
+    lines += ["", f"  Address:  {rep['url']}/", f"  Data:     {rep['data_dir']}",
+              f"  Service:  {rep['cli']} service status | start | stop | restart | logs"]
+    return "\n".join(lines)
+
+
+def alert(title: str, message: str, logs: Path | None = None) -> None:
+    """Tell the person who clicked the launcher why MOVE OpenLab did not open: a launcher has no terminal, so the
+    message is shown in a desktop dialog or notification where the system offers one (best effort; it is also printed
+    and written to the server log folder by the caller). MOVE_OPENLAB_NO_DIALOG=1 turns dialogs off (automated tests)."""
+    if sys.stderr:                                   # pythonw (Windows launcher) has no stderr
+        print(f"{title}: {message}", file=sys.stderr)
+    if logs is not None:
+        try:
+            logs.mkdir(parents=True, exist_ok=True)
+            with open(logs / "launcher.log", "a", encoding="utf-8") as fh:
+                fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {title}: {message}\n".replace("\n\n", " — ").replace("\n", " ") + "\n")
+        except OSError:
+            pass
+    if os.environ.get("MOVE_OPENLAB_NO_DIALOG") == "1":
+        return
+    try:
+        if platform_name() == "windows":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, title, 0x10)
+        elif platform_name() == "macos":
+            esc = message.replace("\\", "\\\\").replace('"', '\\"')
+            _run(["osascript", "-e", f'display alert "{title}" message "{esc}" as critical'])
+        elif shutil.which("zenity"):
+            _run(["zenity", "--error", "--title", title, "--text", message, "--no-markup"])
+        elif shutil.which("notify-send"):
+            _run(["notify-send", "-u", "critical", title, message])
+    except Exception:                                     # noqa: BLE001 (a missing dialog never hides the message)
+        pass

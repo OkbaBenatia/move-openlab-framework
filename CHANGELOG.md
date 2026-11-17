@@ -3,6 +3,20 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
+## Unreleased
+
+### Changed
+- **Launcher icon**: the "MOVE OpenLab" launcher shows the official MOVE OpenLab symbol (the infinity-shaped road with
+  its leaf) instead of a generic "M" square — Linux icon theme (sizes 16–512, caches refreshed), Windows `.ico` on the
+  Start menu shortcut, macOS `.icns` in the application bundle (`src/move_openlab/assets/icons/`, built from the
+  official logo pack by `scripts/release/build_icons.py`). Updating an installation writes the new icon.
+- **After installation**: one message says how to reopen MOVE OpenLab (Applications menu, Start menu, Applications
+  folder), that it runs in the background, that closing the browser or terminal does not stop it, and that the
+  launcher starts a stopped server again; the first-run page says the same once.
+- **Launcher recovery**: when the server cannot be started, the launcher says why (desktop dialog, and
+  `<data>/logs/launcher.log`) instead of failing silently; it waits up to a minute for the server before giving up.
+- README: *How to open MOVE OpenLab again* and *What if the server stops?*; INSTALL: the installed command paths.
+
 ## 0.3.2 — 2026-11-17
 
 ### Added

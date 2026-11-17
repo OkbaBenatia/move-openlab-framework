@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import http.cookiejar
 import json
+import os
 import platform
 import secrets
 import socket
@@ -99,6 +100,90 @@ def cli(cfg: dict, *args: str, timeout: int = 600) -> subprocess.CompletedProces
     py = Path(sys.executable)
     return subprocess.run([str(py), "-m", "move_openlab.cli", *args, "--config", cfg["_path"]] if args[0] in ("service", "open", "setup-link")
                           else [str(py), "-m", "move_openlab.cli", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def launcher_command(cfg: dict) -> list[str] | None:
+    """The exact command the installed "MOVE OpenLab" launcher runs (read from the launcher itself), or None."""
+    home = Path(cfg["home"])
+    if sys.platform.startswith("linux"):
+        d = Path.home() / ".local" / "share" / "applications" / "move-openlab.desktop"
+        if not d.is_file():
+            return None
+        import shlex
+        line = next(x for x in d.read_text().splitlines() if x.startswith("Exec="))
+        return shlex.split(line[5:])
+    if sys.platform == "darwin":
+        exe = Path.home() / "Applications" / "MOVE OpenLab.app" / "Contents" / "MacOS" / "move-openlab"
+        return [str(exe)] if exe.is_file() else None
+    lnk = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "MOVE OpenLab.lnk"
+    if not lnk.is_file():
+        return None
+    r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}'); $s.TargetPath; $s.Arguments; $s.IconLocation"],
+                       capture_output=True, text=True)
+    target, arguments = r.stdout.splitlines()[:2]
+    assert Path(target).parent == home / "venv" / "Scripts", target
+    return [target, *arguments.split()]
+
+
+def launcher_icon(cfg: dict) -> str:
+    import hashlib
+    import move_openlab
+    icons = Path(move_openlab.__file__).resolve().parent / "assets" / "icons"
+    if sys.platform.startswith("linux"):
+        d = (Path.home() / ".local" / "share" / "applications" / "move-openlab.desktop").read_text()
+        assert "\nIcon=move-openlab\n" in d, d
+        theme = Path.home() / ".local" / "share" / "icons" / "hicolor"
+        for size in (16, 32, 48, 128, 256, 512):
+            f = theme / f"{size}x{size}" / "apps" / "move-openlab.png"
+            assert f.read_bytes() == (icons / f"move-openlab-{size}.png").read_bytes(), f
+        return "desktop entry Icon=move-openlab; official symbol installed in the user's hicolor theme (16–512 px)"
+    if sys.platform == "darwin":
+        app = Path.home() / "Applications" / "MOVE OpenLab.app" / "Contents"
+        import plistlib
+        info = plistlib.loads((app / "Info.plist").read_bytes())
+        icns = app / "Resources" / "move-openlab.icns"
+        assert info["CFBundleIconFile"] == "move-openlab" and icns.read_bytes() == (icons / "move-openlab.icns").read_bytes()
+        return "app bundle: CFBundleIconFile=move-openlab, Resources/move-openlab.icns = official icon"
+    lnk = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "MOVE OpenLab.lnk"
+    r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}').IconLocation"], capture_output=True, text=True)
+    loc = r.stdout.strip()
+    path = loc.rsplit(",", 1)[0]
+    assert Path(path).is_file() and hashlib.sha256(Path(path).read_bytes()).digest() == hashlib.sha256((icons / "move-openlab.ico").read_bytes()).digest(), loc
+    return f"Start menu shortcut IconLocation={Path(path).name},0 (official icon)"
+
+
+def fake_browser(out: Path, base: str) -> tuple[Path, dict]:
+    """A stand-in for the default browser (BROWSER variable, honoured by Python's webbrowser on every system): it
+    records the address it was asked to open and whether the server answered at that moment."""
+    rec = out / "browser-opened.json"
+    rec.unlink(missing_ok=True)
+    py = out / "fake_browser.py"
+    py.write_text("import json, sys, urllib.request\n"
+                  f"try:\n    ok = urllib.request.urlopen({base!r} + '/api/health', timeout=3).status == 200\n"
+                  "except Exception:\n    ok = False\n"
+                  f"open({str(rec)!r}, 'w').write(json.dumps(dict(url=sys.argv[1], healthy_when_opened=ok)))\n")
+    if os.name == "nt":
+        exe = out / "fake_browser.cmd"
+        exe.write_text(f'@echo off\r\n"{sys.executable}" "{py}" %1\r\n')
+    else:
+        exe = out / "fake_browser.sh"
+        exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{py}" "$1"\n')
+        exe.chmod(0o755)
+    return rec, dict(os.environ, BROWSER=str(exe), MOVE_OPENLAB_NO_DIALOG="1")
+
+
+def server_processes(cfg: dict) -> int:
+    """How many MOVE OpenLab server processes of this installation are running."""
+    needle = "move_openlab.cli serve"
+    if os.name == "nt":
+        r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                            "@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*move_openlab.cli serve*' -and $_.Name -like 'python*' }).Count"],
+                           capture_output=True, text=True)
+        return int((r.stdout.strip() or "0"))
+    r = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True)
+    return sum(1 for line in r.stdout.splitlines() if needle in line and cfg["_path"] in line)
 
 
 def main() -> int:
@@ -280,6 +365,51 @@ def main() -> int:
         assert r.returncode == 0, r.stdout + r.stderr
         assert json.loads(cli(cfg, "service", "status", "--json").stdout)["running"]
         return "stopped (not listening), started again"
+
+    launcher_cmd = launcher_command(cfg)
+    if launcher_cmd:
+        @check("L1", "the launcher shows the official MOVE OpenLab icon")
+        def _():
+            return launcher_icon(cfg)
+
+        @check("L2", "the launcher restarts a stopped server, opens the browser once it answers, and starts no second server")
+        def _():
+            exps_before = len(admin.get("/api/lab/experiments")["experiments"])
+            r = cli(cfg, "service", "stop")
+            assert r.returncode == 0 and not json.loads(cli(cfg, "service", "status", "--json").stdout)["running"]
+            rec, env = fake_browser(out, base)
+            run = subprocess.run(launcher_cmd, capture_output=True, text=True, timeout=180, env=env)
+            assert run.returncode == 0, run.stderr[-400:]
+            opened = json.loads(rec.read_text())
+            assert opened["url"].startswith(base + "/") and opened["healthy_when_opened"], opened
+            assert json.loads(cli(cfg, "service", "status", "--json").stdout)["running"]
+            subprocess.run(launcher_cmd, capture_output=True, text=True, timeout=180, env=env)      # clicked again
+            n = server_processes(cfg)
+            assert n == 1, f"{n} server processes"
+            c2 = Client(base)
+            c2.post("/api/auth/login", dict(username="admin1", password=state["pw"]))
+            assert len(c2.get("/api/lab/experiments")["experiments"]) == exps_before
+            return f"stopped → launcher → running; browser opened {opened['url']} after the server answered; 1 server process; account and {exps_before} experiments kept"
+
+        @check("L3", "the launcher explains a failure and never starts a second server (port taken by another application)")
+        def _():
+            cli(cfg, "service", "stop")
+            blocker = socket.socket()
+            blocker.bind(("127.0.0.1", int(cfg["port"])))
+            blocker.listen(1)
+            try:
+                rec, env = fake_browser(out, base)
+                run = subprocess.run(launcher_cmd, capture_output=True, text=True, timeout=120, env=env)
+                log = Path(cfg["data_dir"]) / "logs" / "launcher.log"
+                said = log.read_text(encoding="utf-8").splitlines()[-1] if log.is_file() else ""
+                assert run.returncode != 0 and "used by another application" in said, (run.returncode, said, run.stderr[-300:])
+                assert not rec.exists(), "a browser was opened although the server could not start"
+                assert server_processes(cfg) == 0
+            finally:
+                blocker.close()
+            run = subprocess.run(launcher_cmd, capture_output=True, text=True, timeout=180, env=env)
+            assert run.returncode == 0 and json.loads(cli(cfg, "service", "status", "--json").stdout)["running"]
+            return f"explained: {said.split(': ', 1)[-1][:110]}…; no browser, no server; recovered once the port was free"
 
     rep = dict(platform=platform.platform(), python=platform.python_version(), machine=platform.machine(),
                checks=results, passed=sum(r["ok"] for r in results), total=len(results), cross=state.get("cross"))

@@ -95,7 +95,7 @@ built interface. `frontend/package-lock.json` lists them exactly.
 | Asset | Where | Licence |
 |---|---|---|
 | Inter typeface (two WOFF2 subsets) | `frontend/public/fonts/inter/` | SIL Open Font License 1.1; © 2016 The Inter Project Authors. The licence text is next to the files (`OFL.txt`) |
-| MOVE OpenLab logo and banner | `frontend/public/brand/`, `docs/assets/brand/` | the project's own marks, not third-party; not licensed under Apache-2.0 (its section 6 grants no trademark rights) |
+| MOVE OpenLab logo, banner and application icons | `frontend/public/brand/`, `docs/assets/brand/`, `src/move_openlab/assets/icons/` | the project's own marks, not third-party; not licensed under Apache-2.0 (its section 6 grants no trademark rights) |
 | Screenshots | `docs/assets/screenshots/` | taken from the application; the maps in them show OpenStreetMap tiles, © OpenStreetMap contributors |
 
 ## Map data and services
