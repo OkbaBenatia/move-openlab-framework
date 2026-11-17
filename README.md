@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>A Reproducible Experimentation Framework for Sustainable Mobility Optimization</b><br>
-  <b>Conceived, designed, developed and implemented by Dr. Okba BEN ATIA.</b><br>
+  <b>Conceived, designed, and developed by Dr. Okba BEN ATIA.</b><br>
   <a href="https://www.linkedin.com/in/benatiaokba/">LinkedIn</a> · <a href="https://scholar.google.com/citations?user=n5zSD7QAAAAJ&amp;hl=en">Google Scholar</a> · <a href="https://github.com/OkbaBenatia">GitHub</a>
 </p>
 
@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="#watch-move-openlab-in-action">Demo video</a> ·
   <a href="#install-move-openlab--windows--linux--macos">Install</a> ·
   <a href="#first-launch--create-your-administrator">First launch</a> ·
   <a href="#try-a-real-example">Try an example</a> ·
@@ -34,11 +35,24 @@
 in this repository comes from a run of the public application with synthetic accounts; details may differ from the
 current interface.</sub>
 
-## Introduction video — coming soon
+## Watch MOVE OpenLab in Action
 
-A short introduction video will be published here.
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=OgUojQE46J4"><img src="docs/assets/video/move-openlab-interactive-demo-thumbnail.jpg" alt="Watch the MOVE OpenLab interactive demonstration on YouTube (1 min 33 s)" width="820"></a>
+</p>
 
-<!-- VIDEO: reserved for the introduction video of the released version, to be supplied by the maintainer. -->
+Explore real mobility scenarios, optimization workflows, independent validation, experiment comparison,
+import/export and scientific reproducibility — demonstrated through the actual MOVE OpenLab interface.
+
+▶ **[Watch the interactive demonstration on YouTube](https://www.youtube.com/watch?v=OgUojQE46J4)** (1 min 33 s) ·
+[MOVE OpenLab on YouTube](https://www.youtube.com/@MOVEOpenLab) ·
+[Full-quality MP4](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo-1080p.mp4) (1080p, 33 MB) ·
+[French subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.fr.srt) ·
+[English subtitles](https://github.com/OkbaBenatia/move-openlab-framework/releases/download/demo-video-2026-11/MOVE-OpenLab-interactive-demo.en.srt)
+
+<sub>One continuous session of the public application driven with real mouse and keyboard input; waiting times are
+shortened, nothing is staged. Synthetic accounts and the public Montbéliard demonstration data. Transcript, credits
+and checksums: <a href="https://github.com/OkbaBenatia/move-openlab-framework/releases/tag/demo-video-2026-11">demo-video-2026-11</a>.</sub>
 
 ## What MOVE OpenLab is
 
@@ -129,6 +143,33 @@ or go to `http://127.0.0.1:8765`. It keeps running when you close the terminal o
 sign in, and is restarted automatically after a crash. Accounts, experiments and results live in your user's
 application-data folder and are kept by updates and by uninstalling. `move-openlab service status|stop|start|restart|logs`
 and the update, backup and uninstall steps: [docs/INSTALL.md](docs/INSTALL.md#daily-use--no-terminal-needed).
+
+### How to open MOVE OpenLab again
+
+<img align="right" width="96" src="src/move_openlab/assets/icons/move-openlab-256.png" alt="The MOVE OpenLab launcher icon: the official infinity-road symbol">
+
+1. Find **MOVE OpenLab** in your system's applications menu (Linux), the Start menu (Windows), or the Applications
+   folder, Launchpad or Spotlight (macOS).
+2. Click the official infinity-road icon.
+3. MOVE OpenLab opens in your default browser.
+4. If its background service has stopped, the launcher starts it automatically and opens the browser once it is ready.
+5. The default local address is **http://127.0.0.1:8765**.
+
+<br clear="right">
+
+### What if the server stops?
+
+- First, click the **MOVE OpenLab** launcher: it starts the stopped service and opens the browser (if it cannot, it
+  says why in a dialog, and in `<data>/logs/launcher.log`).
+- If necessary, check it: `move-openlab service status`.
+- Start or restart it: `move-openlab service start` · `move-openlab service restart`.
+- If it fails to start, read the log: `move-openlab service logs`.
+- Accounts, experiments and results are kept: stopping, restarting or updating never touches them.
+- Closing the browser does **not** stop the server.
+- The service normally starts again at your next sign-in.
+
+The `move-openlab` program is in the installation folder: `venv/bin/move-openlab` on Linux and macOS,
+`venv\Scripts\move-openlab.exe` on Windows ([docs/INSTALL.md](docs/INSTALL.md#daily-use--no-terminal-needed)).
 
 ## Main scientific features
 
@@ -336,7 +377,7 @@ solver internals across systems are not claimed.
 ## Research and publications
 
 Publications describing MOVE OpenLab and studies that use it will be listed here once they are published. To cite
-the software itself, see [Citation](#citation).
+the software itself, see [Citation](#citation-and-licence).
 
 ## Applications for researchers, laboratories and companies
 

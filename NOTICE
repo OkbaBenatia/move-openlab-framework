@@ -14,5 +14,6 @@ The following parts of this repository are NOT licensed under the Apache License
   Preuve de Covoiturage, data.gouv.fr), Licence Ouverte / Open Licence (Etalab).
 - The sample trip dataset (examples/scenario-import/, src/move_openlab/samples/trips/): Creative Commons Zero 1.0.
 - The Inter typeface (frontend/public/fonts/inter/): SIL Open Font License 1.1, (c) 2016 The Inter Project Authors.
-- The MOVE OpenLab name, logo and banner (frontend/public/brand/, docs/assets/brand/): the project's marks; the Apache
+- The MOVE OpenLab name, logo, banner and application icons (frontend/public/brand/, docs/assets/brand/,
+  src/move_openlab/assets/icons/): the project's marks; the Apache
   License grants no right to use them (section 6).

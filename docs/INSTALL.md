@@ -93,7 +93,20 @@ Open **MOVE OpenLab** from the Start menu (Windows), the Applications folder (ma
 | you restart the computer | it starts again when you sign in |
 | it crashes | it is restarted automatically (Linux: after 5 s; macOS: after 10 s; Windows: within a minute) |
 
-Service commands (in the installation folder; on Windows `venv\Scripts\move-openlab`):
+The **MOVE OpenLab** launcher runs `move-openlab open`: when the server does not answer it starts the background
+service (never a second server: a server already running or starting is reused, and a port held by another
+application is reported instead), waits until it answers (up to a minute), then opens the browser. If it cannot, it
+says why in a desktop dialog (Windows message box, macOS alert, `zenity` or `notify-send` on Linux when available) and
+appends the reason to `<data>/logs/launcher.log`.
+
+The `move-openlab` program of an installation (the commands below are the same on every system):
+
+| System | Path |
+|---|---|
+| Linux, macOS | `<installation folder>/venv/bin/move-openlab` |
+| Windows | `<installation folder>\venv\Scripts\move-openlab.exe` (PowerShell: `.\venv\Scripts\move-openlab.exe service status`) |
+
+Service commands (in the installation folder):
 
 ```bash
 venv/bin/move-openlab service status      # registered? running? address, data folder
@@ -109,6 +122,16 @@ venv/bin/move-openlab open                # starts it if needed and opens the br
 | Linux | `systemd --user` unit `move-openlab.service` | `~/.local/share/move-openlab` | `<data>/logs/server.log` (also `journalctl --user -u move-openlab`) |
 | macOS | `launchd` agent `~/Library/LaunchAgents/io.github.okbabenatia.move-openlab.plist` | `~/Library/Application Support/MOVE OpenLab` | `<data>/logs/server.log` |
 | Windows | Task Scheduler task `\MOVE OpenLab\Server` (at sign-in, your account) | `%LOCALAPPDATA%\MOVE OpenLab\data` | `<data>\logs\server.log` |
+
+| | Launcher | Its icon (the official MOVE OpenLab symbol) |
+|---|---|---|
+| Linux | `~/.local/share/applications/move-openlab.desktop` | `~/.local/share/icons/hicolor/<size>/apps/move-openlab.png` (icon caches refreshed at installation) |
+| macOS | `~/Applications/MOVE OpenLab.app` | `Contents/Resources/move-openlab.icns` |
+| Windows | Start menu shortcut `MOVE OpenLab.lnk` | `move-openlab.ico` of the installed package |
+
+An update (the installer run again in the same folder) writes the launcher and its icon again, so installations made
+with an earlier version get the official icon. If a menu still shows the previous icon, sign out and in again
+(desktop icon caches).
 
 Where no `systemd --user` manager is available (some containers or minimal sessions), the Linux installer starts the
 server as a detached process and adds a desktop autostart entry; it is then not restarted after a crash
