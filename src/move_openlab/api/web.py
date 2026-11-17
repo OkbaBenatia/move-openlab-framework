@@ -45,7 +45,11 @@ def _auth(request: Request) -> A.Auth:
 
 
 def _safe_next(nxt: str | None) -> str:
-    return nxt if nxt and nxt.startswith("/") and not nxt.startswith("//") and not nxt.startswith("/login") else "/"
+    """A local path to return to after signing in, else ``/``. Browsers read a backslash as a slash and drop tabs and
+    newlines, so ``/\\host`` or ``/<tab>/host`` would leave the site: such paths are refused, like ``//host``."""
+    if not nxt or not nxt.startswith("/") or nxt.startswith(("//", "/login")):
+        return "/"
+    return "/" if any(c == "\\" or ord(c) < 32 or ord(c) == 127 for c in nxt) else nxt
 
 
 def _client(request: Request) -> str:
@@ -242,7 +246,15 @@ AUTH_JS = """(function () {
     main.insertBefore(box, main.firstChild);
   })();
   var params = new URLSearchParams(location.search);
-  function safeNext(n) { return n && n.charAt(0) === '/' && n.charAt(1) !== '/' && n.indexOf('/login') !== 0 ? n : '/'; }
+  // a local path only: browsers read a backslash as a slash and drop tabs and newlines ('/<backslash>host' would leave
+  // the site), so those are refused and the path must resolve to this origin
+  function safeNext(n) {
+    if (!n || n.charAt(0) !== '/') return '/';
+    for (var i = 0; i < n.length; i++) { var c = n.charCodeAt(i); if (c < 32 || c === 92 || c === 127) return '/'; }
+    var u;
+    try { u = new URL(n, location.origin); } catch (e) { return '/'; }
+    return u.origin === location.origin && u.pathname.indexOf('/login') !== 0 ? u.pathname + u.search + u.hash : '/';
+  }
   var next = safeNext(params.get('next'));
   function go(url) { location.replace(url); }
   function showError(form, msg) {

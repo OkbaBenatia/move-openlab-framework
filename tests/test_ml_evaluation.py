@@ -690,3 +690,16 @@ def test_a_modified_stored_file_is_reported_not_evaluated(lab):
     finally:
         f.write_bytes(original)
     assert len(evaluations(lab.root, lab.url, sha)) == 1
+
+
+def test_an_unreadable_stored_file_is_reported_without_the_server_path(lab):
+    sha = upload(lab.root, lab.url, tagged("unreadable")).json()["evidence_sha256"]
+    f = lab.settings.data_dir / "workspaces" / "root" / "ml_evaluations" / lab.cid / f"{sha}.json"
+    try:
+        os.chmod(f, 0)                                           # reading it now fails with an OSError naming the path
+        res = lab.root.get(lab.url, params=dict(method_id=LEARNED)).json()
+        why = [e["reason"] for e in res["evidence_errors"] if e["evidence_sha256"] == sha]
+        assert why and why[0].startswith("Not available: the stored file could not be read (")
+        assert str(lab.settings.data_dir) not in json.dumps(res)
+    finally:
+        os.chmod(f, 0o600)
