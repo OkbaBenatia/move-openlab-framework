@@ -79,6 +79,42 @@ const overflow = () => p.eval('document.documentElement.scrollWidth - innerWidth
 const scrollToCss = (css) => p.eval(`document.querySelector(${JSON.stringify(css)})?.scrollIntoView({ block: 'start' })`);
 let base = '', variant = '', mine = '', ext = '', exported = '', repro = '';
 
+// ---------------------------------------------------------------- fixtures for a fresh installation
+// A fresh installation has the demonstration and the original road network it was built on (shipped with it and stored
+// when the demonstration is installed: nothing is downloaded), but no reproduction of it. The reproduction is prepared
+// through the same endpoints the interface uses, and only where it does not exist yet (for example a developer data copy).
+F.fixtures = [];
+const DEMO_NETWORK = '2858421165cd47486a509d26';             // the frozen demonstration's road network (bundle manifest)
+async function waitApiJob(jid, timeout = 600000) {
+  const t0 = Date.now();
+  for (;;) {
+    const j = (await api(`/api/jobs/${jid}?events=false`)).body;
+    if (!['queued', 'running'].includes(j?.state)) return j?.state;
+    if (Date.now() - t0 > timeout) throw new Error(`job ${jid} still ${j?.state} after ${timeout} ms`);
+    await sleep(2000);
+  }
+}
+const post = (path) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+/** The demonstration's area carries the original road network, from the copy shipped with the installation. */
+async function demoArea() {
+  const demoId = (await api('/api/lab/state')).body.demo?.area;
+  const all = (await api('/api/geo/areas')).body.areas;
+  const area = all.find((a) => a.network_id === DEMO_NETWORK) ?? all.find((a) => a.area_id === demoId);
+  expect(area?.network_id === DEMO_NETWORK, `the demonstration area does not carry the shipped road network ${DEMO_NETWORK} (found ${area?.network_id ?? 'no area'})`);
+  return area;
+}
+async function ensureReproduction(root) {
+  const have = (await api('/api/lab/experiments')).body.experiments.find((x) => x.kind === 'reproduction' && x.parent === root)?.campaign_id;
+  if (have) return have;
+  const t0 = Date.now(), r = await post(`/api/campaigns/${root}/reproduce`);
+  if (r.status !== 200) throw new Error(`precondition: reproduction of ${root} refused (HTTP ${r.status})`);
+  const j = await post(`/api/campaigns/${r.body.campaign_id}/execute`);
+  const state = await waitApiJob(j.body.job_id);
+  if (state !== 'done') throw new Error(`precondition: reproduction job ended ${state}`);
+  F.fixtures.push({ fixture: 'reproduction of the demonstration in this account', campaign_id: r.body.campaign_id, ms: Date.now() - t0 });
+  return r.body.campaign_id;
+}
+
 // ===================================================================================================== Scenario A
 await check('A1', 'Open Montbéliard Demo — Baseline: map, participants, compact metadata',
   'The Workspace opens the demonstration; metadata is compact (title, status, area, data, scenario, one-line summary) with Experiment details collapsed; participants are visible without scrolling far.',
@@ -195,9 +231,7 @@ await check('A4b', 'Exactly two experiments; charts at 160 % zoom and on a phone
 
 await check('A4c', 'Charts with three compared experiments', 'With A, B and C the grid keeps equal compact cards (3 per row) and every value is matched by scenario.',
   async () => {
-    const list = (await api('/api/lab/experiments')).body.experiments;
-    const r = list.find((x) => x.kind === 'reproduction' && x.parent === base)?.campaign_id;
-    expect(r, 'no reproduction of the demonstration in this account');
+    const r = await ensureReproduction(base);                  // fixture: created once on a fresh installation
     await goHash(`#/compare/${base}|${variant},${r}`, 3500); await p.click('Charts', '.tabs button'); await sleep(2500);
     const cs = await cards(); const s = await shot('14c-compact-charts-three-experiments', 300);
     const lg = await p.eval(`document.querySelector('.charts-grid .chart-card .lgd')?.innerText`);
@@ -251,7 +285,7 @@ await check('B1', 'Generate 20 drivers and 30 riders, seed 21, Exact and Greedy;
     await signOut(); await signIn(ADMIN); await waitWorkspace(); await goHash(`#/workspace/${base}`, 3000);
     // the Montbéliard area may be hidden in this account: listed again for the wizard without changing anything else
     const prefs = (await api('/api/lab/state')).body.preferences;
-    const mont = (await api('/api/geo/areas')).body.areas.find((a) => a.name === 'Montbéliard' && a.network_id);
+    const mont = await demoArea();                             // the shipped original network, never a new download
     if (mont && prefs.hidden_ids.includes(mont.area_id)) {
       await api('/api/lab/preferences', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hidden_ids: prefs.hidden_ids.filter((x) => x !== mont.area_id) }) });
       await p.eval('location.reload()'); await sleep(1500); await waitWorkspace(); await sleep(2500);
@@ -265,7 +299,8 @@ await check('B1', 'Generate 20 drivers and 30 riders, seed 21, Exact and Greedy;
     await next();
     await p.fill('.wizard input[aria-label=from]', '07:30'); await p.fill('.wizard input[aria-label=to]', '08:00');
     await p.fill('.wizard input[aria-label="max detour minutes"]', '20'); await p.fill('.wizard input[aria-label="max detour ratio"]', '1');
-    await p.waitFor('/63 compatible pairs/.test(document.querySelector("[aria-label=\\"preview summary\\"]")?.innerText ?? "")', 90000, 'preview with the constraints');
+    // seeded synthetic trips are drawn on the road network: 63 pairs on the demonstration's original network
+    await p.waitFor(`/63 compatible pairs/.test(document.querySelector('[aria-label="preview summary"]')?.innerText ?? '')`, 90000, 'preview with the constraints');
     const preview = await text('[aria-label="preview summary"]');
     await next(); await p.fill('.wizard input[aria-label="experiment name"]', 'Workflow · Montbéliard seed 21'); await p.fill('.wizard input[aria-label=repetitions]', '3'); await sleep(300);
     await next(); const s1 = await shot('09-wizard-review', 300);
@@ -322,6 +357,7 @@ await check('C1', 'Add My Greedy Matching: register if needed, Run with this met
 await check('E1', '+ Driver and + Rider from the Participants panel', 'The wizard opens at the participants step with the current participants and a new driver (then a new rider) waiting for its start point on the map; clicks place start and end; a route is previewed; nothing is saved until Save.',
   async () => {
     await goHash(`#/workspace/${base}`, 3000);
+    await demoArea();                                          // editing participants needs the original road network
     const before = (await api('/api/geo/scenarios')).body;
     await p.click('Driver', '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard .wizard-map .leaflet-container")', 15000, 'wizard');
     await sleep(1500);
@@ -353,6 +389,7 @@ await check('E1', '+ Driver and + Rider from the Participants panel', 'The wizar
 await check('E2', 'Randomize with a typed seed (deterministic)', 'Randomize opens the participants step (with the Randomize dialog, closed here); seed 4242 and 4243 give different places, 4242 again the same places as before; ids and time windows stay.',
   async () => {
     await goHash(`#/workspace/${base}`, 3000);
+    await demoArea();                                          // Randomize needs the original road network
     await p.click('Randomize', '.edit-people button'); await p.waitFor('!!document.querySelector(".wizard table[aria-label=drivers]")', 30000, 'wizard'); await sleep(2500);
     // the Workspace button opens the editor with the Randomize dialog on top; this check uses the seed-only control under it
     await p.waitFor('!!document.querySelector(".rz-modal")', 15000, 'Randomize dialog'); await p.click('Cancel', '.rz-modal button', true); await p.waitFor('!document.querySelector(".rz-modal")', 8000, 'dialog closed'); await sleep(500);

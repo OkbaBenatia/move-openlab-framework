@@ -3,6 +3,41 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
+## 0.3.1 — 2026-11-17
+
+### Added
+- **The demonstration's road network ships with it** (`src/move_openlab/demo/network/`, ODbL 1.0, © OpenStreetMap
+  contributors): the original network its frozen scenarios were built on (`2858421165cd47486a509d26`) and the raw
+  Overpass response it was built from. Installing the demonstration stores it unchanged (every digest checked against
+  the bundle; nothing downloaded) and attaches it to the demonstration's area, also an area added without it by
+  0.3.0. A fresh installation can therefore edit the demonstration's participants, use *Randomize* and drag points on
+  the map, and an imported sample scenario is rebuilt on that network and checked identical (it was only checked
+  consistent before). The demonstration bundle, its experiments, results and checksums are unchanged.
+
+### Security
+- **Return path after signing in**: the sign-in page's script followed a `next` path such as `/\host` or
+  `/<tab>/host`, which browsers read as another site (open redirect after a genuine sign-in; reported during the CodeQL
+  review, not by CodeQL itself). The script now accepts only a path that resolves to this site and refuses
+  backslashes and control characters; the server-side check refuses the same paths.
+- **Evaluation evidence that cannot be read** is reported by error type only: the message no longer carries the
+  server's file path.
+
+### Fixed
+- **Participants editor without a road network**: the palette and *Randomize…* are no longer disabled without a
+  reason. When the area has no stored road network the step says so and links to *Area & Data* (where the one-time
+  download is offered); when a scenario was built on a road network this installation does not store (for example the
+  shipped demonstration on a fresh installation: a new OpenStreetMap download gives a different network), the editor
+  says that its participants cannot be edited here.
+- **Workflow acceptance on a fresh installation** (`scripts/e2e/workflow_acceptance.mjs`): deterministic — the
+  demonstration area must carry the shipped original road network (no OpenStreetMap download), and a reproduction is
+  prepared through the interface's own endpoint where none exists yet.
+- **Confidentiality gate**: lockfile integrity digests (random base64) are left out of the denylist screening, where a
+  short term could occur by chance; package names, URLs and every other line stay screened.
+
+### Changed — dependencies
+- GitHub Actions `actions/checkout`, `actions/setup-python`, `actions/setup-node` v7; `vite` 8.3.8,
+  `@vitejs/plugin-react` 6.3.0, `lucide-react` 1.72.0. TypeScript 7 is held: `typescript-eslint` does not support it yet.
+
 ## 0.3.0 — 2026-11-16
 
 ### Fixed — release

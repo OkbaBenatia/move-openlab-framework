@@ -2,7 +2,7 @@
 #
 # Verified from the repository (2026-11-16): the author (pyproject.toml and every commit of the history), the
 # affiliation (README › Maintainer), the version (src/move_openlab/__init__.py), the repository address, and the
-# licence of the public framework (LICENSE, Apache-2.0); date-released is the date of the 0.3.0 release.
+# licence of the public framework (LICENSE, Apache-2.0); date-released is the date of the 0.3.1 release.
 #
 # Deliberately absent until they exist (never invent them):
 #   - doi / identifiers: add them when a DOI is registered (for example by archiving a release);
@@ -30,8 +30,8 @@ authors:
   - family-names: "BEN ATIA"
     given-names: "Okba"
     affiliation: "Université Marie et Louis Pasteur, FEMTO-ST Institute, DISC Department, OMNI team"
-version: "0.3.0"
-date-released: "2026-11-16"
+version: "0.3.1"
+date-released: "2026-11-17"
 license: Apache-2.0
 repository-code: "https://github.com/OkbaBenatia/move-openlab-framework"
 keywords:
