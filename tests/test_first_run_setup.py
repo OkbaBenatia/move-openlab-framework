@@ -1,5 +1,6 @@
 """First-run setup: the first administrator is created in the browser, with a setup key only the installing account can
 read, from this computer only, once; an installation that already has accounts never enters setup mode."""
+import os
 import json
 import threading
 
@@ -42,7 +43,7 @@ def test_a_fresh_installation_opens_the_setup_page_and_nothing_else(tmp_path):
     assert page.headers["cache-control"] == "no-store"
     k = key(s)
     assert k and len(k) >= 32 and k not in page.text                  # the key is never served by the server
-    assert oct((s.data_dir / "setup-key").stat().st_mode & 0o777) == "0o600"
+    assert os.name != "posix" or oct((s.data_dir / "setup-key").stat().st_mode & 0o777) == "0o600"   # Windows: profile ACL
 
 
 def test_the_first_administrator_needs_the_key_this_computer_and_a_strong_password(tmp_path):

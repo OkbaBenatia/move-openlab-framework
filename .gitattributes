@@ -1,0 +1,3 @@
+# Byte-exact files: shipped bundles, samples, fixtures and examples are hashed (manifests, SHA256SUMS), so no
+# line-ending conversion on checkout (Windows clients with core.autocrlf would otherwise change their bytes).
+* -text

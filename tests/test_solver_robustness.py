@@ -45,6 +45,9 @@ def test_solver_method_and_end_to_end_times_are_separate(ref):
         r = run_once(RIDE, ref, inst, dict(CFG, time_limit_s=60.0), timeout_s=60)
         assert r["accepted"]
         assert 0 <= r["solver_time_s"] <= r["method_time_s"] <= r["total_time_s"]
+        if sys.platform == "win32":                    # CPU time and peak memory come from POSIX getrusage()
+            assert "resources" not in r
+            continue
         res = r["resources"]
         assert res["cpu_user_s"] + res["cpu_system_s"] > 0 and res["max_rss_mb"] > 0
 

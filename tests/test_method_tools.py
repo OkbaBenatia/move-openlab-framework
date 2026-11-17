@@ -1,4 +1,5 @@
 """Method template and the ``method check`` workflow: metadata, sandboxed self-test, run on an imported benchmark."""
+import os
 import pytest
 
 from move_openlab import demo
@@ -86,7 +87,8 @@ def test_documented_schemas_match_the_records():
 
 def test_template_values_cannot_break_the_generated_python(tmp_path):
     import ast
-    d = new_method("quoted_author", PID, tmp_path / 'dir with "quotes" and \\U', author='O"Brien """ \\U0001')
+    parent = tmp_path / ('dir with quotes' if os.name == "nt" else 'dir with "quotes" and \\U')   # '"' is invalid in Windows names
+    d = new_method("quoted_author", PID, parent, author='O"Brien """ \\U0001')
     for f in ("plugin.py", "test_plugin.py"):
         ast.parse((d / f).read_text())
     assert check_method(d / "test_plugin.py")["steps"][0]["ok"] is False            # only plugin.py is accepted

@@ -1,6 +1,7 @@
 """Restricted problems: visible only to the accounts an administrator granted them to. Enforcement is on the server
 (listings, lookups, experiments, scenarios, instances, exports, imports); no role implies access; refusals are audited.
 The open, shipped synthetic problem is marked restricted for the duration of a test: no private package is needed."""
+import os
 import json
 
 import pytest
@@ -65,7 +66,7 @@ def test_grant_use_and_revocation(tmp_path, restricted):
     root, alice, bob, s = clients(tmp_path)
     assert root.put(f"/api/admin/extensions/{PID}/access", json=dict(usernames=["nobody-here"])).status_code == 404
     assert root.put(f"/api/admin/extensions/{PID}/access", json=dict(usernames=["alice"])).json()["granted"] == ["alice"]
-    assert Access(s.data_dir).file.stat().st_mode & 0o077 == 0                       # owner-only
+    assert os.name != "posix" or Access(s.data_dir).file.stat().st_mode & 0o077 == 0   # owner-only (POSIX)
     assert PID in [p["spec"]["problem_id"] for p in alice.get("/api/problems").json()["problems"]]
     assert alice.get("/api/info").json()["problems"][0].keys() >= {"restricted"}
     cid = alice.post("/api/campaigns", json=BODY).json()["campaign_id"]
