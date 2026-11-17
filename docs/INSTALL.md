@@ -4,8 +4,8 @@ MOVE OpenLab is one application (a local web server and its interface) that runs
 your browser. The installer puts it in a folder you choose, keeps it running in the background for your user account,
 and adds a "MOVE OpenLab" launcher. Nothing is exposed beyond this computer: the server listens on `127.0.0.1` only.
 
-The commands below install **version 0.3.2** from its GitHub release (they work once that release is published; the
-steps are the same for later versions, with their own number).
+The commands below install **version 0.3.2** from its GitHub release (later versions: the same commands with their
+own number).
 
 ## Install with one command
 

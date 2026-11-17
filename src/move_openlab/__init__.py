@@ -6,4 +6,4 @@ Methods are pure functions executed in isolated worker processes and judged by t
 Campaigns are content-addressed, lockable, exportable as verified bundles, re-executable, extensible and comparable.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
