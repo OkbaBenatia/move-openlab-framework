@@ -3,7 +3,7 @@
 All notable changes are documented here. Versions follow Semantic Versioning; pre-1.0 minor versions may change
 interfaces.
 
-## Unreleased
+## 0.3.1 — 2026-11-17
 
 ### Added
 - **The demonstration's road network ships with it** (`src/move_openlab/demo/network/`, ODbL 1.0, © OpenStreetMap
